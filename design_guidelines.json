@@ -1,0 +1,161 @@
+{
+  "app_name": "GigTax",
+  "personality": "7 Dark-First Utility DARK (adapted for Driving Instrument Cluster)",
+  "personality_one_liner": "A driving-optimized instrument cluster that makes tax and expense tracking feel like checking your car's dashboard.",
+  "color": {
+    "surface": "#111F31",
+    "onSurface": "#F1F5F9",
+    "surfaceSecondary": "#16293F",
+    "onSurfaceSecondary": "#F1F5F9",
+    "surfaceTertiary": "#0A1420",
+    "onSurfaceTertiary": "#8CA3BC",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#0B2545",
+    "brand": "#38BDF8",
+    "brandPrimary": "#38BDF8",
+    "onBrandPrimary": "#0A1420",
+    "brandSecondary": "#F2B84B",
+    "onBrandSecondary": "#0A1420",
+    "brandTertiary": "#2E7FC2",
+    "onBrandTertiary": "#F1F5F9",
+    "success": "#2BD47D",
+    "onSuccess": "#0A1420",
+    "warning": "#F2B84B",
+    "onWarning": "#0A1420",
+    "error": "#FF5C5C",
+    "onError": "#F1F5F9",
+    "info": "#38BDF8",
+    "onInfo": "#0A1420",
+    "border": "#16293F",
+    "borderStrong": "#2E7FC2",
+    "divider": "#16293F"
+  },
+  "typography": {
+    "displayFontFamily": "Barlow Condensed",
+    "textFontFamily": "Inter",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous touch targets and spacing optimized for quick glances. No dense clusters.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [],
+    "dont's": [
+      "No glass UI per user choice (use soft borders instead of shadows and solid dark theme surfaces)"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home",
+      "purpose": "Dashboard showing live net earnings, today's business distance, and recent activity.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "No trips logged yet - 'Start driving' prompt",
+        "error": "Unable to load dashboard, Retry button"
+      },
+      "layout": "Header with date/greeting. Top Hero Card: Live net earnings with navy->sky gradient background. Secondary row: Business distance & Recurring payment status cards. List: Recent activity (last 8 entries). Fixed bottom CTA for logging trip/expense."
+    },
+    {
+      "name": "Trips",
+      "purpose": "Log and review trips, categorized by Business or Personal usage.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Illustration of car with 'No trips recorded'",
+        "error": "Unable to load trips, Retry button"
+      },
+      "layout": "Top gauge: Business-use %. List of trips grouped by date, showing total km, route, and Business/Personal toggle badge on each row."
+    },
+    {
+      "name": "Expenses",
+      "purpose": "Log expenses via manual entry or receipt scan.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Illustration of receipt with 'Add your first expense'",
+        "error": "Unable to load expenses, Retry button"
+      },
+      "layout": "Top section: Category breakdown (Fuel, Tolls, Vehicle, Phone). Two large equal-weight side-by-side buttons: 'Add Expense' & 'Scan Receipt'. Below: Expense history list with tax-treatment badges per line."
+    },
+    {
+      "name": "Reports",
+      "purpose": "Generate and view BAS/GST tax summary and export to CSV.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Not enough data to generate report",
+        "error": "Unable to load report, Retry button"
+      },
+      "layout": "Period selector (Week/Month/Quarter/Year). Vehicle deduction breakdown chart/card. Main card: BAS/GST summary with ATO field codes (G1, 1A, 1B). Footer: Official ATO link and CSV export button."
+    },
+    {
+      "name": "Settings",
+      "purpose": "Manage tax setup, vehicle details, and app preferences.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "N/A",
+        "error": "Unable to load settings, Retry button"
+      },
+      "layout": "Standard list layout. Sections: Profile/Work Type, Vehicle Ownership & Recurring Payment card, Tax Setup status card, Linked Platforms, App Theme toggle."
+    }
+  ],
+  "images": {
+    "home_hero_bg": {
+      "url": "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800",
+      "dark": "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800",
+      "alt": "Abstract driving dashboard background"
+    },
+    "empty_trips": {
+      "url": "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=800",
+      "dark": "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=800",
+      "alt": "Empty road for no trips"
+    },
+    "empty_expenses": {
+      "url": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800",
+      "dark": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800",
+      "alt": "Receipt for empty expenses"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the user's locked color palette. Use the defined dark/light themes.",
+    "Use 'Barlow Condensed' for display numerals and 'Inter' for body text. Ensure all monetary figures use 'tabular-nums' so digits don't jitter as they update.",
+    "Apply rounded corners and soft borders instead of shadows per the user request.",
+    "Hero elements (earnings card, primary buttons) must use the specific 'navy->sky' gradient (#0B2545 to #2E7FC2).",
+    "Profit must be #2BD47D (Dark) / #12A25A (Light) and Loss must be #FF5C5C (Dark) / #D93A3A (Light) consistently.",
+    "The UI should feel like a driving instrument cluster. Use right-aligned tabular figures in tables/lists.",
+    "No passive autoplay loops for motion. Motion should be purposeful and driven by user input (scroll, tap).",
+    "Include the tagline 'Drive. Track. Done.' in the appropriate prominent place, like onboarding or splash screen."
+  ]
+}
