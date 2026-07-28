@@ -19,10 +19,7 @@ export default function RootLayout() {
   const [fontsLoaded, fontErr] = useFonts({
     "BarlowCondensed-Bold": require("../assets/fonts/BarlowCondensed-Bold.ttf"),
     "BarlowCondensed-SemiBold": require("../assets/fonts/BarlowCondensed-SemiBold.ttf"),
-    "Inter-Regular": require("../assets/fonts/Inter-Regular.ttf"),
-    "Inter-Medium": require("../assets/fonts/Inter-Medium.ttf"),
-    "Inter-SemiBold": require("../assets/fonts/Inter-SemiBold.ttf"),
-    "Inter-Bold": require("../assets/fonts/Inter-Bold.ttf"),
+    "Inter": require("../assets/fonts/Inter.ttf"),
   });
 
   const ready = (iconsLoaded || iconErr) && (fontsLoaded || fontErr);

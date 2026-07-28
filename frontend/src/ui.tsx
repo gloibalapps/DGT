@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
-import { useTheme, FONT, Palette } from "@/src/theme";
+import { useTheme, FONT, WEIGHT, Palette } from "@/src/theme";
 
 // ---------------------------------------------------------------- Text
 type Variant = "display" | "displaySemi" | "h1" | "h2" | "body" | "bodyMed" | "bodySemi" | "label" | "caption";
@@ -15,6 +15,11 @@ const FAM: Record<Variant, string> = {
   display: FONT.display, displaySemi: FONT.displaySemi,
   h1: FONT.bold, h2: FONT.semibold, body: FONT.regular, bodyMed: FONT.medium,
   bodySemi: FONT.semibold, label: FONT.medium, caption: FONT.regular,
+};
+// Inter is variable — weight comes from fontWeight; Barlow display uses its own file.
+const WGT: Partial<Record<Variant, "400" | "500" | "600" | "700">> = {
+  h1: WEIGHT.bold, h2: WEIGHT.semibold, body: WEIGHT.regular, bodyMed: WEIGHT.medium,
+  bodySemi: WEIGHT.semibold, label: WEIGHT.medium, caption: WEIGHT.regular,
 };
 const SIZE: Record<Variant, number> = {
   display: 40, displaySemi: 30, h1: 22, h2: 18, body: 15, bodyMed: 15,
@@ -28,7 +33,10 @@ export function AppText({ variant = "body", color, style, children, ...rest }:
     <Text
       {...rest}
       style={[
-        { fontFamily: FAM[variant], fontSize: SIZE[variant], color: color || colors.text },
+        {
+          fontFamily: FAM[variant], fontSize: SIZE[variant], color: color || colors.text,
+          ...(WGT[variant] ? { fontWeight: WGT[variant] } : {}),
+        },
         style,
       ]}
     >

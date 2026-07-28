@@ -54,10 +54,18 @@ const LIGHT: Palette = {
 export const FONT = {
   display: "BarlowCondensed-Bold",
   displaySemi: "BarlowCondensed-SemiBold",
-  regular: "Inter-Regular",
-  medium: "Inter-Medium",
-  semibold: "Inter-SemiBold",
-  bold: "Inter-Bold",
+  regular: "Inter",
+  medium: "Inter",
+  semibold: "Inter",
+  bold: "Inter",
+};
+
+// Inter is loaded as a variable font — weight is selected via fontWeight.
+export const WEIGHT: Record<string, "400" | "500" | "600" | "700"> = {
+  regular: "400",
+  medium: "500",
+  semibold: "600",
+  bold: "700",
 };
 
 interface ThemeCtx {
