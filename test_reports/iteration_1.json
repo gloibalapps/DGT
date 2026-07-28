@@ -1,0 +1,41 @@
+{
+  "summary": "Fresh GigTax build — full backend + frontend smoke test. All 17 pytest cases pass covering profile GET/PUT (auto-create + persist), trips/income/expenses CRUD, tax report math (business-use % from tagged trips, fuel apportioning, BAS G1/1A/1B for lease with recurring, 100% fallback when no trips, delivery-not-registered => show_bas false, passengers-not-registered warning), period boundaries additive (4 BAS quarters sum to FY year total), recurring payment prorated (~$350 for 7 elapsed days at $350/wk), dashboard net_today/business_distance_today/recent<=8/tax_setup_complete, CSV export containing a calculated recurring-payment line, and OpenAI gpt-4o receipt scan via EMERGENT_LLM_KEY (returned amount+date+merchant+category shape). Frontend onboarding 5-step flow completes and lands on /home; quick-add Income & Expense modals save through and instantly reflect in the hero card and Recent activity; Trips tab renders BUSINESS-USE % gauge and lists trips with business badge; Reports tab shows Week/Month/Quarter/Year selector, correct 01 Jul 2026–30 Sep 2026 quarter window, vehicle-deduction breakdown, ATO link and CSV export button both present; Settings groups theme toggle, region, work-type, read-only business-use %, and vehicle-ownership + recurring-payment (single Save) in one screen; theme toggle switches dark↔light visually and persists after full page reload.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": [
+        "Inter font family fails to load on web preview — every request to /assets/?unstable_path=./assets/fonts/Inter-*.ttf returns something the browser rejects with 'OTS parsing error: invalid sfntVersion: 168430090' (that magic number is ASCII '\\n\\n\\n\\n', i.e. an HTML/text 404 page being served instead of the TTF). The app still renders because system fonts fall back, but the intended typography is never applied. Likely fix: register the fonts through expo-font/useFonts and reference them by name, or ensure the static /assets font path is served with the correct MIME by Metro."
+      ]}
+    ],
+    "react_native_issues": [
+      {"component": "unknown (RN Web warning)", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' fires during onboarding. Some component (likely a Pressable/View) is still passing pointerEvents as a prop. Migrate to style.pointerEvents to silence."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gigtax_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix Inter font delivery on web preview (OTS parsing error) — either preload via expo-font useFonts() or fix the Metro /assets font MIME so the .ttf actually reaches the browser as font/ttf.",
+    "Track down the pointerEvents={...} prop still in use somewhere and move it to style.pointerEvents to clear the RN 0.81 deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py is small and clean; tax.py is well-isolated and the maths matched every assertion — good separation of concerns.",
+    "Profile PUT is upsert-safe (merges over existing doc, revalidates through Pydantic) and correctly excludes _id in every response via clean().",
+    "Recurring proration uses continuous daily accrual, so adjacent windows join without gaps or double counts — verified by summing 4 BAS quarters to the FY total.",
+    "1B correctly apportions fuel/vehicle by business_use and adds lease/rental/loan recurring payment (business-use scaled) to the GST credit base."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (new)",
+    "/app/backend/tests/test_gigtax_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% of smoke-tested flows (onboarding, quick-add income, quick-add expense, add trip, reports periods, settings, theme toggle+persist)"},
+  "seed_data_creation": "Each test uses a throw-away profile_id prefixed TEST_<uuid[:12]> so nothing collides or lingers under a real user's profile. A single TEST_ profile was created in the browser session for UI verification (income $125.50, expense $40 BP Servo, trip 20 km).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Public URL EXPO_PUBLIC_BACKEND_URL=https://earnings-audit-app.preview.emergentagent.com. All backend routes live under /api. Frontend generates & persists profile_id in localStorage under key 'gigtax.profile_id' — clear localStorage to force onboarding. TestIDs to know: onboarding-next, country-AU, worktype-{delivery|passengers|both}, ownership-{own|loan|lease|rental|rent_to_buy}, platform-<name>, home-add-{income|trip|expense}, entry-amount/entry-distance/entry-merchant/entry-note/entry-save/entry-delete, trips-add, expense-add, expense-scan, reports-export, reports-ato, theme-toggle, set-vehicle-save, set-tax-setup. GPS shift buttons exist (gps-start/gps-stop) but real distance accumulation needs a device — verify only the button/permission path on web.",
+  "rca_of_issue": "Font warnings: The browser reports 'invalid sfntVersion: 168430090'. 168430090 == 0x0A0A0A0A which is four newlines (\\n\\n\\n\\n) — meaning the server returned a text/HTML body (likely a 404 or fallback HTML page) instead of the binary TTF. The URL pattern /assets/?unstable_path=./assets/fonts/... is Metro's dev asset resolver; either the fonts are not actually bundled into the web build, or the resolver is returning HTML for them in the preview. The rendering fallback masks the bug because system fonts kick in."
+}

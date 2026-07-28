@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "GigTax",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,15 +10,27 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.earningsauditapp.cxv7id"
+      "bundleIdentifier": "com.emergent.earningsauditapp.cxv7id",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan receipts to log deductible expenses",
+        "NSPhotoLibraryUsageDescription": "Pick receipt photos to log expenses",
+        "NSLocationWhenInUseUsageDescription": "Track business drives for your logbook",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Track drives automatically in the background"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#0A1420"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.earningsauditapp.cxv7id"
+      "package": "com.emergent.earningsauditapp.cxv7id",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -33,7 +45,26 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#0A1420"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Track business drives for your logbook"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pick receipt photos to log expenses",
+          "cameraPermission": "Scan receipts to log deductible expenses"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan receipts to log deductible expenses"
         }
       ]
     ],
