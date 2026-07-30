@@ -15,7 +15,8 @@
         "NSCameraUsageDescription": "Scan receipts to log deductible expenses",
         "NSPhotoLibraryUsageDescription": "Pick receipt photos to log expenses",
         "NSLocationWhenInUseUsageDescription": "Track business drives for your logbook",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Track drives automatically in the background"
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Track drives automatically in the background",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -29,6 +30,9 @@
         "CAMERA",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
         "READ_MEDIA_IMAGES"
       ]
     },
@@ -51,7 +55,10 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Track business drives for your logbook"
+          "locationWhenInUsePermission": "Track business drives for your logbook",
+          "locationAlwaysAndWhenInUsePermission": "Track drives automatically in the background",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

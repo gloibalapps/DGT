@@ -10,6 +10,7 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { ThemeProvider } from "@/src/theme";
 import { AppProvider } from "@/src/store";
 import { ToastProvider } from "@/src/ui";
+import { syncAutotrack } from "@/src/autotrack";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -27,6 +28,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
   }, [ready]);
+
+  useEffect(() => {
+    syncAutotrack();
+  }, []);
 
   if (!ready) return null;
 

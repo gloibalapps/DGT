@@ -8,6 +8,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
+import { getPendingDrives, clearPendingDrive, PendingDrive } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, Money, IconButton, Spinner,
   EmptyState, PrimaryButton, SecondaryButton, Badge, useToast,
@@ -29,6 +30,7 @@ export default function Trips() {
   const { show } = useToast();
   const router = useRouter();
   const [trips, setTrips] = useState<TripT[]>([]);
+  const [autoDrives, setAutoDrives] = useState<PendingDrive[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -42,6 +44,7 @@ export default function Trips() {
   const load = useCallback(async () => {
     try {
       setTrips(await api.listTrips());
+      setAutoDrives(await getPendingDrives());
     } catch {
       show("Couldn't load trips", "error");
     } finally {
@@ -104,6 +107,14 @@ export default function Trips() {
     load();
   };
 
+  const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
+    await api.addTrip({ date: d.date, distance_km: d.distance_km, type, source: "gps" });
+    await clearPendingDrive(d.id);
+    show(`${d.distance_km} km logged as ${type}`, "success");
+    refresh();
+    load();
+  };
+
   const flip = async (t: TripT) => {
     const next = t.type === "personal" ? "business" : "personal";
     await api.updateTrip(t.id, { type: next });
@@ -144,6 +155,27 @@ export default function Trips() {
           </View>
         </View>
       </Card>
+
+      {/* Auto-detected drives awaiting classification */}
+      {autoDrives.length > 0 && (
+        <View style={{ marginBottom: 14 }}>
+          <AppText variant="label" color={colors.warm} style={{ marginBottom: 8, marginLeft: 4 }}>
+            {autoDrives.length} AUTO-DETECTED DRIVE{autoDrives.length > 1 ? "S" : ""} TO CLASSIFY
+          </AppText>
+          {autoDrives.map((d) => (
+            <Card key={d.id} testID={`auto-drive-${d.id}`} style={{ marginBottom: 8, borderColor: colors.warm }}>
+              <AppText variant="bodySemi" style={{ marginBottom: 2 }}>{d.distance_km} km drive</AppText>
+              <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
+                {displayDateShort(d.date)} · detected automatically — business or personal?
+              </AppText>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <PrimaryButton testID={`auto-business-${d.id}`} label="Business" onPress={() => classifyAuto(d, "business")} style={{ flex: 1 }} />
+                <SecondaryButton testID={`auto-personal-${d.id}`} label="Personal" onPress={() => classifyAuto(d, "personal")} style={{ flex: 1 }} />
+              </View>
+            </Card>
+          ))}
+        </View>
+      )}
 
       {/* GPS shift tracker */}
       {pendingTag != null ? (

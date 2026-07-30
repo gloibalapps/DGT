@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { View, Pressable, ScrollView } from "react-native";
+import { View, Pressable, ScrollView, Linking } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -7,6 +7,9 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { isValidDate } from "@/src/date";
+import {
+  isAutotrackEnabled, enableAutotrack, disableAutotrack,
+} from "@/src/autotrack";
 import {
   WORK_TYPES, OWNERSHIP, PLATFORMS, FREQUENCIES, AU_STATES, COUNTRIES,
 } from "@/src/config";
@@ -32,6 +35,7 @@ export default function Settings() {
   const router = useRouter();
 
   const [bizPct, setBizPct] = useState<number | null>(null);
+  const [autoOn, setAutoOn] = useState(false);
   const [ownership, setOwnership] = useState("own");
   const [recEnabled, setRecEnabled] = useState(false);
   const [recAmount, setRecAmount] = useState("");
@@ -57,7 +61,26 @@ export default function Settings() {
       setBizPct(rep.business_use_pct);
     } catch { /* ignore */ }
   }, []);
-  useFocusEffect(useCallback(() => { loadPct(); }, [loadPct, version]));
+  useFocusEffect(useCallback(() => { loadPct(); isAutotrackEnabled().then(setAutoOn); }, [loadPct, version]));
+
+  const toggleAuto = async () => {
+    if (autoOn) {
+      await disableAutotrack();
+      setAutoOn(false);
+      show("Automatic drive detection turned off", "info");
+      return;
+    }
+    const res = await enableAutotrack();
+    if (res.ok) {
+      setAutoOn(true);
+      show("Auto detection on — drives log themselves", "success");
+    } else if (res.reason === "unsupported") {
+      show("Auto tracking needs a native build — not Expo Go or web preview", "error");
+    } else {
+      show("Background location permission is required", "error");
+      if (res.canAskAgain === false) Linking.openSettings();
+    }
+  };
 
   if (!profile) return <Screen><Spinner /></Screen>;
 
@@ -88,6 +111,26 @@ export default function Settings() {
             width: 48, height: 28, borderRadius: 999, padding: 3,
             backgroundColor: mode === "dark" ? colors.surfaceAlt : colors.accent,
             alignItems: mode === "dark" ? "flex-start" : "flex-end",
+          }}>
+            <View style={{ width: 22, height: 22, borderRadius: 999, backgroundColor: "#fff" }} />
+          </View>
+        </Pressable>
+      </Section>
+
+      {/* Automatic drive detection */}
+      <Section title="Automatic tracking">
+        <Pressable testID="autotrack-toggle" onPress={toggleAuto}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <AppText variant="bodyMed">Detect drives automatically</AppText>
+            <AppText variant="caption" color={colors.dim}>
+              Off by default. When on, GigTax logs each drive in the background and asks you to tag it Business or Personal later — no start/stop needed. Requires a native build.
+            </AppText>
+          </View>
+          <View style={{
+            width: 48, height: 28, borderRadius: 999, padding: 3,
+            backgroundColor: autoOn ? colors.accent : colors.surfaceAlt,
+            alignItems: autoOn ? "flex-end" : "flex-start",
           }}>
             <View style={{ width: 22, height: 22, borderRadius: 999, backgroundColor: "#fff" }} />
           </View>
