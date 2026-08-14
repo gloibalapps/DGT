@@ -1,16 +1,18 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import {
   Text, TextProps, View, ViewProps, Pressable, StyleSheet, ScrollView,
-  ActivityIndicator, TextInput, TextInputProps, Platform,
+  ActivityIndicator, TextInput, TextInputProps, Platform, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { Image } from "expo-image";
+import { Calendar } from "react-native-calendars";
 import { useTheme, FONT, WEIGHT, Palette } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { flagUrl } from "@/src/config";
+import { isoToAU } from "@/src/date";
 
 // ---------------------------------------------------------------- Text
 type Variant = "display" | "displaySemi" | "h1" | "h2" | "body" | "bodyMed" | "bodySemi" | "label" | "caption";
@@ -250,6 +252,68 @@ export function Input(props: TextInputProps) {
         borderWidth: 1, borderColor: colors.border,
       }, props.style]}
     />
+  );
+}
+
+// Tappable date field that pops open a calendar — no manual typing.
+export function DateField({ value, onChange, placeholder = "Select date", testID, maxToday }:
+  { value: string; onChange: (iso: string) => void; placeholder?: string; testID?: string; maxToday?: boolean }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const display = value ? isoToAU(value) : "";
+  const todayISO = new Date().toLocaleDateString("en-CA");
+  return (
+    <>
+      <Pressable testID={testID} onPress={() => setOpen(true)}
+        style={{
+          backgroundColor: colors.surfaceAlt, borderRadius: 12, paddingHorizontal: 14,
+          paddingVertical: 15, borderWidth: 1, borderColor: colors.border,
+          flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        }}>
+        <AppText variant="body" color={display ? colors.text : colors.dim} style={{ fontSize: 16 }}>
+          {display || placeholder}
+        </AppText>
+        <Ionicons name="calendar-outline" size={20} color={colors.accent} />
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable testID="date-picker-backdrop" onPress={() => setOpen(false)}
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <Pressable onPress={() => {}} style={{ width: "100%", maxWidth: 380 }}>
+            <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+              <Calendar
+                current={value || todayISO}
+                maxDate={maxToday ? todayISO : undefined}
+                onDayPress={(d: any) => { onChange(d.dateString); setOpen(false); }}
+                markedDates={value ? { [value]: { selected: true, selectedColor: colors.accent } } : {}}
+                firstDay={1}
+                enableSwipeMonths
+                theme={{
+                  calendarBackground: colors.surface,
+                  textSectionTitleColor: colors.dim,
+                  dayTextColor: colors.text,
+                  todayTextColor: colors.accent,
+                  monthTextColor: colors.text,
+                  textMonthFontFamily: FONT.semibold,
+                  textDayFontFamily: FONT.regular,
+                  textDayHeaderFontFamily: FONT.medium,
+                  arrowColor: colors.accent,
+                  selectedDayBackgroundColor: colors.accent,
+                  selectedDayTextColor: colors.bg,
+                  textDisabledColor: colors.dim,
+                }}
+              />
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                {value ? (
+                  <SecondaryButton testID="date-picker-clear" label="Clear" tone="danger" style={{ flex: 1 }}
+                    onPress={() => { onChange(""); setOpen(false); }} />
+                ) : null}
+                <SecondaryButton testID="date-picker-close" label="Close" style={{ flex: 1 }} onPress={() => setOpen(false)} />
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 

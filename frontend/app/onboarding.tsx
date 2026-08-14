@@ -8,9 +8,8 @@ import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
-import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast } from "@/src/ui";
+import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast, DateField } from "@/src/ui";
 import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
-import { auToISO, maskAUDate } from "@/src/date";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -47,13 +46,13 @@ export default function Onboarding() {
 
   const finish = async () => {
     setSaving(true);
-    const acqISO = auToISO(acqDate);
+    const acqISO = acqDate || null;
     let rec: any = null;
     if (recEnabled) {
       const amt = parseFloat(recAmount);
       if (!amt) { show("Enter the payment amount", "error"); setSaving(false); return; }
-      const chosen = recAnchorType === "acquisition" ? (acqISO || auToISO(recAnchorDate)) : auToISO(recAnchorDate);
-      if (!chosen) { show("Enter when the payment started (DD/MM/YYYY)", "error"); setSaving(false); return; }
+      const chosen = recAnchorType === "acquisition" ? (acqDate || recAnchorDate) : recAnchorDate;
+      if (!chosen) { show("Pick when the payment started", "error"); setSaving(false); return; }
       rec = { amount: amt, frequency: recFreq as any, anchor_type: recAnchorType, anchor_date: chosen };
     }
     const p = await updateProfile({
@@ -208,9 +207,8 @@ export default function Onboarding() {
                   </Pressable>
                 );
               })}
-              <Field label="Vehicle acquisition date (optional)" hint="Format DD/MM/YYYY">
-                <Input testID="acq-date" value={acqDate} onChangeText={(t) => setAcqDate(maskAUDate(t))}
-                  placeholder="01/07/2025" keyboardType="numbers-and-punctuation" />
+              <Field label="Vehicle acquisition date (optional)">
+                <DateField testID="acq-date" value={acqDate} onChange={setAcqDate} maxToday />
               </Field>
             </View>
           )}
@@ -250,9 +248,8 @@ export default function Onboarding() {
                       onChange={(k) => { setRecAnchorType(k as any); if (k === "acquisition" && acqDate) setRecAnchorDate(acqDate); }}
                       testIDPrefix="anchor" />
                   </Field>
-                  <Field label="Payment start date" hint="When your first rental/lease/loan payment was — this is what makes the total accurate (DD/MM/YYYY)">
-                    <Input testID="rec-anchor-date" value={recAnchorDate} onChangeText={(t) => setRecAnchorDate(maskAUDate(t))}
-                      placeholder="01/01/2026" keyboardType="numbers-and-punctuation" />
+                  <Field label="Payment start date" hint="When your first rental/lease/loan payment was — this is what makes the total accurate">
+                    <DateField testID="rec-anchor-date" value={recAnchorDate} onChange={setRecAnchorDate} maxToday />
                   </Field>
                 </View>
               )}

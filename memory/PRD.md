@@ -39,6 +39,9 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - **P1:** Monetization — 14-day trial, $9.99/mo vs $19.99/BAS-quarter, paywall on Reports quarter/year (lock output, never input).
 - **P2:** Per-vehicle method lock-ins (US/UK), depreciation/CCA helpers, multi-vehicle.
 
+## Recently completed
+- **Calendar date picker (DONE, tested iteration_6):** All manual date-typing removed. Every date field app-wide (entry, onboarding, tax-setup, settings) now uses the `DateField` pop-out calendar (react-native-calendars) showing DD/MM/YYYY. Fixed prior stray-JSX bundle crash in entry.tsx and onboarding.tsx.
+
 ## Notes
 - GPS shift tracker uses **foreground** location — full background auto-tracking requires a native dev/prod build (cannot be validated in Expo Go/web preview).
 - Receipt images currently stored as base64 on the expense doc (cloud archival deferred to P1).

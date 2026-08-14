@@ -9,11 +9,11 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { todayISO } from "@/src/api";
-import { isValidDate, isoToAU, auToISO, maskAUDate } from "@/src/date";
+import { isValidDate } from "@/src/date";
 import { CATEGORIES, TAX_TREATMENTS } from "@/src/config";
 import {
   AppText, Card, Input, Field, ChipRow, PrimaryButton, SecondaryButton,
-  IconButton, Spinner, useToast,
+  IconButton, Spinner, useToast, DateField,
 } from "@/src/ui";
 import { receiptStash } from "@/src/scanStash";
 
@@ -35,7 +35,7 @@ export default function Entry() {
   const [saving, setSaving] = useState(false);
 
   const [amount, setAmount] = useState(params.amount || "");
-  const [dateAU, setDateAU] = useState(isoToAU(params.date && isValidDate(params.date) ? params.date : todayISO()));
+  const [dateISO, setDateISO] = useState(params.date && isValidDate(params.date) ? params.date : todayISO());
   const [note, setNote] = useState("");
   const [platform, setPlatform] = useState(profile?.platforms?.[0] || "Other");
   const [category, setCategory] = useState((params.category as string) || "fuel");
@@ -60,15 +60,15 @@ export default function Entry() {
         if (kind === "income") {
           const list = await api.listIncome();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setAmount(String(it.amount)); setDateAU(isoToAU(it.date)); setNote(it.note || ""); setPlatform(it.platform || "Other"); setTreatment(it.tax_treatment); }
+          if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); setTreatment(it.tax_treatment); }
         } else if (kind === "expense") {
           const list = await api.listExpenses();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setAmount(String(it.amount)); setDateAU(isoToAU(it.date)); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
+          if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateAU(isoToAU(it.date)); setNote(it.note || ""); setTripType(it.type); }
+          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateISO(it.date); setNote(it.note || ""); setTripType(it.type); }
         }
       } finally { setLoading(false); }
     })();
@@ -77,8 +77,8 @@ export default function Entry() {
   const title = `${editing ? "Edit" : "Add"} ${kind}`;
 
   const save = async () => {
-    const iso = auToISO(dateAU);
-    if (!iso) { show("Enter a valid date (DD/MM/YYYY)", "error"); return; }
+    if (!dateISO) { show("Pick a date", "error"); return; }
+    const iso = dateISO;
     setSaving(true);
     try {
       if (kind === "income") {
@@ -197,8 +197,8 @@ export default function Entry() {
               </Field>
             )}
 
-            <Field label="Date" hint="Format DD/MM/YYYY">
-              <Input testID="entry-date" value={dateAU} onChangeText={(t) => setDateAU(maskAUDate(t))} placeholder="DD/MM/YYYY" keyboardType="numbers-and-punctuation" />
+            <Field label="Date">
+              <DateField testID="entry-date" value={dateISO} onChange={setDateISO} maxToday />
             </Field>
             <Field label="Note (optional)">
               <Input testID="entry-note" value={note} onChangeText={setNote} placeholder="Anything to remember" />
