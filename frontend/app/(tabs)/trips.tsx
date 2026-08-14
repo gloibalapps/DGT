@@ -90,7 +90,7 @@ export default function Trips() {
   };
 
   const stopShift = async () => {
-    subRef.current?.remove();
+    try { subRef.current?.remove(); } catch { /* expo-location web lacks removeSubscription */ }
     subRef.current = null;
     setTracking(false);
     const km = Math.round(dist * 100) / 100;
