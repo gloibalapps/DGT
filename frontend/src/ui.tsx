@@ -7,7 +7,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
+import { Image } from "expo-image";
 import { useTheme, FONT, WEIGHT, Palette } from "@/src/theme";
+import { useStore } from "@/src/store";
+import { flagUrl } from "@/src/config";
 
 // ---------------------------------------------------------------- Text
 type Variant = "display" | "displaySemi" | "h1" | "h2" | "body" | "bodyMed" | "bodySemi" | "label" | "caption";
@@ -96,12 +99,20 @@ export function Screen({ children, header, scroll = false, refreshControl }:
 export function ScreenHeader({ title, right, subtitle }:
   { title: string; right?: React.ReactNode; subtitle?: string }) {
   const { colors } = useTheme();
+  const { profile } = useStore();
   return (
     <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
       flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      <View style={{ flex: 1 }}>
-        {subtitle ? <AppText variant="label" color={colors.dim}>{subtitle}</AppText> : null}
-        <AppText variant="h1" style={{ fontFamily: FONT.displaySemi, fontSize: 26 }}>{title}</AppText>
+      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+        {profile?.country ? (
+          <Image testID="header-flag" source={{ uri: flagUrl(profile.country, 160) }}
+            style={{ width: 40, height: 27, borderRadius: 5, marginRight: 12, borderWidth: 1, borderColor: colors.border }}
+            contentFit="cover" />
+        ) : null}
+        <View style={{ flex: 1 }}>
+          {subtitle ? <AppText variant="label" color={colors.dim}>{subtitle}</AppText> : null}
+          <AppText variant="h1" style={{ fontFamily: FONT.displaySemi, fontSize: 26 }}>{title}</AppText>
+        </View>
       </View>
       {right}
     </View>

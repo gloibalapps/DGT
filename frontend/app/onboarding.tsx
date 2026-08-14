@@ -4,11 +4,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast } from "@/src/ui";
-import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES } from "@/src/config";
+import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
 import { auToISO, maskAUDate } from "@/src/date";
 
 export default function Onboarding() {
@@ -113,9 +114,14 @@ export default function Onboarding() {
                     onPress={() => { setCountry(c.code); }}
                     style={{ marginBottom: 10, opacity: c.active ? 1 : 0.4 }}>
                     <Card style={{ borderColor: active ? colors.accent : colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <View>
-                        <AppText variant="bodySemi">{c.name}</AppText>
-                        <AppText variant="caption" color={colors.dim}>{c.currency} · {c.distanceUnit}{c.active ? "" : " · coming soon"}</AppText>
+                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                        <Image source={{ uri: flagUrl(c.code, 160) }}
+                          style={{ width: 46, height: 31, borderRadius: 5, marginRight: 14, borderWidth: 1, borderColor: colors.border }}
+                          contentFit="cover" />
+                        <View style={{ flex: 1 }}>
+                          <AppText variant="bodySemi">{c.name}</AppText>
+                          <AppText variant="caption" color={colors.dim}>{c.currency} · {c.distanceUnit}{c.active ? "" : " · coming soon"}</AppText>
+                        </View>
                       </View>
                       {active ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} /> : null}
                     </Card>

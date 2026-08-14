@@ -65,8 +65,7 @@ export default function Home() {
 
   return (
     <Screen
-      header={<ScreenHeader subtitle={greeting} title="Today"
-        right={<IconButton icon="person-add-outline" testID="home-scan" onPress={() => router.push({ pathname: "/entry" as any, params: { type: "income" } })} />} />}
+      header={<ScreenHeader subtitle={greeting} title="Today" />}
       scroll
       refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent}
         onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -129,22 +128,7 @@ export default function Home() {
       </View>
 
       {/* Quick add */}
-      <View style={{ flexDirection: "row", gap: 10, marginBottom: 18 }}>
-        {[
-          { k: "income", label: "Income", icon: "add-circle-outline" },
-          { k: "trip", label: "Trip", icon: "navigate-outline" },
-          { k: "expense", label: "Expense", icon: "receipt-outline" },
-        ].map((q) => (
-          <Pressable key={q.k} testID={`home-add-${q.k}`}
-            onPress={() => router.push({ pathname: "/entry" as any, params: { type: q.k } })}
-            style={{ flex: 1 }}>
-            <Card style={{ alignItems: "center", paddingVertical: 14 }}>
-              <Ionicons name={q.icon as any} size={22} color={colors.accent} />
-              <AppText variant="label" style={{ marginTop: 6 }}>{q.label}</AppText>
-            </Card>
-          </Pressable>
-        ))}
-      </View>
+      <View style={{ marginBottom: 4 }} />
 
       <AppText variant="h2" style={{ marginBottom: 10 }}>Recent activity</AppText>
       {data.recent.length === 0 ? (

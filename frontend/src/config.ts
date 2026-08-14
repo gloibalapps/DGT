@@ -101,3 +101,10 @@ export const PERIODS = [
 ] as const;
 
 export const ATO_LINK = "https://www.ato.gov.au/businesses-and-organisations/income-deductions-and-concessions/income-and-deductions-for-business/in-detail/gig-economy-and-the-sharing-economy";
+
+// Country flags (ISO 3166 alpha-2 as used by flagcdn; UK -> gb). 3:2 aspect.
+const FLAG_CC: Record<string, string> = { AU: "au", US: "us", UK: "gb", CA: "ca" };
+export function flagUrl(code: string, w: 40 | 80 | 160 = 80): string {
+  const cc = FLAG_CC[code] || "au";
+  return `https://flagcdn.com/w${w}/${cc}.png`;
+}
