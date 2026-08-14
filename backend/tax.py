@@ -64,7 +64,7 @@ def period_range(period: str, ref: date):
     return start, date(start.year + 1, 7, 1)
 
 
-DATE_FMT = "%d %b %Y"
+DATE_FMT = "%d/%m/%Y"
 
 
 def fmt_period_label(period: str, start: date, end: date) -> str:

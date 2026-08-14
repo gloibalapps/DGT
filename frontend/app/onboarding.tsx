@@ -9,8 +9,7 @@ import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast } from "@/src/ui";
 import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES } from "@/src/config";
-import { todayISO } from "@/src/api";
-import { isValidDate } from "@/src/date";
+import { auToISO, maskAUDate, todayAU } from "@/src/date";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -30,7 +29,7 @@ export default function Onboarding() {
   const [recAmount, setRecAmount] = useState("");
   const [recFreq, setRecFreq] = useState("weekly");
   const [recAnchorType, setRecAnchorType] = useState<"acquisition" | "gigstart">("gigstart");
-  const [recAnchorDate, setRecAnchorDate] = useState(todayISO());
+  const [recAnchorDate, setRecAnchorDate] = useState(todayAU());
 
   const total = 5;
 
@@ -47,18 +46,20 @@ export default function Onboarding() {
 
   const finish = async () => {
     setSaving(true);
-    const rec = recEnabled && recAmount && isValidDate(recAnchorDate)
+    const acqISO = auToISO(acqDate);
+    const anchorISO = auToISO(recAnchorDate);
+    const rec = recEnabled && recAmount && anchorISO
       ? {
           amount: parseFloat(recAmount),
           frequency: recFreq as any,
           anchor_type: recAnchorType,
-          anchor_date: recAnchorType === "acquisition" && isValidDate(acqDate) ? acqDate : recAnchorDate,
+          anchor_date: recAnchorType === "acquisition" && acqISO ? acqISO : anchorISO,
         }
       : null;
     const p = await updateProfile({
       country, region, work_type: workType as any, platforms,
       vehicle_ownership: ownership as any,
-      acquisition_date: isValidDate(acqDate) ? acqDate : null,
+      acquisition_date: acqISO,
       recurring_payment: rec as any,
       onboarded: true,
     });
@@ -202,9 +203,9 @@ export default function Onboarding() {
                   </Pressable>
                 );
               })}
-              <Field label="Vehicle acquisition date (optional)" hint="Format YYYY-MM-DD">
-                <Input testID="acq-date" value={acqDate} onChangeText={setAcqDate}
-                  placeholder="2025-07-01" keyboardType="numbers-and-punctuation" />
+              <Field label="Vehicle acquisition date (optional)" hint="Format DD/MM/YYYY">
+                <Input testID="acq-date" value={acqDate} onChangeText={(t) => setAcqDate(maskAUDate(t))}
+                  placeholder="01/07/2025" keyboardType="numbers-and-punctuation" />
               </Field>
             </View>
           )}
@@ -242,9 +243,9 @@ export default function Onboarding() {
                       options={[{ key: "gigstart", label: "Gig-work start" }, { key: "acquisition", label: "Vehicle acquisition" }]}
                       value={recAnchorType} onChange={(k) => setRecAnchorType(k as any)} testIDPrefix="anchor" />
                   </Field>
-                  <Field label="Anchor date" hint="Format YYYY-MM-DD">
-                    <Input testID="rec-anchor-date" value={recAnchorDate} onChangeText={setRecAnchorDate}
-                      placeholder="2026-01-01" keyboardType="numbers-and-punctuation" />
+                  <Field label="Anchor date" hint="Format DD/MM/YYYY">
+                    <Input testID="rec-anchor-date" value={recAnchorDate} onChangeText={(t) => setRecAnchorDate(maskAUDate(t))}
+                      placeholder="01/01/2026" keyboardType="numbers-and-punctuation" />
                   </Field>
                 </View>
               )}

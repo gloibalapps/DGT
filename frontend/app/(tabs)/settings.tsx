@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
-import { isValidDate } from "@/src/date";
+import { isoToAU, auToISO, maskAUDate } from "@/src/date";
 import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
@@ -51,7 +51,7 @@ export default function Settings() {
     setRecAmount(r ? String(r.amount) : "");
     setRecFreq(r?.frequency || "weekly");
     setRecAnchorType(r?.anchor_type || "gigstart");
-    setRecAnchorDate(r?.anchor_date || "");
+    setRecAnchorDate(isoToAU(r?.anchor_date));
   }, [profile]);
 
   const loadPct = useCallback(async () => {
@@ -87,10 +87,11 @@ export default function Settings() {
   const ownMeta = OWNERSHIP.find((o) => o.key === ownership);
 
   const saveVehicle = async () => {
-    const rec = recEnabled && recAmount && isValidDate(recAnchorDate)
-      ? { amount: parseFloat(recAmount), frequency: recFreq as any, anchor_type: recAnchorType, anchor_date: recAnchorDate }
+    const anchorISO = auToISO(recAnchorDate);
+    const rec = recEnabled && recAmount && anchorISO
+      ? { amount: parseFloat(recAmount), frequency: recFreq as any, anchor_type: recAnchorType, anchor_date: anchorISO }
       : null;
-    if (recEnabled && !rec) { show("Enter a valid amount and date (YYYY-MM-DD)", "error"); return; }
+    if (recEnabled && !rec) { show("Enter a valid amount and date (DD/MM/YYYY)", "error"); return; }
     const p = await updateProfile({ vehicle_ownership: ownership as any, recurring_payment: rec as any });
     if (!p) { show("Couldn't save — try again", "error"); return; }
     show("Vehicle details saved", "success");
@@ -219,8 +220,8 @@ export default function Settings() {
               <ChipRow options={[{ key: "gigstart", label: "Gig-work start" }, { key: "acquisition", label: "Vehicle acquisition" }]}
                 value={recAnchorType} onChange={(k) => setRecAnchorType(k as any)} testIDPrefix="set-anchor" />
             </Field>
-            <Field label="Anchor date" hint="Format YYYY-MM-DD">
-              <Input testID="set-rec-anchor" value={recAnchorDate} onChangeText={setRecAnchorDate} placeholder="2026-01-01" keyboardType="numbers-and-punctuation" />
+            <Field label="Anchor date" hint="Format DD/MM/YYYY">
+              <Input testID="set-rec-anchor" value={recAnchorDate} onChangeText={(t) => setRecAnchorDate(maskAUDate(t))} placeholder="01/01/2026" keyboardType="numbers-and-punctuation" />
             </Field>
           </View>
         )}

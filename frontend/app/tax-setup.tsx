@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
-import { isValidDate } from "@/src/date";
+import { isoToAU, auToISO, maskAUDate } from "@/src/date";
 import { AppText, Card, Input, Field, ChipRow, PrimaryButton, IconButton, useToast } from "@/src/ui";
 
 const REG_OPTIONS = [
@@ -29,7 +29,7 @@ export default function TaxSetup() {
   const [method, setMethod] = useState(profile?.accounting_method || "cash");
   const [taxId, setTaxId] = useState(!!profile?.tax_id_on_file);
   const [regStatus, setRegStatus] = useState(profile?.registration_status || "unknown");
-  const [regDate, setRegDate] = useState(profile?.registration_date || "");
+  const [regDate, setRegDate] = useState(isoToAU(profile?.registration_date));
   const [freq, setFreq] = useState(profile?.reporting_frequency || "quarterly");
 
   const save = async () => {
@@ -38,7 +38,7 @@ export default function TaxSetup() {
       accounting_method: method as any,
       tax_id_on_file: taxId,
       registration_status: regStatus as any,
-      registration_date: isValidDate(regDate) ? regDate : null,
+      registration_date: auToISO(regDate),
       reporting_frequency: freq,
     });
     if (!p) { show("Couldn't save — try again", "error"); return; }
@@ -72,8 +72,8 @@ export default function TaxSetup() {
           </Field>
 
           {regStatus === "registered" && (
-            <Field label="Registration date" hint="Format YYYY-MM-DD">
-              <Input testID="tax-regdate" value={regDate} onChangeText={setRegDate} placeholder="2025-07-01" keyboardType="numbers-and-punctuation" />
+            <Field label="Registration date" hint="Format DD/MM/YYYY">
+              <Input testID="tax-regdate" value={regDate} onChangeText={(t) => setRegDate(maskAUDate(t))} placeholder="01/07/2025" keyboardType="numbers-and-punctuation" />
             </Field>
           )}
 
