@@ -55,6 +55,7 @@ class Profile(BaseModel):
     profile_id: str
     country: str = "AU"
     region: Optional[str] = None
+    driver_name: Optional[str] = None
     work_type: Literal["passengers", "delivery", "both"] = "delivery"
     platforms: List[str] = Field(default_factory=list)
     vehicle_ownership: Literal["own", "loan", "lease", "rental", "rent_to_buy"] = "own"
@@ -81,6 +82,7 @@ class Trip(BaseModel):
     profile_id: str
     date: str
     distance_km: float
+    duration_min: Optional[float] = None
     type: Literal["business", "personal"] = "business"
     note: Optional[str] = None
     source: Literal["manual", "gps"] = "manual"
@@ -271,6 +273,13 @@ async def dashboard(profile_id: str = Query(...), ref_date: Optional[str] = Quer
     profile, trips, income, expenses = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     return taxlib.dashboard(profile, trips, income, expenses, ref)
+
+
+@api_router.get("/performance")
+async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+    profile, trips, income, expenses = await _load_all(profile_id)
+    ref = taxlib.parse_date(ref_date) if ref_date else date.today()
+    return taxlib.performance(profile, trips, income, expenses, ref)
 
 
 @api_router.get("/export")

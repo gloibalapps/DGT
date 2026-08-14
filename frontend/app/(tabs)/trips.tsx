@@ -38,8 +38,10 @@ export default function Trips() {
   const [tracking, setTracking] = useState(false);
   const [dist, setDist] = useState(0);
   const [pendingTag, setPendingTag] = useState<number | null>(null); // km awaiting classification
+  const [pendingDuration, setPendingDuration] = useState(0); // minutes
   const subRef = useRef<Location.LocationSubscription | null>(null);
   const lastRef = useRef<any>(null);
+  const startTimeRef = useRef<number>(0);
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +77,7 @@ export default function Trips() {
     }
     setDist(0);
     lastRef.current = null;
+    startTimeRef.current = Date.now();
     setTracking(true);
     subRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 20, timeInterval: 4000 },
@@ -95,13 +98,14 @@ export default function Trips() {
     setTracking(false);
     const km = Math.round(dist * 100) / 100;
     if (km <= 0) { show("No distance recorded", "info"); return; }
+    setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
     setPendingTag(km); // GPS can tell THAT you drove, never WHY — ask.
   };
 
   const saveGpsTrip = async (type: "business" | "personal") => {
     if (pendingTag == null) return;
     try {
-      await api.addTrip({ date: todayISO(), distance_km: pendingTag, type, source: "gps" });
+      await api.addTrip({ date: todayISO(), distance_km: pendingTag, duration_min: pendingDuration, type, source: "gps" });
       show(`${pendingTag} km logged as ${type}`, "success");
       setPendingTag(null);
       refresh();
@@ -113,7 +117,7 @@ export default function Trips() {
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
     try {
-      await api.addTrip({ date: d.date, distance_km: d.distance_km, type, source: "gps" });
+      await api.addTrip({ date: d.date, distance_km: d.distance_km, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps" });
       await clearPendingDrive(d.id);
       show(`${d.distance_km} km logged as ${type}`, "success");
       refresh();

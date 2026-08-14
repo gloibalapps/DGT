@@ -36,6 +36,7 @@ export default function Settings() {
 
   const [bizPct, setBizPct] = useState<number | null>(null);
   const [autoOn, setAutoOn] = useState(false);
+  const [name, setName] = useState("");
   const [ownership, setOwnership] = useState("own");
   const [recEnabled, setRecEnabled] = useState(false);
   const [recAmount, setRecAmount] = useState("");
@@ -45,6 +46,7 @@ export default function Settings() {
 
   useEffect(() => {
     if (!profile) return;
+    setName(profile.driver_name || "");
     setOwnership(profile.vehicle_ownership);
     const r = profile.recurring_payment;
     setRecEnabled(!!r);
@@ -101,6 +103,16 @@ export default function Settings() {
 
   return (
     <Screen header={<ScreenHeader subtitle="Configuration" title="Settings" />} scroll>
+      {/* Driver */}
+      <Section title="Driver">
+        <Field label="Your name" hint="Shown on your dashboard">
+          <Input testID="set-driver-name" value={name} onChangeText={setName}
+            placeholder="e.g. Alex" returnKeyType="done"
+            onBlur={() => updateProfile({ driver_name: name.trim() || null })}
+            onSubmitEditing={() => updateProfile({ driver_name: name.trim() || null })} />
+        </Field>
+      </Section>
+
       {/* Appearance */}
       <Section title="Appearance">
         <Pressable testID="theme-toggle" onPress={toggle}

@@ -62,6 +62,7 @@ export interface ProfileT {
   profile_id: string;
   country: string;
   region?: string | null;
+  driver_name?: string | null;
   work_type: "passengers" | "delivery" | "both";
   platforms: string[];
   vehicle_ownership: "own" | "loan" | "lease" | "rental" | "rent_to_buy";
@@ -85,6 +86,7 @@ export interface ProfileT {
 
 export interface TripT {
   id: string; profile_id: string; date: string; distance_km: number;
+  duration_min?: number | null;
   type: "business" | "personal"; note?: string | null; source?: string;
 }
 export interface IncomeT {
@@ -149,6 +151,10 @@ export const api = {
   async dashboard(refDate: string) {
     const pid = await getProfileId();
     return req(`/dashboard?profile_id=${pid}&ref_date=${refDate}`);
+  },
+  async performance(refDate: string) {
+    const pid = await getProfileId();
+    return req(`/performance?profile_id=${pid}&ref_date=${refDate}`);
   },
   async report(period: string, refDate: string) {
     const pid = await getProfileId();

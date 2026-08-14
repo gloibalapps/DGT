@@ -258,6 +258,54 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
     }
 
 
+def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str, Any]:
+    """Last 4 calendar weeks (Mon-Sun) ending in the week containing ref."""
+    monday = ref - timedelta(days=ref.weekday())
+    weeks = []
+    tot_inc = tot_exp = tot_km = tot_min = 0.0
+    for i in range(3, -1, -1):
+        ws = monday - timedelta(weeks=i)
+        we = ws + timedelta(days=7)
+
+        def in_w(row, s=ws, e=we):
+            d = parse_date(row["date"])
+            return s <= d < e
+
+        inc = sum(x["amount"] for x in incomes if in_w(x))
+        exp = sum(x["amount"] for x in expenses if in_w(x))
+        wt = [t for t in trips if in_w(t) and t.get("type", "business") != "personal"]
+        bkm = sum(t["distance_km"] for t in wt)
+        mins = sum((t.get("duration_min") or 0) for t in wt)
+        weeks.append({
+            "label": ws.strftime("%d/%m"),
+            "start": ws.isoformat(),
+            "income": round(inc, 2),
+            "expenses": round(exp, 2),
+            "profit": round(inc - exp, 2),
+            "business_km": round(bkm, 2),
+            "hours": round(mins / 60.0, 2),
+        })
+        tot_inc += inc
+        tot_exp += exp
+        tot_km += bkm
+        tot_min += mins
+
+    hours = tot_min / 60.0
+    return {
+        "weeks": weeks,
+        "total_income": round(tot_inc, 2),
+        "total_expenses": round(tot_exp, 2),
+        "total_profit": round(tot_inc - tot_exp, 2),
+        "total_km": round(tot_km, 2),
+        "total_hours": round(hours, 2),
+        "per_km": round(tot_inc / tot_km, 2) if tot_km > 0 else None,
+        "per_hour": round(tot_inc / hours, 2) if hours > 0 else None,
+        "symbol": "$",
+        "distance_unit": "km",
+    }
+
+
+
 def dashboard(profile: dict, trips, incomes, expenses, today: date) -> Dict[str, Any]:
     t_iso = today.isoformat()
     income_today = round(sum(i["amount"] for i in incomes if str(i["date"])[:10] == t_iso), 2)

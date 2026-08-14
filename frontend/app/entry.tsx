@@ -42,6 +42,7 @@ export default function Entry() {
   const [merchant, setMerchant] = useState(params.merchant || "");
   const [treatment, setTreatment] = useState("inclusive");
   const [distance, setDistance] = useState("");
+  const [minutes, setMinutes] = useState("");
   const [tripType, setTripType] = useState<"business" | "personal">("business");
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
@@ -67,7 +68,7 @@ export default function Entry() {
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setDistance(String(it.distance_km)); setDateAU(isoToAU(it.date)); setNote(it.note || ""); setTripType(it.type); }
+          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateAU(isoToAU(it.date)); setNote(it.note || ""); setTripType(it.type); }
         }
       } finally { setLoading(false); }
     })();
@@ -94,7 +95,9 @@ export default function Entry() {
       } else {
         const km = parseFloat(distance);
         if (!km) { show("Enter a distance", "error"); setSaving(false); return; }
-        const payload = { date: iso, distance_km: km, type: tripType, note };
+        const mins = parseFloat(minutes);
+        const payload: any = { date: iso, distance_km: km, type: tripType, note };
+        if (mins) payload.duration_min = mins;
         if (editing) await api.updateTrip(params.id!, payload); else await api.addTrip(payload);
       }
       show(editing ? "Updated" : "Saved", "success");
@@ -138,6 +141,9 @@ export default function Entry() {
               <>
                 <Field label="Distance (km)">
                   <Input testID="entry-distance" value={distance} onChangeText={setDistance} keyboardType="decimal-pad" placeholder="12.4" />
+                </Field>
+                <Field label="Time (minutes, optional)" hint="Powers your $/hour on Home">
+                  <Input testID="entry-minutes" value={minutes} onChangeText={setMinutes} keyboardType="decimal-pad" placeholder="45" />
                 </Field>
                 <Field label="Type">
                   <View style={{ flexDirection: "row", gap: 10 }}>

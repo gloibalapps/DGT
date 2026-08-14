@@ -1,0 +1,40 @@
+{
+  "summary": "GigTax Home/Performance changes verified end-to-end. Backend: added /app/backend/tests/test_performance.py — 3/3 pass (shape, null KPIs, exact math from review request: income 600 + expense 90 + trip 120km/300min => total_profit 510, per_km 5.0, total_hours 5.0, per_hour 120.0). Full backend suite 19/19 pass. Frontend (Expo web preview, viewport 390x844, server today 2026-08-14, 4 weeks 20/07, 27/07, 03/08, 10/08): (a) 'Recent activity' section is GONE from Home; (b) Performance card renders with Profit(green)/Expenses(red) bar chart legend, 'Last 4 weeks' subtitle, 4 week labels and three KPI tiles ($/km, hours, $/hr); (c) with no data KPIs show '—' and no crash; (d) after adding a manual trip via trips-add with entry-distance=120, entry-minutes=300, business type, date 14/08/2026 and $600 income + $90 fuel expense dated 14/08/2026, Home Performance shows $5 $/km, 5 hours, $120 $/hr with the current-week bar populated (matches backend math); Net earnings today $510, km business today 120. AU flag renders in headers across screens (Home, Settings, Trips, Reports). Header greeting DOES read the first name of profile.driver_name — verified by putting driver_name='Alex Driver' via /api/profile and reloading: header title becomes 'Alex'. Regression: onboarding still lands on /home; Trips add/edit save flow works; Ledger add income/add expense flow works; Reports still loads. BUG FOUND (blocking review-request scenario): in Settings > Driver > 'Your name' (testID set-driver-name) the value typed by the user is NEVER saved — the profile.driver_name stays null in backend after typing 'Alex Driver' and pressing Enter (submitEditing) or blurring the field. On react-native-web the Input's onEndEditing handler used in /app/frontend/app/(tabs)/settings.tsx:111 does not fire, so updateProfile({driver_name}) is never called from the UI. Confirmed by PUT /api/profile directly (works) — root cause is the RN Web onEndEditing behavior, not the render path.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Settings > Driver > 'Your name'", "issue": "Typing a name and blurring / pressing Enter does NOT persist driver_name to backend. onEndEditing on the RN Web Input at /app/frontend/app/(tabs)/settings.tsx:108-112 never fires, so updateProfile({driver_name}) is not called. Verified: after typing 'Alex Driver' and pressing Enter, GET /api/profile returns driver_name: null. When the field IS saved (via API), Home header correctly shows 'Alex'. Fix: add onBlur (or a save button, or onChangeText-debounced save). Suggested minimal patch: <Input ... onBlur={() => updateProfile({ driver_name: name.trim() || null })} onSubmitEditing={...} />.", "testID": "set-driver-name", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shared Input primitive (react-native-web)", "issue": "onEndEditing does not reliably fire on RN Web — use onBlur/onSubmitEditing instead. Affects any settings-style 'save-on-blur' text field. Reference: /app/frontend/app/(tabs)/settings.tsx:111"},
+      {"component": "shared UI primitive (Pressable/View)", "issue": "Non-blocking console warning still observed: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Carried over from prior iterations."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_performance.py",
+    "/app/backend/tests/test_gigtax_api.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [
+    "FIX driver_name save: in /app/frontend/app/(tabs)/settings.tsx line 108-112, replace onEndEditing with onBlur (react-native-web fires blur but not endEditing). Suggested minimal change: <Input testID='set-driver-name' value={name} onChangeText={setName} placeholder='e.g. Alex' returnKeyType='done' onBlur={() => updateProfile({ driver_name: name.trim() || null })} onSubmitEditing={() => updateProfile({ driver_name: name.trim() || null })} />",
+    "Optional: also expose a 'Save' button next to the name field so touch users don't rely on blur/enter behavior",
+    "Optional (carried over): migrate remaining props.pointerEvents={...} usage to style.pointerEvents to silence RN warning"
+  ],
+  "critical_code_review_comments": [
+    "tax.py::performance() correctly returns weeks oldest→newest, hours = duration_min/60, per_km/per_hour null when denominator is 0. Math validated against review-request exact numbers.",
+    "home.tsx cleanly removes recent-activity list, computes firstName = (profile?.driver_name||'').trim().split(' ')[0] and falls back to 'Today' when empty — good empty state.",
+    "settings.tsx driver name Input relies on onEndEditing, which is not reliably fired by react-native-web (only fires on submit/enter on native, and not on blur in web). This is the root cause of the save-not-persisting bug. Use onBlur for web-compatible auto-save.",
+    "entry.tsx manual trip form correctly adds duration_min from entry-minutes (mins parsed and only attached when truthy) so Home performance hours populate as expected.",
+    "AU flag is rendered in ScreenHeader across tabs — verified visually on Home, Settings and Reports."
+  ],
+  "updated_files": ["/app/backend/tests/test_performance.py"],
+  "success_rate": {"backend": "100% (19/19 pytest, incl. 3/3 new performance tests)", "frontend": "80% — 4 of 5 review scenarios PASS. Only failing scenario: Driver name save via Settings UI (backend/render path both work; the save trigger is missing on RN Web)."},
+  "seed_data_creation": "Fresh browser profiles per Playwright session. During testing, one profile was seeded with driver_name=Alex Driver (via API), 1 trip 120km/300min business dated 2026-08-14, 1 income $600 dated 2026-08-14, 1 expense $90 fuel dated 2026-08-14.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server 'today' is 2026-08-14. Performance weeks displayed on Home are 20/07, 27/07, 03/08, 10/08 (Mondays). Onboarding steps: onboarding-next → worktype-delivery → onboarding-next → platform-Uber → onboarding-next → ownership-own → onboarding-next → onboarding-next (skip recurring). Tab bar has no testIDs; use direct URL navigation (/home, /settings, /trips, /expenses, /reports) instead of clicking 'text=Home' which can ambiguously match. localStorage key 'gigtax.profile_id' holds the profile id. To bypass the driver-name save bug during regression, PUT /api/profile with {profile_id, driver_name} then reload. Manual trip form: testIDs entry-distance, entry-minutes, entry-triptype-business, entry-date (DD/MM/YYYY), entry-save; expense form uses entry-amount, entry-category-fuel; income form uses entry-amount. Ledger tab is at /expenses in Expo Router (button labeled 'Ledger' on the tab bar).",
+  "rca_of_issue": "Bug: driver_name typed in Settings never persists. Root cause: /app/frontend/app/(tabs)/settings.tsx:111 uses onEndEditing on a react-native-web TextInput. react-native-web maps onEndEditing to native TextInput.endEditing which requires the platform blur/submit chain; on web it is not emitted on plain blur (mouse-click-away) and is only reliably emitted on Enter/submit for multiline, so mouse-first web users never trigger the save. Reproduction (verified): 1) open /settings, 2) type 'Alex Driver' into set-driver-name, 3) click elsewhere or press Enter, 4) GET /api/profile?profile_id=... returns driver_name: null; 5) Home header still shows 'Today'. Fix: use onBlur (fires reliably on RN Web and native) or add an explicit save action. When the fix lands, the render path is already correct — verified by direct PUT of driver_name → header updated to 'Alex' after reload."
+}

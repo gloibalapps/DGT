@@ -3,34 +3,63 @@ import { View, Pressable, RefreshControl } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useTheme } from "@/src/theme";
+import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
-import { displayDateShort } from "@/src/date";
 import {
-  Screen, ScreenHeader, Card, GradientCard, AppText, Money, IconButton,
-  Spinner, EmptyState, useToast,
+  Screen, ScreenHeader, Card, GradientCard, AppText, Money, Spinner, useToast,
 } from "@/src/ui";
 
-const KIND_ICON: Record<string, any> = {
-  income: "cash-outline", expense: "receipt-outline", trip: "navigate-outline",
-};
+function Bars({ weeks, symbol }: { weeks: any[]; symbol: string }) {
+  const { colors } = useTheme();
+  const H = 92;
+  const max = Math.max(1, ...weeks.map((w) => Math.max(Math.abs(w.profit), w.expenses)));
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: H + 34, marginTop: 8 }}>
+      {weeks.map((w, i) => {
+        const ph = Math.max(2, (Math.abs(w.profit) / max) * H);
+        const eh = Math.max(2, (w.expenses / max) * H);
+        return (
+          <View key={i} style={{ flex: 1, alignItems: "center" }}>
+            <View style={{ height: H, flexDirection: "row", alignItems: "flex-end", gap: 4 }}>
+              <View style={{ width: 12, height: ph, borderRadius: 3, backgroundColor: w.profit >= 0 ? colors.profit : colors.loss }} />
+              <View style={{ width: 12, height: eh, borderRadius: 3, backgroundColor: colors.loss, opacity: 0.55 }} />
+            </View>
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 6 }}>{w.label}</AppText>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function Kpi({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12, alignItems: "center" }}>
+      <AppText style={{ fontFamily: FONT.display, fontSize: 22, color: colors.text, fontVariant: ["tabular-nums"] }}>{value}</AppText>
+      <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>{label}</AppText>
+    </View>
+  );
+}
 
 export default function Home() {
   const { colors } = useTheme();
-  const { version, refresh } = useStore();
+  const { profile, version } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const [data, setData] = useState<any>(null);
+  const [perf, setPerf] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
-      const d = await api.dashboard(today);
+      const [d, p] = await Promise.all([api.dashboard(today), api.performance(today)]);
       setData(d);
-    } catch (e) {
+      setPerf(p);
+    } catch {
       show("Couldn't load dashboard", "error");
     } finally {
       setLoading(false);
@@ -40,32 +69,17 @@ export default function Home() {
 
   useFocusEffect(useCallback(() => { load(); }, [load, version]));
 
-  const del = async (kind: string, id: string) => {
-    try {
-      if (kind === "income") await api.deleteIncome(id);
-      else if (kind === "expense") await api.deleteExpense(id);
-      else await api.deleteTrip(id);
-      show("Deleted", "success");
-      refresh();
-      load();
-    } catch {
-      show("Couldn't delete — try again", "error");
-    }
-  };
-
-  const edit = (kind: string, id: string) =>
-    router.push({ pathname: "/entry" as any, params: { type: kind, id } });
-
   if (loading) return <Screen><Spinner /></Screen>;
 
   const greeting = (() => {
     const h = new Date().getHours();
     return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   })();
+  const firstName = (profile?.driver_name || "").trim().split(" ")[0];
 
   return (
     <Screen
-      header={<ScreenHeader subtitle={greeting} title="Today" />}
+      header={<ScreenHeader subtitle={greeting} title={firstName || "Today"} />}
       scroll
       refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent}
         onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -127,34 +141,37 @@ export default function Home() {
         </Card>
       </View>
 
-      {/* Quick add */}
-      <View style={{ marginBottom: 4 }} />
+      {/* Performance — last 4 weeks */}
+      {perf && (
+        <Card style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <AppText variant="h2">Performance</AppText>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: colors.profit, marginRight: 4 }} />
+                <AppText variant="caption" color={colors.dim}>Profit</AppText>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: colors.loss, opacity: 0.55, marginRight: 4 }} />
+                <AppText variant="caption" color={colors.dim}>Expenses</AppText>
+              </View>
+            </View>
+          </View>
+          <AppText variant="caption" color={colors.dim}>Last 4 weeks</AppText>
 
-      <AppText variant="h2" style={{ marginBottom: 10 }}>Recent activity</AppText>
-      {data.recent.length === 0 ? (
-        <EmptyState icon="car-outline" title="No entries yet" subtitle="Log your first trip, income or expense to get started." />
-      ) : (
-        data.recent.map((it: any) => (
-          <Pressable key={`${it.kind}-${it.id}`} testID={`recent-${it.id}`} onPress={() => edit(it.kind, it.id)}>
-            <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
-              <View style={{
-                width: 38, height: 38, borderRadius: 999, backgroundColor: colors.surfaceAlt,
-                alignItems: "center", justifyContent: "center", marginRight: 12,
-              }}>
-                <Ionicons name={KIND_ICON[it.kind]} size={18} color={colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText variant="bodyMed">{it.title}</AppText>
-                <AppText variant="caption" color={colors.dim}>{it.subtitle} · {displayDateShort(it.date)}</AppText>
-              </View>
-              {it.amount !== null ? (
-                <Money value={it.amount} symbol={data.symbol} size={18} signed style={{ marginRight: 6 }} />
-              ) : null}
-              <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`recent-del-${it.id}`}
-                onPress={() => del(it.kind, it.id)} />
-            </Card>
-          </Pressable>
-        ))
+          <Bars weeks={perf.weeks} symbol={perf.symbol} />
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <Kpi label="$/km" value={perf.per_km != null ? `${perf.symbol}${perf.per_km}` : "—"} />
+            <Kpi label="hours" value={perf.total_hours ? String(perf.total_hours) : "—"} />
+            <Kpi label="$/hr" value={perf.per_hour != null ? `${perf.symbol}${perf.per_hour}` : "—"} />
+          </View>
+          {(perf.per_hour == null) && (
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 10 }}>
+              Track a GPS shift or add trip time to see $/hr and hours worked.
+            </AppText>
+          )}
+        </Card>
       )}
     </Screen>
   );
