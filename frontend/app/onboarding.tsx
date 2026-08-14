@@ -5,11 +5,11 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { useTheme, FONT } from "@/src/theme";
+import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast } from "@/src/ui";
 import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES } from "@/src/config";
-import { auToISO, maskAUDate, todayAU } from "@/src/date";
+import { auToISO, maskAUDate } from "@/src/date";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -29,7 +29,7 @@ export default function Onboarding() {
   const [recAmount, setRecAmount] = useState("");
   const [recFreq, setRecFreq] = useState("weekly");
   const [recAnchorType, setRecAnchorType] = useState<"acquisition" | "gigstart">("gigstart");
-  const [recAnchorDate, setRecAnchorDate] = useState(todayAU());
+  const [recAnchorDate, setRecAnchorDate] = useState("");
 
   const total = 5;
 
@@ -47,20 +47,19 @@ export default function Onboarding() {
   const finish = async () => {
     setSaving(true);
     const acqISO = auToISO(acqDate);
-    const anchorISO = auToISO(recAnchorDate);
-    const rec = recEnabled && recAmount && anchorISO
-      ? {
-          amount: parseFloat(recAmount),
-          frequency: recFreq as any,
-          anchor_type: recAnchorType,
-          anchor_date: recAnchorType === "acquisition" && acqISO ? acqISO : anchorISO,
-        }
-      : null;
+    let rec: any = null;
+    if (recEnabled) {
+      const amt = parseFloat(recAmount);
+      if (!amt) { show("Enter the payment amount", "error"); setSaving(false); return; }
+      const chosen = recAnchorType === "acquisition" ? (acqISO || auToISO(recAnchorDate)) : auToISO(recAnchorDate);
+      if (!chosen) { show("Enter when the payment started (DD/MM/YYYY)", "error"); setSaving(false); return; }
+      rec = { amount: amt, frequency: recFreq as any, anchor_type: recAnchorType, anchor_date: chosen };
+    }
     const p = await updateProfile({
       country, region, work_type: workType as any, platforms,
       vehicle_ownership: ownership as any,
       acquisition_date: acqISO,
-      recurring_payment: rec as any,
+      recurring_payment: rec,
       onboarded: true,
     });
     if (!p) {
@@ -214,7 +213,7 @@ export default function Onboarding() {
             <View>
               <AppText variant="displaySemi" style={{ fontSize: 28, marginBottom: 4 }}>Recurring payment</AppText>
               <AppText variant="body" color={colors.dim} style={{ marginBottom: 20 }}>
-                Lease, rental or loan? We calculate what's owed automatically. Optional — you can skip.
+                Lease, rental or loan? We calculate what’s owed automatically. Optional — you can skip.
               </AppText>
               <Pressable testID="recurring-toggle" onPress={() => setRecEnabled(!recEnabled)}>
                 <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -241,9 +240,11 @@ export default function Onboarding() {
                   <Field label="Count from">
                     <ChipRow
                       options={[{ key: "gigstart", label: "Gig-work start" }, { key: "acquisition", label: "Vehicle acquisition" }]}
-                      value={recAnchorType} onChange={(k) => setRecAnchorType(k as any)} testIDPrefix="anchor" />
+                      value={recAnchorType}
+                      onChange={(k) => { setRecAnchorType(k as any); if (k === "acquisition" && acqDate) setRecAnchorDate(acqDate); }}
+                      testIDPrefix="anchor" />
                   </Field>
-                  <Field label="Anchor date" hint="Format DD/MM/YYYY">
+                  <Field label="Payment start date" hint="When your first rental/lease/loan payment was — this is what makes the total accurate (DD/MM/YYYY)">
                     <Input testID="rec-anchor-date" value={recAnchorDate} onChangeText={(t) => setRecAnchorDate(maskAUDate(t))}
                       placeholder="01/01/2026" keyboardType="numbers-and-punctuation" />
                   </Field>
