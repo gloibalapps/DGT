@@ -41,12 +41,16 @@ export default function Home() {
   useFocusEffect(useCallback(() => { load(); }, [load, version]));
 
   const del = async (kind: string, id: string) => {
-    if (kind === "income") await api.deleteIncome(id);
-    else if (kind === "expense") await api.deleteExpense(id);
-    else await api.deleteTrip(id);
-    show("Deleted", "success");
-    refresh();
-    load();
+    try {
+      if (kind === "income") await api.deleteIncome(id);
+      else if (kind === "expense") await api.deleteExpense(id);
+      else await api.deleteTrip(id);
+      show("Deleted", "success");
+      refresh();
+      load();
+    } catch {
+      show("Couldn't delete — try again", "error");
+    }
   };
 
   const edit = (kind: string, id: string) =>

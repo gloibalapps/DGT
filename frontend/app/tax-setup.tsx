@@ -33,7 +33,7 @@ export default function TaxSetup() {
   const [freq, setFreq] = useState(profile?.reporting_frequency || "quarterly");
 
   const save = async () => {
-    await updateProfile({
+    const p = await updateProfile({
       legal_name: legalName || null,
       accounting_method: method as any,
       tax_id_on_file: taxId,
@@ -41,6 +41,7 @@ export default function TaxSetup() {
       registration_date: isValidDate(regDate) ? regDate : null,
       reporting_frequency: freq,
     });
+    if (!p) { show("Couldn't save — try again", "error"); return; }
     show("Tax setup saved", "success");
     router.back();
   };

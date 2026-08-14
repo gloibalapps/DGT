@@ -91,7 +91,8 @@ export default function Settings() {
       ? { amount: parseFloat(recAmount), frequency: recFreq as any, anchor_type: recAnchorType, anchor_date: recAnchorDate }
       : null;
     if (recEnabled && !rec) { show("Enter a valid amount and date (YYYY-MM-DD)", "error"); return; }
-    await updateProfile({ vehicle_ownership: ownership as any, recurring_payment: rec as any });
+    const p = await updateProfile({ vehicle_ownership: ownership as any, recurring_payment: rec as any });
+    if (!p) { show("Couldn't save — try again", "error"); return; }
     show("Vehicle details saved", "success");
   };
 

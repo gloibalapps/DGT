@@ -50,10 +50,14 @@ export default function Expenses() {
   }, [items]);
 
   const del = async (id: string) => {
-    await api.deleteExpense(id);
-    show("Expense deleted", "success");
-    load();
-    refresh();
+    try {
+      await api.deleteExpense(id);
+      show("Expense deleted", "success");
+      load();
+      refresh();
+    } catch {
+      show("Couldn't delete — try again", "error");
+    }
   };
 
   if (loading) return <Screen><Spinner /></Screen>;

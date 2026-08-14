@@ -45,10 +45,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
   const updateProfile = useCallback(async (patch: Partial<ProfileT>) => {
-    const p = await api.saveProfile(patch);
-    setProfile(p);
-    setVersion((v) => v + 1);
-    return p;
+    try {
+      const p = await api.saveProfile(patch);
+      setProfile(p);
+      setVersion((v) => v + 1);
+      return p;
+    } catch (e) {
+      console.log("updateProfile failed", e);
+      return null;
+    }
   }, []);
 
   return (

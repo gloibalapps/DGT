@@ -100,33 +100,49 @@ export default function Trips() {
 
   const saveGpsTrip = async (type: "business" | "personal") => {
     if (pendingTag == null) return;
-    await api.addTrip({ date: todayISO(), distance_km: pendingTag, type, source: "gps" });
-    setPendingTag(null);
-    show(`${pendingTag} km logged as ${type}`, "success");
-    refresh();
-    load();
+    try {
+      await api.addTrip({ date: todayISO(), distance_km: pendingTag, type, source: "gps" });
+      show(`${pendingTag} km logged as ${type}`, "success");
+      setPendingTag(null);
+      refresh();
+      load();
+    } catch {
+      show("Couldn't save trip — try again", "error");
+    }
   };
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
-    await api.addTrip({ date: d.date, distance_km: d.distance_km, type, source: "gps" });
-    await clearPendingDrive(d.id);
-    show(`${d.distance_km} km logged as ${type}`, "success");
-    refresh();
-    load();
+    try {
+      await api.addTrip({ date: d.date, distance_km: d.distance_km, type, source: "gps" });
+      await clearPendingDrive(d.id);
+      show(`${d.distance_km} km logged as ${type}`, "success");
+      refresh();
+      load();
+    } catch {
+      show("Couldn't save trip — try again", "error");
+    }
   };
 
   const flip = async (t: TripT) => {
     const next = t.type === "personal" ? "business" : "personal";
-    await api.updateTrip(t.id, { type: next });
-    load();
-    refresh();
+    try {
+      await api.updateTrip(t.id, { type: next });
+      load();
+      refresh();
+    } catch {
+      show("Couldn't update — try again", "error");
+    }
   };
 
   const del = async (id: string) => {
-    await api.deleteTrip(id);
-    show("Trip deleted", "success");
-    load();
-    refresh();
+    try {
+      await api.deleteTrip(id);
+      show("Trip deleted", "success");
+      load();
+      refresh();
+    } catch {
+      show("Couldn't delete — try again", "error");
+    }
   };
 
   if (loading) return <Screen><Spinner /></Screen>;

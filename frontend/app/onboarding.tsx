@@ -7,7 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
-import { AppText, Card, PrimaryButton, Input, Field, ChipRow } from "@/src/ui";
+import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast } from "@/src/ui";
 import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES } from "@/src/config";
 import { todayISO } from "@/src/api";
 import { isValidDate } from "@/src/date";
@@ -15,6 +15,7 @@ import { isValidDate } from "@/src/date";
 export default function Onboarding() {
   const { colors } = useTheme();
   const { updateProfile } = useStore();
+  const { show } = useToast();
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -54,13 +55,18 @@ export default function Onboarding() {
           anchor_date: recAnchorType === "acquisition" && isValidDate(acqDate) ? acqDate : recAnchorDate,
         }
       : null;
-    await updateProfile({
+    const p = await updateProfile({
       country, region, work_type: workType as any, platforms,
       vehicle_ownership: ownership as any,
       acquisition_date: isValidDate(acqDate) ? acqDate : null,
       recurring_payment: rec as any,
       onboarded: true,
     });
+    if (!p) {
+      show("Couldn't save your setup — check your connection and try again", "error");
+      setSaving(false);
+      return;
+    }
     router.replace("/(tabs)/home" as any);
   };
 

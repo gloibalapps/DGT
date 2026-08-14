@@ -24,16 +24,38 @@ export async function getProfileId(): Promise<string> {
   return id;
 }
 
-async function req(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`${res.status}: ${t}`);
+async function req(path: string, opts: RequestInit = {}, retries = 2): Promise<any> {
+  const method = (opts.method || "GET").toUpperCase();
+  // Only GET/PUT/DELETE are safe to auto-retry; POST is not idempotent.
+  const canRetry = method !== "POST";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(`${BASE}/api${path}`, {
+      ...opts,
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      // Transient gateway errors (backend restarting) — retry idempotent calls.
+      if (canRetry && [502, 503, 504].includes(res.status) && retries > 0) {
+        await new Promise((r) => setTimeout(r, 800));
+        return req(path, opts, retries - 1);
+      }
+      const t = await res.text();
+      throw new Error(`${res.status}: ${t.slice(0, 120)}`);
+    }
+    return res.json();
+  } catch (e: any) {
+    clearTimeout(timer);
+    const transient = e?.name === "AbortError" || /network/i.test(e?.message || "");
+    if (canRetry && retries > 0 && transient) {
+      await new Promise((r) => setTimeout(r, 800));
+      return req(path, opts, retries - 1);
+    }
+    throw e;
   }
-  return res.json();
 }
 
 export interface ProfileT {

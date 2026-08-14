@@ -107,12 +107,16 @@ export default function Entry() {
 
   const del = async () => {
     if (!editing) return;
-    if (kind === "income") await api.deleteIncome(params.id!);
-    else if (kind === "expense") await api.deleteExpense(params.id!);
-    else await api.deleteTrip(params.id!);
-    show("Deleted", "success");
-    refresh();
-    router.back();
+    try {
+      if (kind === "income") await api.deleteIncome(params.id!);
+      else if (kind === "expense") await api.deleteExpense(params.id!);
+      else await api.deleteTrip(params.id!);
+      show("Deleted", "success");
+      refresh();
+      router.back();
+    } catch {
+      show("Couldn't delete — try again", "error");
+    }
   };
 
   return (
