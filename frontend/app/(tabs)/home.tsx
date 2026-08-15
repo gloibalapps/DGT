@@ -125,7 +125,7 @@ export default function Home() {
           <AppText variant="displaySemi" style={{ fontSize: 28, marginTop: 6, fontVariant: ["tabular-nums"] }}>
             {data.business_distance_today}
           </AppText>
-          <AppText variant="caption" color={colors.dim}>km business today</AppText>
+          <AppText variant="caption" color={colors.dim}>{data.distance_unit || "km"} business today</AppText>
         </Card>
         <Card style={{ flex: 1 }}>
           <Ionicons name="repeat" size={20} color={data.recurring.enabled ? colors.warm : colors.dim} />
@@ -142,6 +142,36 @@ export default function Home() {
           )}
         </Card>
       </View>
+
+      {/* Tax-Savings Jar */}
+      {data.tax_jar ? (
+        <Pressable testID="home-tax-jar" onPress={() => router.push("/reports" as any)} style={{ marginBottom: 14 }}>
+          <Card style={{ borderColor: colors.warm }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="wallet" size={18} color={colors.warm} style={{ marginRight: 6 }} />
+                <AppText variant="label" color={colors.dim}>SET ASIDE FOR TAXES · {data.tax_jar.tax_year_label}</AppText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+            </View>
+            <Money value={data.tax_jar.set_aside} symbol={data.symbol} size={40} color={colors.warm} />
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>
+              {data.tax_jar.rate_pct}% of {data.symbol}{data.tax_jar.net_profit.toLocaleString()} net profit so far
+            </AppText>
+            {data.tax_jar.components?.length ? (
+              <View style={{ marginTop: 10, gap: 4 }}>
+                {data.tax_jar.components.map((c: any, i: number) => (
+                  <View key={i} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <AppText variant="caption" color={colors.dim}>{c.label}</AppText>
+                    <AppText variant="caption" color={colors.text}>{data.symbol}{c.amount.toLocaleString()}</AppText>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 15 }}>{data.tax_jar.note}</AppText>
+          </Card>
+        </Pressable>
+      ) : null}
 
       {/* Tax Mileage pillar — vehicle deduction estimate */}
       {tm?.method_comparison ? (

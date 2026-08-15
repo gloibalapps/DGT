@@ -40,7 +40,8 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - **P2:** Per-vehicle method lock-ins (US/UK), depreciation/CCA helpers, multi-vehicle.
 
 ## Recently completed
-- **US Tax Support (DONE, tested iteration_9):** Country-aware engine (profile.country AU/US). US = calendar tax year, miles, IRS standard mileage (date-keyed 2026: 72.5c Jan-Jun / 76c Jul-Dec, no cap), Schedule C summary, self-employment tax (~15.3% of 92.35% of net), no GST. Reports/Tax Mileage/logbook adapt labels + units; recommends Standard mileage vs Actual expenses. AU unchanged. 53/53 pytest pass.
+- **Tax-Savings Jar (DONE, tested iteration_10):** Home shows a running "set aside for taxes" balance for the tax year. US = self-employment tax + estimated federal income tax; AU = estimated income tax (resident brackets + Medicare levy) + GST to remit if registered. Attached to /api/dashboard as tax_jar; taps to Reports. 61/61 pytest pass.
+- **US Tax Support (DONE, tested iteration_9):** Country-aware engine; IRS standard mileage vs actual, Schedule C, SE tax.
 - **Multi-Vehicle (DONE, tested iteration_8):** Per-car trips/expenses/logbook/deduction; income/GST combined.
 - **Tax Mileage (Phases 1-3, DONE, tested iteration_7):** Logbook-method-first with live method comparison (ATO logbook vs cents-per-km 91c/5000km cap).
 - **Calendar date picker (DONE, tested iteration_6):** All manual date-typing removed.

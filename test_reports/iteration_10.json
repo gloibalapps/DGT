@@ -1,0 +1,41 @@
+{
+  "summary": "Tax-Savings Jar verified end-to-end. Backend: 61/61 pytest pass (53 existing + 8 new tax-jar tests in /app/backend/tests/test_tax_jar.py). GET /api/dashboard now returns a well-formed tax_jar object {set_aside, rate_pct, net_profit, income, tax_year_label, components[], symbol, note}. US ($40,000 income + 2000 mi trip in 2026): tax_jar.set_aside=$7,707.62, components=[Self-employment tax $5,446.94, Federal income tax (est.) $2,260.68], rate_pct=20.0%, net_profit=$38,550, tax_year_label='2026' — matches the E1 smoke-test. AU ($50,000 income, unregistered): tax_jar.set_aside=$6,788 (Income tax est. only), rate_pct=13.6%, tax_year_label='2026–27' (en-dash), matches expected ~6788 incl 2% Medicare levy. AU GST-registered passenger driver ($50,000): components include Income tax (est.) $6,788 + GST to remit $4,545.45 → set_aside=$11,333.45. Fresh empty profile (AU + US): tax_jar.set_aside=0, rate_pct=0, components=[], no crash. Regression: /api/dashboard still returns income_today, expense_today, net_today, business_distance_today, recurring, recent, tax_setup_complete; /api/reports (AU BAS + US Schedule C), /api/tax-mileage, multi-vehicle all still pass their existing tests. FRONTEND (Expo web, 390x844): home-tax-jar card renders correctly on both US and AU. US card: 'SET ASIDE FOR TAXES · 2026 | $7,707.62 | 20% of $38,550 net profit so far | Self-employment tax $5,446.94 | Federal income tax (est.) $2,260.68 | disclaimer'. AU card: 'SET ASIDE FOR TAXES · 2026–27 | $11,333.45 | 22.7% of $50,000 net profit so far | Income tax (est.) $6,788 | GST to remit $4,545.45 | disclaimer'. Tapping the jar navigates to the Reports tab (Schedule C visible for US, BAS card for AU). 'business today' tile correctly shows 'mi business today' for US and 'km business today' for AU. No red-screen or console errors — only the pre-existing non-blocking 'props.pointerEvents is deprecated' warning carried from prior iterations.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Non-blocking console warning carried from prior iterations: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not introduced by the Tax-Savings Jar."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_tax_jar.py",
+    "/app/test_reports/pytest/pytest_tax_jar.xml",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_10.json"
+  ],
+  "action_items": [
+    "None required — Tax-Savings Jar feature is working across backend + UI (US + AU + zero) as specified."
+  ],
+  "critical_code_review_comments": [
+    "backend/tax.py::tax_jar correctly branches on country. US: set_aside = SE tax + federal income tax on max(0, net - SE/2 - $15,000 std deduction); components emit 'Self-employment tax' and 'Federal income tax (est.)'; note references single filer + 1040-ES. AU: set_aside = au_income_tax(net_profit) + (max(0, bas.net_gst) when show_bas). Both apply max(0, ...) to set_aside and net gate on rate_pct so zero-profit profiles don't divide by zero.",
+    "backend/tax.py::dashboard calls compute_report(period='year') then tax_jar(profile, year_report, today). The year_report already dispatches to US via country check, so US dashboards inherit se_tax and skip BAS. Correct.",
+    "backend/tax.py::_fy_label returns '2026' for US and '2026–27' (en-dash U+2013) for AU. Frontend renders the en-dash correctly.",
+    "frontend/app/(tabs)/home.tsx renders the home-tax-jar Pressable only when data.tax_jar is truthy; iterates data.tax_jar.components with keys, shows tax_year_label, rate_pct, net_profit (via toLocaleString), amount (via Money), and the disclaimer note. onPress → router.push('/reports'). testID='home-tax-jar' present.",
+    "frontend/app/(tabs)/home.tsx 'business today' tile uses data.distance_unit ('km' AU / 'mi' US) — verified in the browser for both country profiles.",
+    "No MongoDB _id leak on /api/dashboard response — tax_jar is a pure dict computed from taxlib."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tax_jar.py (new — 8 pytest cases: shape, US components/values, AU income-tax-only, AU GST-registered, zero AU, zero US, AU km unit, US mi unit)"
+  ],
+  "success_rate": {
+    "backend": "100% (61/61 pytest — 53 existing + 8 new tax-jar)",
+    "frontend": "100% (home-tax-jar renders on US + AU, shows amount / rate / components / note, tap navigates to Reports; 'business today' tile shows correct unit per country; no red-screen)"
+  },
+  "seed_data_creation": "Ephemeral TEST_* profiles created via public API for each pytest case and for the two browser flows (US: 40k income + 2000 mi trip in 2026-03; AU registered passengers: 50k income in 2026-08). Fresh empty AU and US profiles used for the zero-jar checks.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "tax_jar contract: {set_aside:number, rate_pct:number (0 when net<=0), net_profit:number, income:number, tax_year_label:string (US='2026', AU='2026–27' with en-dash), components:[{label,amount}], symbol:'$', note:string}. US components fixed order: ['Self-employment tax','Federal income tax (est.)']. AU components: ['Income tax (est.)'] and ['GST to remit'] appended when profile.registration_status='registered'. Set-aside uses au_income_tax(max(0,net)) which includes 2% Medicare levy above the $27,222 threshold. To seed the UI use JSON.stringify: window.localStorage.setItem('gigtax.profile_id', JSON.stringify('<pid>')) then navigate directly to /home to bypass onboarding. Profile MUST have onboarded:true.",
+  "rca_of_issue": "N/A — no defects reproduced."
+}

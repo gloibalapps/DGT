@@ -30,6 +30,41 @@ AU_CPK_MAX_KM = 5000
 US_SE_TAX_RATE = 0.153        # 12.4% Social Security + 2.9% Medicare
 US_SE_NET_FACTOR = 0.9235     # net earnings from SE = 92.35% of net profit
 US_QUARTER_DUE = {1: "15 Apr", 2: "15 Jun", 3: "15 Sep", 4: "15 Jan"}
+US_STD_DEDUCTION = 15000.0    # 2025 single standard deduction (estimate)
+# 2025 single-filer federal income tax brackets: (upper_bound, rate)
+US_FED_BRACKETS = [(11925, 0.10), (48475, 0.12), (103350, 0.22),
+                   (197300, 0.24), (250525, 0.32), (626350, 0.35),
+                   (float("inf"), 0.37)]
+
+# AU resident individual tax 2024-25: (upper_bound, rate). Medicare levy added.
+AU_INCOME_BRACKETS = [(18200, 0.0), (45000, 0.16), (135000, 0.30),
+                      (190000, 0.37), (float("inf"), 0.45)]
+AU_MEDICARE_LEVY = 0.02
+AU_MEDICARE_THRESHOLD = 27222.0   # single lower threshold (approx)
+
+
+def _bracket_tax(taxable: float, brackets) -> float:
+    tax = 0.0
+    prev = 0.0
+    for cap, rate in brackets:
+        if taxable > prev:
+            tax += (min(taxable, cap) - prev) * rate
+            prev = cap
+        else:
+            break
+    return round(tax, 2)
+
+
+def us_federal_income_tax(taxable: float) -> float:
+    return _bracket_tax(max(0.0, taxable), US_FED_BRACKETS)
+
+
+def au_income_tax(taxable: float) -> float:
+    taxable = max(0.0, taxable)
+    tax = _bracket_tax(taxable, AU_INCOME_BRACKETS)
+    levy = taxable * AU_MEDICARE_LEVY if taxable > AU_MEDICARE_THRESHOLD else 0.0
+    return round(tax + levy, 2)
+
 
 
 def us_mileage_rate(d: date) -> float:
@@ -550,6 +585,51 @@ def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str,
 
 
 
+def tax_jar(profile: dict, report: dict, ref: date) -> Dict[str, Any]:
+    """Recommended running 'set aside for taxes' balance for the tax year to date.
+    US: self-employment tax + estimated federal income tax.
+    AU: estimated income tax + GST to remit (if registered)."""
+    country = profile.get("country", "AU")
+    net = report["net_profit"]
+    income = report["total_income"]
+    sym = report.get("symbol", "$")
+    fy_s = fy_start(ref, country)
+    year_label = _fy_label(fy_s, country)
+
+    if country == "US":
+        se = report["se_tax"]["amount"]
+        taxable = max(0.0, net - se / 2 - US_STD_DEDUCTION)  # half SE-tax is deductible
+        fed = us_federal_income_tax(taxable)
+        set_aside = round(se + fed, 2)
+        components = [
+            {"label": "Self-employment tax", "amount": se},
+            {"label": "Federal income tax (est.)", "amount": fed},
+        ]
+        note = ("Estimate for a single filer with gig income only, after the standard "
+                "deduction. Save this for SE tax and quarterly 1040-ES payments. Not tax advice.")
+    else:
+        it = au_income_tax(max(0.0, net))
+        gst_owed = max(0.0, report["bas"]["net_gst"]) if report.get("show_bas") else 0.0
+        set_aside = round(it + gst_owed, 2)
+        components = [{"label": "Income tax (est.)", "amount": it}]
+        if report.get("show_bas"):
+            components.append({"label": "GST to remit", "amount": round(gst_owed, 2)})
+        note = ("Estimate based on this financial year's net profit as your only income, "
+                "resident rates incl. Medicare levy. Not tax advice.")
+
+    rate_pct = round(set_aside / net * 100, 1) if net > 0 else 0.0
+    return {
+        "set_aside": max(0.0, set_aside),
+        "rate_pct": rate_pct,
+        "net_profit": net,
+        "income": income,
+        "tax_year_label": year_label,
+        "components": components,
+        "symbol": sym,
+        "note": note,
+    }
+
+
 def dashboard(profile: dict, trips, incomes, expenses, today: date,
               vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
     t_iso = today.isoformat()
@@ -599,6 +679,9 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
         tax_setup_complete = bool(profile.get("legal_name")) and \
             profile.get("registration_status") in ("registered", "not_registered")
 
+    year_report = compute_report(profile, trips, incomes, expenses, "year", today, vehicles)
+    jar = tax_jar(profile, year_report, today)
+
     return {
         "date": t_iso,
         "income_today": income_today,
@@ -617,6 +700,7 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
         },
         "recent": items[:8],
         "tax_setup_complete": tax_setup_complete,
+        "tax_jar": jar,
     }
 
 
