@@ -40,7 +40,8 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - **P2:** Per-vehicle method lock-ins (US/UK), depreciation/CCA helpers, multi-vehicle.
 
 ## Recently completed
-- **Tax Mileage (Phases 1-3, DONE, tested iteration_7):** Logbook-method-first kilometre system with live method comparison (ATO logbook vs cents-per-km 91c/5000km cap → recommends higher deduction). Rich vehicle setup + odometer reconciliation, journey classification (Business/Mixed/Private + purpose), continuous 12-week ATO logbook, motor-vehicle CSV report. "Trips" tab renamed "Mileage"; Home has a deduction-estimate pillar. Backend: /api/tax-mileage, /api/export-mileage; 27/27 pytest pass.
+- **Multi-Vehicle (DONE, tested iteration_8):** Drivers add multiple cars, each with its own trips, expenses, 12-week ATO logbook, odometer reconciliation and vehicle deduction; income/GST stays combined. Vehicle switcher on the Mileage tab, per-car add/edit/delete, active-car attribution for new trips/expenses, legacy single-car data auto-migrated. Backend `vehicles` collection + CRUD; 45/45 pytest pass.
+- **Tax Mileage (Phases 1-3, DONE, tested iteration_7):** Logbook-method-first with live method comparison (ATO logbook vs cents-per-km 91c/5000km cap).
 - **Calendar date picker (DONE, tested iteration_6):** All manual date-typing removed.
 
 ## Notes

@@ -1,0 +1,47 @@
+{
+  "summary": "Multi-vehicle feature (backend + frontend) verified end-to-end. Backend: 45/45 pytest pass (30 existing regressions + 15 new multi-vehicle tests). All target scenarios validated: GET /api/vehicles auto-creates a default active vehicle for fresh profiles and backfills existing untagged trips/expenses with the new vehicle_id; POST /api/vehicles adds a second car (first stays active unless is_active=true is passed); POST /api/vehicles/{id}/activate switches active with exactly one active at any time; PUT /api/vehicles/{id} updates name/ownership/recurring_payment/odometer; DELETE returns 400 when only one vehicle remains; deleting the active car promotes another. Per-vehicle isolation confirmed via /api/tax-mileage?vehicle_id=CAR1|CAR2: Car1 logbook/method_comparison shows 20 biz + 10 personal = 66.67% business_pct, Car2 shows 30 biz = 100%. today/financial_year blocks are combined across cars (60 km total, 50 km business, $500 income) while logbook/method_comparison/odometer reflect only the selected vehicle. Response includes 'vehicles' summary array with per-car business_pct + deduction, plus selected_vehicle_id and active_vehicle_id. Per-vehicle apportionment in /api/reports: a $60 fuel expense tagged to Car1 (66.67% biz) yields $40.00 deduction; Car2's $100/wk recurring lease is included in recurring_payment_gross. /api/dashboard recurring.owed_this_quarter sums across cars (>0 when any car has recurring). GET /api/export-mileage returns 200 text/csv with 'Motor Vehicle Report' for the selected/active vehicle. Frontend (Expo web, viewport 390x844): Mileage tab shows 'YOUR VEHICLES' header with vehicle-chip-{id} chips (Camry Hybrid + BYD Atto) and mileage-add-vehicle 'Add car'. Tapping Car2 chip switches active — chip highlights blue, method_comparison card updates to '100% of $0.00' / 'Cents/km 91c × 30 km = $27.30' with trophy 'Cents per kilometre — Potentially higher by $27.30', ATO Logbook row updates to '100% business · 1 journeys · in progress'. Today block remains combined (60 km / 50 km business / 83.3%). Vehicle form (/vehicle) exposes all required testIDs (veh-name, veh-rego, veh-model, veh-ownership-own, veh-rec-toggle, veh-open-odo, veh-close-odo, veh-save) — saving 'Test Car 3' persists via POST /api/vehicles (count went 2→3). Editing an existing car via /vehicle?id= shows vehicle-delete (only when >1 car); tapping it deletes and shows 'Vehicle removed' toast (count 3→2). Home pillar (home-mileage-pillar) shows 'TAX MILEAGE · BYD Atto · 2026-27' + 'Estimated vehicle deduction $27.30' + 'Cents per kilometre · 83.33% business · 50 km' (i.e., the ACTIVE car's recommended deduction). Tapping the pillar navigates to /trips (Mileage tab). No red-screen errors. Existing calendar/DateField feature not re-tested per request.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Non-blocking console warning carried from prior iterations: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not introduced by multi-vehicle code."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_multi_vehicle.py",
+    "/app/backend/tests/test_gigtax_api.py",
+    "/app/backend/tests/test_tax_mileage.py",
+    "/app/test_reports/pytest/pytest_multi_vehicle.xml",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_8.json"
+  ],
+  "action_items": [
+    "None required for multi-vehicle — feature is working across backend + UI + persistence as specified.",
+    "Optional (carried): silence 'props.pointerEvents is deprecated' RN-web warning."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py::ensure_vehicles is idempotent, migrates legacy profile.vehicle → first Vehicle doc, and backfills vehicle_id on untagged trips/expenses. Enforces exactly one is_active by falling back to the first vehicle if none marked. Good.",
+    "backend/server.py::add_vehicle correctly triggers ensure_vehicles first (so migration runs even on the second insert) and only makes the new car active when is_active=true is passed OR when the profile had no cars. First car stays active on subsequent adds — matches spec.",
+    "backend/server.py::delete_vehicle blocks the last car with 400, promotes another car to active when the deleted one was active. Correct.",
+    "backend/tax.py::tax_mileage builds a per-vehicle 'vehicles' summary using method_comparison(profile, vt, ve, ref, vehicle=v) — each car's own trips + expenses drive its own logbook_pct + deduction. today/financial_year use unscoped trips/incomes (driver-level). selected_vehicle_id + active_vehicle_id both surfaced.",
+    "backend/tax.py::compute_report apportions fuel/vehicle expenses by the tagged vehicle's per-period business-use % (falls back to global business_use when vehicle_id is missing/__default__). Recurring payment gross is summed across all cars and each car's recurring is apportioned by its own use — matches spec.",
+    "backend/tax.py::dashboard.recurring correctly sums owed_this_quarter across every car's recurring_payment; sets frequency='mixed' when cars differ.",
+    "frontend/app/(tabs)/trips.tsx exposes vehicle-chip-{id} + mileage-add-vehicle, wires setActiveVehicle to a store action, and refreshes tm on chip tap via useFocusEffect/version. Add-trip and GPS-shift attach vehicle_id: activeVehicleId — correct.",
+    "frontend/app/vehicle.tsx handles both add (POST) and edit (PUT) via params.id; vehicle-delete only renders when editing && vehicles.length > 1 — matches the backend's 400 guard.",
+    "frontend/app/(tabs)/home.tsx home-mileage-pillar pulls the active vehicle name + recommended_deduction from tax-mileage['vehicles'] filtered by active_vehicle_id — correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_multi_vehicle.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (45/45 pytest — 30 existing + 15 new multi-vehicle)",
+    "frontend": "100% (all multi-vehicle review-request scenarios verified: chips + Add car + switch, per-car method_comparison numbers, today combined across cars, Home pillar shows active car's name+deduction, /vehicle form add+edit+delete with vehicle-delete visibility rule)"
+  },
+  "seed_data_creation": "One ephemeral test profile TEST_ac3203656269 created via public API with 2 seeded vehicles (Camry Hybrid — lease $300/wk, BYD Atto — own) + trips (Car1: 20biz+10personal, Car2: 30biz) + $500 Uber income + $60 fuel expense on Car1 to drive UI verification. 15 pytest tests each create their own TEST_* isolated profiles.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Multi-vehicle testIDs: mileage-add-vehicle (Add car chip button in Mileage tab), vehicle-chip-{id} (each car chip in switcher), vehicle-delete (only when editing an existing car AND vehicles.length>1), veh-name/veh-rego/veh-model/veh-ownership-{own|lease|loan|rental|rent_to_buy}/veh-rec-toggle/veh-rec-amount/veh-rec-anchor/veh-open-odo/veh-close-odo/veh-save (form fields). Backend endpoints: GET /api/vehicles?profile_id=, POST /api/vehicles (body: {profile_id,name,ownership,is_active?,recurring_payment?...}), PUT /api/vehicles/{id}, DELETE /api/vehicles/{id}?profile_id=, POST /api/vehicles/{id}/activate?profile_id=. /api/tax-mileage now accepts optional vehicle_id query param and always returns 'vehicles' summary + selected_vehicle_id + active_vehicle_id. To prime the app in browser tests use JSON.stringify: window.localStorage.setItem('gigtax.profile_id', JSON.stringify('<pid>')).",
+  "rca_of_issue": "N/A — no defects reproduced this iteration."
+}

@@ -8,12 +8,13 @@ import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
+import { api } from "@/src/api";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast, DateField } from "@/src/ui";
 import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
 
 export default function Onboarding() {
   const { colors } = useTheme();
-  const { updateProfile } = useStore();
+  const { updateProfile, activeVehicleId, reloadVehicles } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -66,6 +67,17 @@ export default function Onboarding() {
       show("Couldn't save your setup — check your connection and try again", "error");
       setSaving(false);
       return;
+    }
+    // Sync the driver's first vehicle with what they picked here.
+    if (activeVehicleId) {
+      try {
+        await api.updateVehicle(activeVehicleId, {
+          ownership: ownership as any,
+          recurring_payment: rec,
+          business_use_start: acqISO,
+        });
+        await reloadVehicles();
+      } catch { /* non-blocking */ }
     }
     router.replace("/(tabs)/home" as any);
   };

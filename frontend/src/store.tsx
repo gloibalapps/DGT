@@ -1,29 +1,42 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
-import { api, ProfileT } from "@/src/api";
+import { api, ProfileT, VehicleT } from "@/src/api";
 
 interface Store {
   profile: ProfileT | null;
+  vehicles: VehicleT[];
+  activeVehicle: VehicleT | null;
+  activeVehicleId: string | null;
   loading: boolean;
   version: number; // bump to force data reload across screens
   refresh: () => void;
   reloadProfile: () => Promise<void>;
+  reloadVehicles: () => Promise<void>;
+  setActiveVehicle: (id: string) => Promise<void>;
   updateProfile: (patch: Partial<ProfileT>) => Promise<ProfileT | null>;
 }
 
 const Ctx = createContext<Store>({
   profile: null,
+  vehicles: [],
+  activeVehicle: null,
+  activeVehicleId: null,
   loading: true,
   version: 0,
   refresh: () => {},
   reloadProfile: async () => {},
+  reloadVehicles: async () => {},
+  setActiveVehicle: async () => {},
   updateProfile: async () => null,
 });
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<ProfileT | null>(null);
+  const [vehicles, setVehicles] = useState<VehicleT[]>([]);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
   const mounted = useRef(true);
+
+  const activeVehicle = vehicles.find((v) => v.is_active) || vehicles[0] || null;
 
   const reloadProfile = useCallback(async () => {
     try {
@@ -36,13 +49,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const reloadVehicles = useCallback(async () => {
+    try {
+      const v = await api.listVehicles();
+      if (mounted.current) setVehicles(v);
+    } catch (e) {
+      console.log("vehicles load error", e);
+    }
+  }, []);
+
   useEffect(() => {
     mounted.current = true;
     reloadProfile();
+    reloadVehicles();
     return () => { mounted.current = false; };
-  }, [reloadProfile]);
+  }, [reloadProfile, reloadVehicles]);
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
+
+  const setActiveVehicle = useCallback(async (id: string) => {
+    try {
+      const list = await api.activateVehicle(id);
+      setVehicles(list);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      console.log("setActiveVehicle failed", e);
+    }
+  }, []);
 
   const updateProfile = useCallback(async (patch: Partial<ProfileT>) => {
     try {
@@ -57,7 +90,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ profile, loading, version, refresh, reloadProfile, updateProfile }}>
+    <Ctx.Provider value={{
+      profile, vehicles, activeVehicle, activeVehicleId: activeVehicle?.id || null,
+      loading, version, refresh, reloadProfile, reloadVehicles, setActiveVehicle, updateProfile,
+    }}>
       {children}
     </Ctx.Provider>
   );

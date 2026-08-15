@@ -59,16 +59,27 @@ async function req(path: string, opts: RequestInit = {}, retries = 2): Promise<a
 }
 
 export interface VehicleT {
+  id?: string;
+  profile_id?: string;
+  name?: string | null;
   registration?: string | null;
   make_model?: string | null;
   year?: number | null;
   purchase_price?: number | null;
   fuel_type?: "petrol" | "diesel" | "hybrid" | "electric" | "lpg" | null;
   business_use_start?: string | null;
+  ownership?: "own" | "loan" | "lease" | "rental" | "rent_to_buy";
+  recurring_payment?: {
+    amount: number;
+    frequency: "weekly" | "fortnightly" | "monthly";
+    anchor_type: "acquisition" | "gigstart";
+    anchor_date: string;
+  } | null;
   opening_odometer?: number | null;
   opening_odometer_date?: string | null;
   closing_odometer?: number | null;
   closing_odometer_date?: string | null;
+  is_active?: boolean;
 }
 
 export interface ProfileT {
@@ -102,7 +113,8 @@ export interface TripT {
   id: string; profile_id: string; date: string; distance_km: number;
   duration_min?: number | null;
   type: "business" | "personal" | "mixed"; business_pct?: number | null;
-  purpose?: string | null; from_label?: string | null; to_label?: string | null;
+  purpose?: string | null; vehicle_id?: string | null;
+  from_label?: string | null; to_label?: string | null;
   odo_start?: number | null; odo_end?: number | null;
   note?: string | null; source?: string;
 }
@@ -113,7 +125,8 @@ export interface IncomeT {
 export interface ExpenseT {
   id: string; profile_id: string; date: string; amount: number;
   category: "fuel" | "tolls" | "vehicle" | "phone" | "other";
-  merchant?: string | null; tax_treatment: string; note?: string | null;
+  merchant?: string | null; vehicle_id?: string | null;
+  tax_treatment: string; note?: string | null;
   receipt_image?: string | null;
 }
 
@@ -173,9 +186,29 @@ export const api = {
     const pid = await getProfileId();
     return req(`/performance?profile_id=${pid}&ref_date=${refDate}`);
   },
-  async taxMileage(refDate: string) {
+  async taxMileage(refDate: string, vehicleId?: string) {
     const pid = await getProfileId();
-    return req(`/tax-mileage?profile_id=${pid}&ref_date=${refDate}`);
+    const vq = vehicleId ? `&vehicle_id=${vehicleId}` : "";
+    return req(`/tax-mileage?profile_id=${pid}&ref_date=${refDate}${vq}`);
+  },
+  async listVehicles(): Promise<VehicleT[]> {
+    const pid = await getProfileId();
+    return req(`/vehicles?profile_id=${pid}`);
+  },
+  async addVehicle(v: Partial<VehicleT>): Promise<VehicleT[]> {
+    const pid = await getProfileId();
+    return req(`/vehicles`, { method: "POST", body: JSON.stringify({ ...v, profile_id: pid }) });
+  },
+  async updateVehicle(id: string, v: Partial<VehicleT>): Promise<VehicleT[]> {
+    return req(`/vehicles/${id}`, { method: "PUT", body: JSON.stringify(v) });
+  },
+  async activateVehicle(id: string): Promise<VehicleT[]> {
+    const pid = await getProfileId();
+    return req(`/vehicles/${id}/activate?profile_id=${pid}`, { method: "POST" });
+  },
+  async deleteVehicle(id: string): Promise<VehicleT[]> {
+    const pid = await getProfileId();
+    return req(`/vehicles/${id}?profile_id=${pid}`, { method: "DELETE" });
   },
   async report(period: string, refDate: string) {
     const pid = await getProfileId();

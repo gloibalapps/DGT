@@ -26,7 +26,7 @@ function haversine(a: any, b: any) {
 
 export default function Mileage() {
   const { colors } = useTheme();
-  const { version, refresh } = useStore();
+  const { version, refresh, vehicles, activeVehicleId, setActiveVehicle } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const [trips, setTrips] = useState<TripT[]>([]);
@@ -93,7 +93,7 @@ export default function Mileage() {
   const saveGpsTrip = async (type: "business" | "personal") => {
     if (pendingTag == null) return;
     try {
-      await api.addTrip({ date: todayISO(), distance_km: pendingTag, duration_min: pendingDuration, type, source: "gps" });
+      await api.addTrip({ date: todayISO(), distance_km: pendingTag, duration_min: pendingDuration, type, source: "gps", vehicle_id: activeVehicleId });
       show(`${pendingTag} km logged as ${type === "business" ? "business" : "private"}`, "success");
       setPendingTag(null); refresh(); load();
     } catch { show("Couldn't save trip — try again", "error"); }
@@ -101,7 +101,7 @@ export default function Mileage() {
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
     try {
-      await api.addTrip({ date: d.date, distance_km: d.distance_km, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps" });
+      await api.addTrip({ date: d.date, distance_km: d.distance_km, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps", vehicle_id: activeVehicleId });
       await clearPendingDrive(d.id);
       show(`${d.distance_km} km logged`, "success");
       refresh(); load();
@@ -138,6 +138,33 @@ export default function Mileage() {
       refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent}
         onRefresh={() => { setRefreshing(true); load(); }} />}
     >
+      {/* ---- Vehicle switcher ---- */}
+      {vehicles.length > 0 ? (
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <AppText variant="label" color={colors.dim}>YOUR VEHICLES</AppText>
+            <Pressable testID="mileage-add-vehicle" onPress={() => router.push("/vehicle" as any)} hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="add-circle-outline" size={16} color={colors.accent} style={{ marginRight: 4 }} />
+              <AppText variant="caption" color={colors.accent}>Add car</AppText>
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {vehicles.map((v) => {
+              const active = v.id === activeVehicleId;
+              return (
+                <Pressable key={v.id} testID={`vehicle-chip-${v.id}`} onPress={() => v.id && setActiveVehicle(v.id)}
+                  style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, height: 40, borderRadius: 999,
+                    backgroundColor: active ? colors.accent : colors.surfaceAlt,
+                    borderWidth: 1, borderColor: active ? colors.accent : colors.border }}>
+                  <Ionicons name="car-sport" size={15} color={active ? colors.bg : colors.dim} style={{ marginRight: 6 }} />
+                  <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{v.name || v.make_model || "Vehicle"}</AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
       {/* ---- Today ---- */}
       <Card style={{ marginBottom: 14 }}>
         <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
@@ -210,7 +237,7 @@ export default function Mileage() {
       </Pressable>
 
       {/* ---- Odometer ---- */}
-      <Pressable testID="mileage-open-vehicle" onPress={() => router.push("/vehicle" as any)}>
+      <Pressable testID="mileage-open-vehicle" onPress={() => router.push((activeVehicleId ? `/vehicle?id=${activeVehicleId}` : "/vehicle") as any)}>
         <Card style={{ marginBottom: 14, borderColor: odo?.warning ? colors.warm : colors.border }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>

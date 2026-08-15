@@ -21,7 +21,7 @@ type Kind = "income" | "expense" | "trip";
 
 export default function Entry() {
   const { colors } = useTheme();
-  const { profile, refresh } = useStore();
+  const { profile, refresh, activeVehicleId } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -95,12 +95,14 @@ export default function Entry() {
         if (!amt) { show("Enter an amount", "error"); setSaving(false); return; }
         const payload: any = { date: iso, amount: amt, category, merchant, tax_treatment: treatment, note };
         if (receiptImage) payload.receipt_image = receiptImage;
+        if ((category === "fuel" || category === "vehicle") && activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (editing) await api.updateExpense(params.id!, payload); else await api.addExpense(payload);
       } else {
         const km = parseFloat(distance);
         if (!km) { show("Enter a distance", "error"); setSaving(false); return; }
         const mins = parseFloat(minutes);
         const payload: any = { date: iso, distance_km: km, type: tripType, purpose, note };
+        if (activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (fromLabel) payload.from_label = fromLabel;
         if (toLabel) payload.to_label = toLabel;
         if (tripType === "mixed") {

@@ -154,7 +154,8 @@ def _add_month_keep_day(d: date) -> date:
 # Core report
 # ---------------------------------------------------------------------------
 def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
-                   expenses: List[dict], period: str, ref: date) -> Dict[str, Any]:
+                   expenses: List[dict], period: str, ref: date,
+                   vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
     start, end = period_range(period, ref)
     today = date.today()
 
@@ -185,14 +186,42 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
         cat_totals[c] = cat_totals.get(c, 0.0) + e["amount"]
     cat_totals = {k: round(v, 2) for k, v in cat_totals.items()}
 
-    # ---- recurring vehicle payment (its own labelled line) ----
-    rec = profile.get("recurring_payment")
-    recurring_amount = recurring_owed(rec, start, end, today)
+    # ---- vehicle cost pool: per-vehicle business-use apportionment ----
+    # Each car deducts its own running costs at its own business-use %. When no
+    # vehicles list is supplied we fall back to a single pseudo-vehicle built
+    # from the profile (preserves single-car behaviour).
+    veh_list = vehicles if vehicles else [{
+        "id": "__default__",
+        "ownership": profile.get("vehicle_ownership", "own"),
+        "recurring_payment": profile.get("recurring_payment"),
+    }]
 
-    # ---- vehicle deduction breakdown (apportioned by business-use %) ----
-    fuel_ded = round(cat_totals["fuel"] * business_use, 2)
-    vehicle_ded = round(cat_totals["vehicle"] * business_use, 2)
-    recurring_ded = round(recurring_amount * business_use, 2)
+    def period_vehicle_use(vid):
+        vt = [t for t in p_trips if (t.get("vehicle_id") or "__default__") == vid]
+        b = sum(trip_business_km(t) for t in vt)
+        tot = sum(float(t["distance_km"]) for t in vt)
+        return (b / tot) if tot > 0 else business_use
+
+    uses = {v["id"]: period_vehicle_use(v["id"]) for v in veh_list}
+
+    fuel_ded = vehicle_ded = recurring_ded = recurring_gross = 0.0
+    for e in p_exp:
+        c = e.get("category", "other")
+        if c not in ("fuel", "vehicle"):
+            continue
+        use = uses.get(e.get("vehicle_id") or "__default__", business_use)
+        if c == "fuel":
+            fuel_ded += e["amount"] * use
+        else:
+            vehicle_ded += e["amount"] * use
+    for v in veh_list:
+        rg = recurring_owed(v.get("recurring_payment"), start, end, today)
+        recurring_gross += rg
+        recurring_ded += rg * uses[v["id"]]
+    fuel_ded = round(fuel_ded, 2)
+    vehicle_ded = round(vehicle_ded, 2)
+    recurring_ded = round(recurring_ded, 2)
+    recurring_gross = round(recurring_gross, 2)
     vehicle_deduction_total = round(fuel_ded + vehicle_ded + recurring_ded, 2)
 
     # ---- full-claim work expenses (not apportioned) ----
@@ -216,11 +245,15 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
         if e.get("tax_treatment", "inclusive") != "inclusive":
             continue
         c = e.get("category", "other")
-        claimable = e["amount"] * business_use if c in APPORTIONED_CATEGORIES else e["amount"]
-        one_b_base += claimable
-    # recurring payment carries GST when it's a lease/rental (apportioned)
-    if profile.get("vehicle_ownership") in ("lease", "rental", "loan"):
-        one_b_base += recurring_amount * business_use
+        if c in APPORTIONED_CATEGORIES:
+            one_b_base += e["amount"] * uses.get(e.get("vehicle_id") or "__default__", business_use)
+        else:
+            one_b_base += e["amount"]
+    # recurring payment carries GST when it's a lease/rental/loan (apportioned per car)
+    for v in veh_list:
+        if v.get("ownership", profile.get("vehicle_ownership")) in ("lease", "rental", "loan"):
+            rg = recurring_owed(v.get("recurring_payment"), start, end, today)
+            one_b_base += rg * uses[v["id"]]
     one_b = round(one_b_base / 11.0, 2)
     net_gst = round(one_a - one_b, 2)
 
@@ -262,7 +295,7 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
             "fuel": fuel_ded,
             "vehicle_costs": vehicle_ded,
             "recurring_payment": recurring_ded,
-            "recurring_payment_gross": recurring_amount,
+            "recurring_payment_gross": recurring_gross,
             "business_use_pct": round(business_use * 100, 1),
             "total": vehicle_deduction_total,
         },
@@ -336,17 +369,27 @@ def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str,
 
 
 
-def dashboard(profile: dict, trips, incomes, expenses, today: date) -> Dict[str, Any]:
+def dashboard(profile: dict, trips, incomes, expenses, today: date,
+              vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
     t_iso = today.isoformat()
     income_today = round(sum(i["amount"] for i in incomes if str(i["date"])[:10] == t_iso), 2)
     expense_today = round(sum(e["amount"] for e in expenses if str(e["date"])[:10] == t_iso), 2)
     business_today = round(sum(trip_business_km(t) for t in trips
                               if str(t["date"])[:10] == t_iso), 2)
 
-    # recurring status for the current BAS quarter
+    # recurring status for the current BAS quarter — summed across all vehicles
     q_start, q_end = au_bas_quarter(today)
-    rec = profile.get("recurring_payment")
-    rec_owed = recurring_owed(rec, q_start, q_end, today)
+    veh_list = vehicles if vehicles else (
+        [{"recurring_payment": profile.get("recurring_payment")}]
+        if profile.get("recurring_payment") else [])
+    recs = [v.get("recurring_payment") for v in veh_list if v.get("recurring_payment")]
+    rec_owed = round(sum(recurring_owed(r, q_start, q_end, today) for r in recs), 2)
+    rec_enabled = any(r and r.get("amount") for r in recs)
+    rec_amount = round(sum(float(r.get("amount") or 0) for r in recs), 2) if rec_enabled else None
+    next_dues = [next_due_date(r, today) for r in recs if r]
+    next_dues = [d for d in next_dues if d]
+    next_due = min(next_dues) if next_dues else None
+    freq = recs[0].get("frequency") if len(recs) == 1 else ("mixed" if len(recs) > 1 else None)
 
     # recent activity — merge & sort
     items = []
@@ -379,11 +422,11 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date) -> Dict[str,
         "business_distance_today": business_today,
         "currency": "AUD", "symbol": "$", "distance_unit": "km",
         "recurring": {
-            "enabled": bool(rec and rec.get("amount")),
-            "amount": rec.get("amount") if rec else None,
-            "frequency": rec.get("frequency") if rec else None,
+            "enabled": rec_enabled,
+            "amount": rec_amount,
+            "frequency": freq,
             "owed_this_quarter": rec_owed,
-            "next_due": next_due_date(rec, today) if rec else None,
+            "next_due": next_due,
             "quarter_label": fmt_period_label("quarter", q_start, q_end),
         },
         "recent": items[:8],
@@ -513,15 +556,15 @@ def logbook_summary(profile: dict, trips: List[dict], ref: date) -> Dict[str, An
     }
 
 
-def _fy_vehicle_expenses(profile: dict, expenses: List[dict], fy_start: date, fy_end: date):
+def _fy_vehicle_expenses(expenses: List[dict], fy_start: date, fy_end: date,
+                         recurring_payment: Optional[dict]):
     cats = {"fuel": 0.0, "vehicle": 0.0, "tolls": 0.0, "phone": 0.0, "other": 0.0}
     for e in expenses:
         d = parse_date(e["date"])
         if fy_start <= d < fy_end:
             c = e.get("category", "other")
             cats[c] = cats.get(c, 0.0) + float(e.get("amount") or 0)
-    rec = profile.get("recurring_payment")
-    recurring = recurring_owed(rec, fy_start, fy_end, date.today())
+    recurring = recurring_owed(recurring_payment, fy_start, fy_end, date.today())
     cats = {k: round(v, 2) for k, v in cats.items()}
     # Eligible for the vehicle-cost pool (running costs apportioned by business use).
     eligible = round(cats["fuel"] + cats["vehicle"] + recurring, 2)
@@ -529,7 +572,7 @@ def _fy_vehicle_expenses(profile: dict, expenses: List[dict], fy_start: date, fy
 
 
 def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
-                      ref: date) -> Dict[str, Any]:
+                      ref: date, vehicle: Optional[dict] = None) -> Dict[str, Any]:
     fy_start, fy_end = _fy_bounds(ref)
     fy_trips = [t for t in trips if fy_start <= parse_date(t["date"]) < fy_end]
     business_km = round(sum(trip_business_km(t) for t in fy_trips), 2)
@@ -546,7 +589,8 @@ def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
         logbook_pct = float(profile.get("business_use_fallback", 100)) / 100.0
         pct_source = "fallback"
 
-    cats, recurring, eligible = _fy_vehicle_expenses(profile, expenses, fy_start, fy_end)
+    recurring_payment = (vehicle or {}).get("recurring_payment") if vehicle else profile.get("recurring_payment")
+    cats, recurring, eligible = _fy_vehicle_expenses(expenses, fy_start, fy_end, recurring_payment)
     logbook_deduction = round(eligible * logbook_pct, 2)
 
     rate = cpk_rate(fy_start.year)
@@ -581,6 +625,7 @@ def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
         },
         "recommend": recommend,
         "recommend_label": "Logbook method" if recommend == "logbook" else "Cents per kilometre",
+        "recommended_deduction": logbook_deduction if recommend == "logbook" else cpk_deduction,
         "difference": difference,
         "disclaimer": ("This is an estimate, not tax advice. Your final deduction "
                        "depends on your actual eligible expenses, vehicle circumstances "
@@ -588,9 +633,9 @@ def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
     }
 
 
-def odometer_check(profile: dict, trips: List[dict], ref: date) -> Dict[str, Any]:
+def odometer_check(vehicle: Optional[dict], trips: List[dict], ref: date) -> Dict[str, Any]:
     fy_start, fy_end = _fy_bounds(ref)
-    v = profile.get("vehicle") or {}
+    v = vehicle or {}
     gps_km = round(sum(float(t["distance_km"]) for t in trips
                        if fy_start <= parse_date(t["date"]) < fy_end), 2)
     opening = v.get("opening_odometer")
@@ -616,26 +661,62 @@ def odometer_check(profile: dict, trips: List[dict], ref: date) -> Dict[str, Any
 
 
 def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
-                expenses: List[dict], ref: date) -> Dict[str, Any]:
+                expenses: List[dict], ref: date,
+                vehicles: Optional[List[dict]] = None,
+                vehicle_id: Optional[str] = None) -> Dict[str, Any]:
     fy_start, fy_end = _fy_bounds(ref)
     t_iso = ref.isoformat()
 
     def in_fy(row):
         return fy_start <= parse_date(row["date"]) < fy_end
 
-    # ---- today ----
+    veh_list = vehicles or []
+    active = next((v for v in veh_list if v.get("is_active")), None)
+    selected = None
+    if vehicle_id:
+        selected = next((v for v in veh_list if v.get("id") == vehicle_id), None)
+    selected = selected or active or (veh_list[0] if veh_list else None)
+    sel_id = selected.get("id") if selected else None
+
+    def veh_trips(vid):
+        return [t for t in trips if t.get("vehicle_id") == vid]
+
+    def veh_exp(vid):
+        return [e for e in expenses if e.get("vehicle_id") == vid]
+
+    v_trips = veh_trips(sel_id) if sel_id else trips
+    v_exp = veh_exp(sel_id) if sel_id else expenses
+
+    # ---- today (driver-level snapshot across all cars) ----
     today_trips = [t for t in trips if str(t["date"])[:10] == t_iso]
     today_biz = round(sum(trip_business_km(t) for t in today_trips), 2)
     today_priv = round(sum(trip_personal_km(t) for t in today_trips), 2)
     today_total = round(today_biz + today_priv, 2)
     today_income = round(sum(i["amount"] for i in incomes if str(i["date"])[:10] == t_iso), 2)
 
-    # ---- financial year ----
+    # ---- financial year (driver-level snapshot across all cars) ----
     fy_trips = [t for t in trips if in_fy(t)]
     fy_biz = round(sum(trip_business_km(t) for t in fy_trips), 2)
     fy_priv = round(sum(trip_personal_km(t) for t in fy_trips), 2)
     fy_total = round(fy_biz + fy_priv, 2)
     fy_income = round(sum(i["amount"] for i in incomes if in_fy(i)), 2)
+
+    # ---- per-vehicle summaries (each car keeps its own logbook + deduction) ----
+    summaries = []
+    for v in veh_list:
+        vt = veh_trips(v["id"])
+        ve = veh_exp(v["id"])
+        mc = method_comparison(profile, vt, ve, ref, vehicle=v)
+        summaries.append({
+            "id": v["id"],
+            "name": v.get("name") or v.get("make_model") or "Vehicle",
+            "registration": v.get("registration"),
+            "is_active": bool(v.get("is_active")),
+            "business_km": mc["business_km"],
+            "business_pct": mc["logbook"]["business_pct"],
+            "recommend_label": mc["recommend_label"],
+            "deduction": mc["recommended_deduction"],
+        })
 
     return {
         "currency": "AUD", "symbol": "$", "distance_unit": "km",
@@ -659,8 +740,12 @@ def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
             "income": fy_income,
             "per_business_km": round(fy_income / fy_biz, 2) if fy_biz > 0 else None,
         },
-        "logbook": logbook_summary(profile, trips, ref),
-        "method_comparison": method_comparison(profile, trips, expenses, ref),
-        "odometer": odometer_check(profile, trips, ref),
-        "vehicle": profile.get("vehicle") or {},
+        "logbook": logbook_summary(profile, v_trips, ref),
+        "method_comparison": method_comparison(profile, v_trips, v_exp, ref, vehicle=selected),
+        "odometer": odometer_check(selected, v_trips, ref),
+        "vehicle": selected or (profile.get("vehicle") or {}),
+        "vehicles": summaries,
+        "selected_vehicle_id": sel_id,
+        "active_vehicle_id": active.get("id") if active else sel_id,
     }
+

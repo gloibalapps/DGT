@@ -45,7 +45,7 @@ function Kpi({ label, value }: { label: string; value: string }) {
 
 export default function Home() {
   const { colors } = useTheme();
-  const { profile, version } = useStore();
+  const { profile, version, activeVehicle } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const [data, setData] = useState<any>(null);
@@ -150,7 +150,7 @@ export default function Home() {
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Ionicons name="car-sport" size={18} color={colors.accent} style={{ marginRight: 6 }} />
-                <AppText variant="label" color={colors.dim}>TAX MILEAGE · FY {tm.method_comparison.fy_label}</AppText>
+                <AppText variant="label" color={colors.dim}>TAX MILEAGE · {activeVehicle?.name || activeVehicle?.make_model || "FY"} · {tm.method_comparison.fy_label}</AppText>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.dim} />
             </View>

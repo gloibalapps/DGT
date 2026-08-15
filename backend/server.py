@@ -51,18 +51,25 @@ class RecurringPayment(BaseModel):
 
 
 class Vehicle(BaseModel):
-    """Rich vehicle record powering the Tax Mileage / logbook engine."""
+    """Standalone vehicle document — each car keeps its own logbook & deduction."""
     model_config = ConfigDict(extra="allow")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    profile_id: str
+    name: Optional[str] = None
     registration: Optional[str] = None
     make_model: Optional[str] = None
     year: Optional[int] = None
     purchase_price: Optional[float] = None
     fuel_type: Optional[Literal["petrol", "diesel", "hybrid", "electric", "lpg"]] = None
-    business_use_start: Optional[str] = None      # YYYY-MM-DD
-    opening_odometer: Optional[float] = None       # FY opening reading
+    business_use_start: Optional[str] = None
+    ownership: Literal["own", "loan", "lease", "rental", "rent_to_buy"] = "own"
+    recurring_payment: Optional[RecurringPayment] = None
+    opening_odometer: Optional[float] = None
     opening_odometer_date: Optional[str] = None
-    closing_odometer: Optional[float] = None       # FY closing reading
+    closing_odometer: Optional[float] = None
     closing_odometer_date: Optional[str] = None
+    is_active: bool = False
+    created_at: str = Field(default_factory=now_iso)
 
 
 class Profile(BaseModel):
@@ -76,7 +83,7 @@ class Profile(BaseModel):
     vehicle_ownership: Literal["own", "loan", "lease", "rental", "rent_to_buy"] = "own"
     acquisition_date: Optional[str] = None
     recurring_payment: Optional[RecurringPayment] = None
-    vehicle: Optional[Vehicle] = None
+    vehicle: Optional[dict] = None  # legacy single-vehicle blob (migration source)
     # tax setup
     legal_name: Optional[str] = None
     accounting_method: Literal["cash", "accrual"] = "cash"
@@ -102,6 +109,7 @@ class Trip(BaseModel):
     type: Literal["business", "personal", "mixed"] = "business"
     business_pct: Optional[float] = None  # for mixed trips (0-100)
     purpose: Optional[str] = None         # collect/deliver/between_jobs/other_business/home/shopping/appointment/personal_other
+    vehicle_id: Optional[str] = None
     from_label: Optional[str] = None
     to_label: Optional[str] = None
     odo_start: Optional[float] = None
@@ -129,6 +137,7 @@ class Expense(BaseModel):
     amount: float
     category: Literal["fuel", "tolls", "vehicle", "phone", "other"] = "other"
     merchant: Optional[str] = None
+    vehicle_id: Optional[str] = None
     tax_treatment: Literal["inclusive", "free", "exempt", "out_of_scope"] = "inclusive"
     note: Optional[str] = None
     receipt_image: Optional[str] = None  # base64
@@ -139,6 +148,108 @@ def clean(doc: dict) -> dict:
     doc = dict(doc)
     doc.pop("_id", None)
     return doc
+
+
+# ---------------------------------------------------------------------------
+# Vehicles — each car keeps its own logbook & deduction
+# ---------------------------------------------------------------------------
+def _default_vehicle_from_profile(profile: dict) -> dict:
+    v = profile.get("vehicle") or {}
+    return Vehicle(
+        profile_id=profile["profile_id"],
+        name=v.get("make_model") or "My Vehicle",
+        registration=v.get("registration"),
+        make_model=v.get("make_model"),
+        year=v.get("year"),
+        purchase_price=v.get("purchase_price"),
+        fuel_type=v.get("fuel_type"),
+        business_use_start=v.get("business_use_start"),
+        ownership=profile.get("vehicle_ownership", "own"),
+        recurring_payment=profile.get("recurring_payment"),
+        opening_odometer=v.get("opening_odometer"),
+        opening_odometer_date=v.get("opening_odometer_date"),
+        closing_odometer=v.get("closing_odometer"),
+        closing_odometer_date=v.get("closing_odometer_date"),
+        is_active=True,
+    ).model_dump()
+
+
+async def ensure_vehicles(profile_id: str) -> List[dict]:
+    """Return the profile's vehicles, migrating legacy single-vehicle data and
+    back-filling vehicle_id on existing trips/expenses the first time."""
+    docs = await db.vehicles.find({"profile_id": profile_id}).sort("created_at", 1).to_list(100)
+    if not docs:
+        profile = await db.profiles.find_one({"profile_id": profile_id}) \
+            or Profile(profile_id=profile_id).model_dump()
+        default = _default_vehicle_from_profile(clean(profile))
+        await db.vehicles.insert_one(dict(default))
+        # attach any pre-existing untagged trips/expenses to this first car
+        await db.trips.update_many({"profile_id": profile_id, "vehicle_id": None},
+                                   {"$set": {"vehicle_id": default["id"]}})
+        await db.expenses.update_many({"profile_id": profile_id, "vehicle_id": None},
+                                      {"$set": {"vehicle_id": default["id"]}})
+        docs = [default]
+    docs = [clean(d) for d in docs]
+    if not any(d.get("is_active") for d in docs):
+        await db.vehicles.update_one({"id": docs[0]["id"]}, {"$set": {"is_active": True}})
+        docs[0]["is_active"] = True
+    return docs
+
+
+async def _set_active(profile_id: str, vehicle_id: str):
+    await db.vehicles.update_many({"profile_id": profile_id}, {"$set": {"is_active": False}})
+    await db.vehicles.update_one({"id": vehicle_id, "profile_id": profile_id},
+                                 {"$set": {"is_active": True}})
+
+
+@api_router.get("/vehicles")
+async def list_vehicles(profile_id: str = Query(...)):
+    return await ensure_vehicles(profile_id)
+
+
+@api_router.post("/vehicles")
+async def add_vehicle(payload: dict):
+    existing = await ensure_vehicles(payload["profile_id"])
+    make_first_active = payload.get("is_active") or len(existing) == 0
+    obj = Vehicle(**payload)
+    obj.is_active = bool(make_first_active)
+    await db.vehicles.insert_one(obj.model_dump())
+    if obj.is_active:
+        await _set_active(obj.profile_id, obj.id)
+    return await ensure_vehicles(obj.profile_id)
+
+
+@api_router.put("/vehicles/{vehicle_id}")
+async def update_vehicle(vehicle_id: str, payload: dict):
+    existing = await db.vehicles.find_one({"id": vehicle_id})
+    if not existing:
+        raise HTTPException(404, "vehicle not found")
+    base = clean(existing)
+    base.update(payload)
+    obj = Vehicle(**base)
+    await db.vehicles.update_one({"id": vehicle_id}, {"$set": obj.model_dump()})
+    if obj.is_active:
+        await _set_active(obj.profile_id, vehicle_id)
+    return await ensure_vehicles(obj.profile_id)
+
+
+@api_router.post("/vehicles/{vehicle_id}/activate")
+async def activate_vehicle(vehicle_id: str, profile_id: str = Query(...)):
+    await _set_active(profile_id, vehicle_id)
+    return await ensure_vehicles(profile_id)
+
+
+@api_router.delete("/vehicles/{vehicle_id}")
+async def delete_vehicle(vehicle_id: str, profile_id: str = Query(...)):
+    all_v = await ensure_vehicles(profile_id)
+    if len(all_v) <= 1:
+        raise HTTPException(400, "You must keep at least one vehicle")
+    was_active = next((v for v in all_v if v["id"] == vehicle_id), {}).get("is_active")
+    await db.vehicles.delete_one({"id": vehicle_id, "profile_id": profile_id})
+    remaining = await db.vehicles.find({"profile_id": profile_id}).sort("created_at", 1).to_list(100)
+    if was_active and remaining:
+        await _set_active(profile_id, clean(remaining[0])["id"])
+    return await ensure_vehicles(profile_id)
 
 
 # ---------------------------------------------------------------------------
@@ -274,52 +385,55 @@ async def _load_all(profile_id):
     profile = await db.profiles.find_one({"profile_id": profile_id})
     if not profile:
         profile = Profile(profile_id=profile_id).model_dump()
+    vehicles = await ensure_vehicles(profile_id)
     trips = await db.trips.find({"profile_id": profile_id}).to_list(5000)
     income = await db.income.find({"profile_id": profile_id}).to_list(5000)
     expenses = await db.expenses.find({"profile_id": profile_id}).to_list(5000)
     return (clean(profile), [clean(t) for t in trips],
-            [clean(i) for i in income], [clean(e) for e in expenses])
+            [clean(i) for i in income], [clean(e) for e in expenses], vehicles)
 
 
 @api_router.get("/reports")
 async def reports(profile_id: str = Query(...),
                   period: str = Query("quarter"),
                   ref_date: Optional[str] = Query(None)):
-    profile, trips, income, expenses = await _load_all(profile_id)
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
-    return taxlib.compute_report(profile, trips, income, expenses, period, ref)
+    return taxlib.compute_report(profile, trips, income, expenses, period, ref, vehicles)
 
 
 @api_router.get("/dashboard")
 async def dashboard(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
-    profile, trips, income, expenses = await _load_all(profile_id)
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
-    return taxlib.dashboard(profile, trips, income, expenses, ref)
+    return taxlib.dashboard(profile, trips, income, expenses, ref, vehicles)
 
 
 @api_router.get("/performance")
 async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
-    profile, trips, income, expenses = await _load_all(profile_id)
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     return taxlib.performance(profile, trips, income, expenses, ref)
 
 
 @api_router.get("/tax-mileage")
-async def tax_mileage(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+async def tax_mileage(profile_id: str = Query(...), ref_date: Optional[str] = Query(None),
+                      vehicle_id: Optional[str] = Query(None)):
     """Full Tax Mileage engine: today, FY summary, ATO logbook, method
     comparison (logbook vs cents-per-km) and odometer reconciliation."""
-    profile, trips, income, expenses = await _load_all(profile_id)
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
-    return taxlib.tax_mileage(profile, trips, income, expenses, ref)
+    return taxlib.tax_mileage(profile, trips, income, expenses, ref,
+                              vehicles=vehicles, vehicle_id=vehicle_id)
 
 
 @api_router.get("/export")
 async def export_csv(profile_id: str = Query(...),
                      period: str = Query("quarter"),
                      ref_date: Optional[str] = Query(None)):
-    profile, trips, income, expenses = await _load_all(profile_id)
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
-    rep = taxlib.compute_report(profile, trips, income, expenses, period, ref)
+    rep = taxlib.compute_report(profile, trips, income, expenses, period, ref, vehicles)
     start = taxlib.parse_date(rep["period_start"])
     end = taxlib.parse_date(rep["period_end"])
 
@@ -371,10 +485,12 @@ async def export_csv(profile_id: str = Query(...),
 
 @api_router.get("/export-mileage")
 async def export_mileage_csv(profile_id: str = Query(...),
-                             ref_date: Optional[str] = Query(None)):
-    profile, trips, income, expenses = await _load_all(profile_id)
+                             ref_date: Optional[str] = Query(None),
+                             vehicle_id: Optional[str] = Query(None)):
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
-    tm = taxlib.tax_mileage(profile, trips, income, expenses, ref)
+    tm = taxlib.tax_mileage(profile, trips, income, expenses, ref,
+                            vehicles=vehicles, vehicle_id=vehicle_id)
     v = tm["vehicle"] or {}
     fy = tm["financial_year"]
     lb = tm["logbook"]
