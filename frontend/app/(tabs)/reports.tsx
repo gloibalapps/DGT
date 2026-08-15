@@ -130,6 +130,13 @@ export default function Reports() {
                 </AppText>
                 <Row label="Net SE earnings (92.35%)" value={rep.se_tax.net_earnings} symbol={rep.symbol} />
                 <Row label="Self-employment tax" value={rep.se_tax.amount} symbol={rep.symbol} strong color={colors.warm} />
+                {rep.se_tax.state_has_tax ? (
+                  <Row label={`State income tax (est. · ${rep.se_tax.state})`} value={rep.se_tax.state_tax} symbol={rep.symbol} color={colors.warm} />
+                ) : (
+                  <AppText variant="caption" color={colors.dim} style={{ marginTop: 4 }}>
+                    {rep.se_tax.state || "Your state"} has no state income tax on gig earnings.
+                  </AppText>
+                )}
                 {rep.se_tax.quarter_due ? (
                   <AppText variant="caption" color={colors.dim} style={{ marginTop: 6 }}>
                     Estimated payment (Form 1040-ES) due {rep.se_tax.quarter_due}.

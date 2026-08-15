@@ -66,6 +66,34 @@ def au_income_tax(taxable: float) -> float:
     return round(tax + levy, 2)
 
 
+# Approximate US state income-tax rates (2025). Flat states use their real flat
+# rate; graduated states use a representative rate for typical gig income (not the
+# top marginal). Nine states levy no income tax on gig earnings.
+US_STATE_TAX_RATE = {
+    # no income tax
+    "AK": 0.0, "FL": 0.0, "NV": 0.0, "NH": 0.0, "SD": 0.0, "TN": 0.0,
+    "TX": 0.0, "WA": 0.0, "WY": 0.0,
+    # flat-tax states
+    "AZ": 0.025, "CO": 0.044, "GA": 0.0539, "IL": 0.0495, "IN": 0.030,
+    "KY": 0.040, "LA": 0.030, "MI": 0.0425, "MS": 0.044, "NC": 0.0425,
+    "PA": 0.0307, "UT": 0.0455, "ID": 0.05695, "IA": 0.038, "MA": 0.050,
+    # graduated states — representative rate for typical gig income
+    "AL": 0.045, "AR": 0.039, "CA": 0.040, "CT": 0.050, "DE": 0.050,
+    "DC": 0.060, "HI": 0.075, "ME": 0.0675, "MD": 0.0475, "MN": 0.068,
+    "MO": 0.047, "MT": 0.059, "NE": 0.052, "NJ": 0.055, "NM": 0.049,
+    "NY": 0.0585, "ND": 0.020, "OH": 0.035, "OK": 0.0475, "OR": 0.0875,
+    "RI": 0.0475, "SC": 0.062, "VT": 0.066, "VA": 0.0575, "WV": 0.045,
+    "WI": 0.053,
+}
+
+
+def us_state_tax(state: Optional[str], taxable: float):
+    st = (state or "").upper()
+    rate = US_STATE_TAX_RATE.get(st, 0.05)  # unknown -> generic 5% estimate
+    amount = round(max(0.0, taxable) * rate, 2)
+    return st, rate, amount
+
+
 
 def us_mileage_rate(d: date) -> float:
     """IRS business standard mileage rate, date-keyed (rate can change mid-year)."""
@@ -477,6 +505,7 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
     # ---- self-employment tax estimate ----
     net_se = round(max(0.0, net_profit) * US_SE_NET_FACTOR, 2)
     se_tax = round(net_se * US_SE_TAX_RATE, 2)
+    st_code, st_rate, st_tax = us_state_tax(profile.get("region"), max(0.0, net_profit))
 
     q_due = None
     if period == "quarter":
@@ -524,6 +553,10 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
             "net_earnings": net_se,
             "rate": US_SE_TAX_RATE,
             "amount": se_tax,
+            "state": st_code,
+            "state_rate": st_rate,
+            "state_tax": st_tax,
+            "state_has_tax": st_rate > 0,
             "quarter_due": q_due,
             "note": ("Self-employment tax is ~15.3% of 92.35% of net profit. "
                      "Set this aside and pay quarterly estimated taxes (Form 1040-ES). "
@@ -600,13 +633,18 @@ def tax_jar(profile: dict, report: dict, ref: date) -> Dict[str, Any]:
         se = report["se_tax"]["amount"]
         taxable = max(0.0, net - se / 2 - US_STD_DEDUCTION)  # half SE-tax is deductible
         fed = us_federal_income_tax(taxable)
-        set_aside = round(se + fed, 2)
+        st_tax = report["se_tax"].get("state_tax", 0.0)
+        st_code = report["se_tax"].get("state") or ""
+        set_aside = round(se + fed + st_tax, 2)
         components = [
             {"label": "Self-employment tax", "amount": se},
             {"label": "Federal income tax (est.)", "amount": fed},
         ]
+        if report["se_tax"].get("state_has_tax"):
+            components.append({"label": f"State income tax (est. · {st_code})", "amount": st_tax})
         note = ("Estimate for a single filer with gig income only, after the standard "
-                "deduction. Save this for SE tax and quarterly 1040-ES payments. Not tax advice.")
+                "deduction. Includes federal, self-employment and approximate state income "
+                "tax. Save this for SE tax and quarterly 1040-ES payments. Not tax advice.")
     else:
         it = au_income_tax(max(0.0, net))
         gst_owed = max(0.0, report["bas"]["net_gst"]) if report.get("show_bas") else 0.0

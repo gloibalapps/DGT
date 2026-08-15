@@ -76,8 +76,9 @@ class TestTaxJarUS:
         fed = next(c["amount"] for c in jar["components"] if c["label"] == "Federal income tax (est.)")
         assert se > 0
         assert fed >= 0
-        # set_aside = SE + Fed (rounded)
-        assert abs(jar["set_aside"] - round(se + fed, 2)) < 0.02
+        # set_aside = sum of all components (SE + Fed + optional State)
+        comp_sum = round(sum(c["amount"] for c in jar["components"]), 2)
+        assert abs(jar["set_aside"] - comp_sum) < 0.02
         assert jar["set_aside"] > 0
         assert jar["tax_year_label"] == "2026"
         assert jar["net_profit"] > 0
