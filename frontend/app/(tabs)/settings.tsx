@@ -6,12 +6,14 @@ import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
+import { useAuth } from "@/src/auth";
+import { useSubscription } from "@/src/subscription";
 import { api } from "@/src/api";
 import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
 import {
-  WORK_TYPES, OWNERSHIP, PLATFORMS, FREQUENCIES, AU_STATES, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
+  WORK_TYPES, OWNERSHIP, platformsForWorkType, FREQUENCIES, AU_STATES, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
@@ -31,6 +33,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function Settings() {
   const { colors, mode, toggle } = useTheme();
   const { profile, updateProfile, version } = useStore();
+  const { user, signOut } = useAuth();
+  const { isActive: subActive } = useSubscription();
   const { show } = useToast();
   const router = useRouter();
 
@@ -102,6 +106,59 @@ export default function Settings() {
 
   return (
     <Screen header={<ScreenHeader subtitle="Configuration" title="Settings" />} scroll>
+      {/* Account */}
+      {user ? (
+        <Section title="Account">
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {user.picture ? (
+              <Image source={{ uri: user.picture }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }} contentFit="cover" />
+            ) : (
+              <View style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="person" size={22} color={colors.dim} />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">{user.name || "Signed in"}</AppText>
+              <AppText variant="caption" color={colors.dim}>{user.email}</AppText>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10 }}>
+            <Ionicons name="cloud-done-outline" size={15} color={colors.profit} style={{ marginRight: 6 }} />
+            <AppText variant="caption" color={colors.dim}>Your data syncs securely across your phones.</AppText>
+          </View>
+          <Pressable testID="set-signout" onPress={signOut}
+            style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
+              paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+            <Ionicons name="log-out-outline" size={18} color={colors.loss} style={{ marginRight: 8 }} />
+            <AppText variant="bodySemi" color={colors.loss}>Sign out</AppText>
+          </Pressable>
+        </Section>
+      ) : null}
+
+      {/* Subscription */}
+      <Section title="Subscription">
+        <Pressable testID="set-subscription" onPress={() => router.push("/paywall" as any)}
+          style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="rocket" size={20} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodySemi">{subActive ? "GigTax Pro" : "Upgrade to GigTax Pro"}</AppText>
+            <AppText variant="caption" color={colors.dim}>
+              {subActive ? "Your subscription is active" : "7-day free trial · monthly or yearly"}
+            </AppText>
+          </View>
+          {subActive ? (
+            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
+              <AppText variant="caption" color={colors.bg} style={{ fontWeight: "700" }}>ACTIVE</AppText>
+            </View>
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+          )}
+        </Pressable>
+      </Section>
+
       {/* Driver */}
       <Section title="Driver">
         <Field label="Your name" hint="Shown on your dashboard">
@@ -206,21 +263,6 @@ export default function Settings() {
         ) : null}
       </Section>
 
-      {/* Work type */}
-      <Section title="Work type">
-        {WORK_TYPES.map((w) => {
-          const active = w.key === profile.work_type;
-          return (
-            <Pressable key={w.key} testID={`set-worktype-${w.key}`} onPress={() => updateProfile({ work_type: w.key as any })}
-              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
-              <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={20}
-                color={active ? colors.accent : colors.dim} style={{ marginRight: 10 }} />
-              <AppText variant="bodyMed" style={{ flex: 1 }}>{w.label}</AppText>
-            </Pressable>
-          );
-        })}
-      </Section>
-
       {/* Business use % read only */}
       <Section title="Business-use %">
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -301,15 +343,36 @@ export default function Settings() {
         </View>
       </Section>
 
+      {/* Work type */}
+      <Section title="Work type">
+        {WORK_TYPES.map((w) => {
+          const active = w.key === profile.work_type;
+          return (
+            <Pressable key={w.key} testID={`set-worktype-${w.key}`} onPress={() => {
+                const allowed = platformsForWorkType(w.key).map((p) => p.name);
+                updateProfile({
+                  work_type: w.key as any,
+                  platforms: profile.platforms.filter((p) => allowed.includes(p)),
+                });
+              }}
+              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
+              <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={20}
+                color={active ? colors.accent : colors.dim} style={{ marginRight: 10 }} />
+              <AppText variant="bodyMed" style={{ flex: 1 }}>{w.label}</AppText>
+            </Pressable>
+          );
+        })}
+      </Section>
+
       {/* Platforms */}
       <Section title="Platforms">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {PLATFORMS.map((p) => {
-            const active = profile.platforms.includes(p);
+          {platformsForWorkType(profile.work_type).map((p) => {
+            const active = profile.platforms.includes(p.name);
             return (
-              <Pressable key={p} testID={`set-platform-${p}`}
+              <Pressable key={p.name} testID={`set-platform-${p.name}`}
                 onPress={() => {
-                  const next = active ? profile.platforms.filter((x) => x !== p) : [...profile.platforms, p];
+                  const next = active ? profile.platforms.filter((x) => x !== p.name) : [...profile.platforms, p.name];
                   updateProfile({ platforms: next });
                 }}
                 style={{
@@ -317,7 +380,7 @@ export default function Settings() {
                   backgroundColor: active ? colors.accent : colors.surfaceAlt,
                   borderWidth: 1, borderColor: active ? colors.accent : colors.border,
                 }}>
-                <AppText variant="label" color={active ? colors.bg : colors.dim}>{p}</AppText>
+                <AppText variant="label" color={active ? colors.bg : colors.dim}>{p.name}</AppText>
               </Pressable>
             );
           })}

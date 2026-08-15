@@ -10,7 +10,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast, DateField } from "@/src/ui";
-import { COUNTRIES, AU_STATES, US_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
+import { COUNTRIES, AU_STATES, US_STATES, WORK_TYPES, platformsForWorkType, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -165,7 +165,11 @@ export default function Onboarding() {
               {WORK_TYPES.map((w) => {
                 const active = w.key === workType;
                 return (
-                  <Pressable key={w.key} testID={`worktype-${w.key}`} onPress={() => setWorkType(w.key)} style={{ marginBottom: 10 }}>
+                  <Pressable key={w.key} testID={`worktype-${w.key}`} onPress={() => {
+                      setWorkType(w.key);
+                      const allowed = platformsForWorkType(w.key).map((p) => p.name);
+                      setPlatforms((cur) => cur.filter((p) => allowed.includes(p)));
+                    }} style={{ marginBottom: 10 }}>
                     <Card style={{ borderColor: active ? colors.accent : colors.border, flexDirection: "row", alignItems: "flex-start" }}>
                       <Ionicons name={w.icon as any} size={24} color={active ? colors.accent : colors.dim} style={{ marginRight: 12, marginTop: 2 }} />
                       <View style={{ flex: 1 }}>
@@ -187,16 +191,16 @@ export default function Onboarding() {
                 Pick all you drive for. Speeds up logging income later.
               </AppText>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {PLATFORMS.map((p) => {
-                  const active = platforms.includes(p);
+                {platformsForWorkType(workType).map((p) => {
+                  const active = platforms.includes(p.name);
                   return (
-                    <Pressable key={p} testID={`platform-${p}`} onPress={() => togglePlatform(p)}
+                    <Pressable key={p.name} testID={`platform-${p.name}`} onPress={() => togglePlatform(p.name)}
                       style={{
                         paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12,
                         backgroundColor: active ? colors.accent : colors.surface,
                         borderWidth: 1, borderColor: active ? colors.accent : colors.border,
                       }}>
-                      <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{p}</AppText>
+                      <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{p.name}</AppText>
                     </Pressable>
                   );
                 })}

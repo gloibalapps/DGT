@@ -49,10 +49,25 @@ export const WORK_TYPES = [
   },
 ] as const;
 
-export const PLATFORMS = [
-  "Uber", "Uber Eats", "DoorDash", "Menulog", "Amazon Flex",
-  "DiDi", "Ola", "Lyft", "HungryPanda", "Other",
+export const PLATFORMS: { name: string; type: "passengers" | "delivery" | "both" }[] = [
+  { name: "Uber", type: "passengers" },
+  { name: "DiDi", type: "passengers" },
+  { name: "Ola", type: "passengers" },
+  { name: "Lyft", type: "passengers" },
+  { name: "Uber Eats", type: "delivery" },
+  { name: "DoorDash", type: "delivery" },
+  { name: "Menulog", type: "delivery" },
+  { name: "Amazon Flex", type: "delivery" },
+  { name: "HungryPanda", type: "delivery" },
+  { name: "Other", type: "both" },
 ];
+
+// Platforms relevant to the selected work type ("both" shows everything).
+// "Other" is always available.
+export function platformsForWorkType(workType: string) {
+  if (workType === "both" || !workType) return PLATFORMS;
+  return PLATFORMS.filter((p) => p.type === workType || p.type === "both");
+}
 
 export const OWNERSHIP = [
   {

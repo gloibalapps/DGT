@@ -3,11 +3,12 @@ import io
 import csv
 import uuid
 import logging
+import httpx
 from pathlib import Path
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional, Literal, Annotated
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -35,6 +36,116 @@ logger = logging.getLogger("gigtax")
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Authentication — Emergent-managed Google sign-in (cross-device sync)
+# ---------------------------------------------------------------------------
+EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+
+@app.on_event("startup")
+async def _startup_indexes():
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("user_id", unique=True)
+        await db.user_sessions.create_index("session_token", unique=True)
+        await db.user_sessions.create_index("user_id")
+        await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
+    except Exception as e:  # pragma: no cover
+        logger.warning("index setup: %s", e)
+
+
+async def current_user(authorization: Optional[str] = Header(None)) -> dict:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.split(" ", 1)[1].strip()
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not sess:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    exp = sess.get("expires_at")
+    if isinstance(exp, datetime):
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="Session expired")
+    user = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+@api_router.post("/auth/session")
+async def auth_session(payload: dict = Body(...)):
+    session_id = (payload or {}).get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+    async with httpx.AsyncClient(timeout=15) as hc:
+        r = await hc.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": session_id})
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired session_id")
+    data = r.json()
+    email = data.get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="No email returned")
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one({"user_id": user_id},
+                                  {"$set": {"name": data.get("name"), "picture": data.get("picture")}})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({
+            "user_id": user_id, "email": email, "name": data.get("name"),
+            "picture": data.get("picture"), "created_at": now_iso(),
+        })
+    session_token = data.get("session_token") or uuid.uuid4().hex
+    await db.user_sessions.insert_one({
+        "session_token": session_token, "user_id": user_id,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+    })
+    return {"session_token": session_token,
+            "user": {"user_id": user_id, "email": email,
+                     "name": data.get("name"), "picture": data.get("picture")}}
+
+
+@api_router.get("/auth/me")
+async def auth_me(authorization: Optional[str] = Header(None)):
+    user = await current_user(authorization)
+    return {"user": user}
+
+
+@api_router.post("/auth/logout")
+async def auth_logout(authorization: Optional[str] = Header(None)):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        await db.user_sessions.delete_one({"session_token": token})
+    return {"ok": True}
+
+
+@api_router.post("/auth/claim")
+async def auth_claim(payload: dict = Body(...), authorization: Optional[str] = Header(None)):
+    """Move a device's local (anonymous) data onto the signed-in account, once,
+    only if that account has no data yet — so first-time login keeps your work."""
+    user = await current_user(authorization)
+    src = (payload or {}).get("from_profile_id")
+    uid = user["user_id"]
+    if not src or src == uid:
+        return {"claimed": False}
+    has_data = False
+    for coll in (db.profiles, db.vehicles, db.trips, db.income, db.expenses):
+        if await coll.find_one({"profile_id": uid}):
+            has_data = True
+            break
+    if has_data:
+        return {"claimed": False}
+    moved = 0
+    for coll in (db.profiles, db.vehicles, db.trips, db.income, db.expenses):
+        res = await coll.update_many({"profile_id": src}, {"$set": {"profile_id": uid}})
+        moved += res.modified_count
+    return {"claimed": moved > 0, "moved": moved}
+
 
 
 PyObjectId = Annotated[str, BeforeValidator(str)]

@@ -12,16 +12,23 @@ function uuid(): string {
 }
 
 let _pid: string | null = null;
+let _authPid: string | null = null;
+let _authToken: string | null = null;
+
+export function setAuthProfileId(id: string | null) { _authPid = id; }
+export function setAuthToken(t: string | null) { _authToken = t; }
+
+export async function getLocalProfileId(): Promise<string> {
+  let id = await storage.getItem<string>(PID_KEY, "");
+  if (!id) { id = uuid(); await storage.setItem(PID_KEY, id); }
+  return id;
+}
 
 export async function getProfileId(): Promise<string> {
+  if (_authPid) return _authPid;
   if (_pid) return _pid;
-  let id = await storage.getItem<string>(PID_KEY, "");
-  if (!id) {
-    id = uuid();
-    await storage.setItem(PID_KEY, id);
-  }
-  _pid = id;
-  return id;
+  _pid = await getLocalProfileId();
+  return _pid;
 }
 
 async function req(path: string, opts: RequestInit = {}, retries = 2): Promise<any> {
@@ -34,7 +41,9 @@ async function req(path: string, opts: RequestInit = {}, retries = 2): Promise<a
     const res = await fetch(`${BASE}/api${path}`, {
       ...opts,
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+      headers: { "Content-Type": "application/json",
+        ...(_authToken ? { Authorization: `Bearer ${_authToken}` } : {}),
+        ...(opts.headers || {}) },
     });
     clearTimeout(timer);
     if (!res.ok) {
@@ -131,6 +140,14 @@ export interface ExpenseT {
 }
 
 export const api = {
+  async authSession(sessionId: string) {
+    return req(`/auth/session`, { method: "POST", body: JSON.stringify({ session_id: sessionId }) });
+  },
+  async authMe() { return req(`/auth/me`); },
+  async authLogout() { return req(`/auth/logout`, { method: "POST" }); },
+  async authClaim(fromProfileId: string) {
+    return req(`/auth/claim`, { method: "POST", body: JSON.stringify({ from_profile_id: fromProfileId }) });
+  },
   async getProfile(): Promise<ProfileT> {
     const pid = await getProfileId();
     return req(`/profile?profile_id=${pid}`);
