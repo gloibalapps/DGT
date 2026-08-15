@@ -2,6 +2,7 @@ import React, { useCallback, useState, useEffect } from "react";
 import { View, Pressable, ScrollView, Linking } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
@@ -10,7 +11,7 @@ import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
 import {
-  WORK_TYPES, OWNERSHIP, PLATFORMS, FREQUENCIES, AU_STATES, COUNTRIES,
+  WORK_TYPES, OWNERSHIP, PLATFORMS, FREQUENCIES, AU_STATES, COUNTRIES, flagUrl,
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
@@ -149,13 +150,48 @@ export default function Settings() {
         </Pressable>
       </Section>
 
-      {/* Location */}
-      <Section title="Country & region">
-        <AppText variant="bodyMed" style={{ marginBottom: 8 }}>
-          {COUNTRIES.find((c) => c.code === profile.country)?.name || profile.country}
+      {/* Country & region */}
+      <Section title="Country">
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
+          Tax rules differ by country. Switching updates your reports, mileage rates and currency.
         </AppText>
-        <ChipRow options={AU_STATES.map((s) => ({ key: s, label: s }))} value={profile.region || "NSW"}
-          onChange={(r) => updateProfile({ region: r })} testIDPrefix="set-state" />
+        {COUNTRIES.map((c) => {
+          const active = c.code === profile.country;
+          return (
+            <Pressable key={c.code} testID={`set-country-${c.code}`}
+              disabled={!c.active}
+              onPress={() => {
+                if (c.code === profile.country) return;
+                updateProfile({ country: c.code as any, region: c.code === "AU" ? (profile.region || "NSW") : null } as any);
+                show(`Switched to ${c.name}`, "success");
+              }}
+              style={{ marginBottom: 8, opacity: c.active ? 1 : 0.4 }}>
+              <View style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 10,
+                borderWidth: 1, borderColor: active ? colors.accent : colors.border,
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                  <Image source={{ uri: flagUrl(c.code, 160) }}
+                    style={{ width: 40, height: 27, borderRadius: 5, marginRight: 12, borderWidth: 1, borderColor: colors.border }}
+                    contentFit="cover" />
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="bodySemi">{c.name}</AppText>
+                    <AppText variant="caption" color={colors.dim}>{c.currency} · {c.distanceUnit}{c.active ? "" : " · coming soon"}</AppText>
+                  </View>
+                </View>
+                {active ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} /> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+        {profile.country === "AU" ? (
+          <View style={{ marginTop: 8 }}>
+            <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>STATE / TERRITORY</AppText>
+            <ChipRow options={AU_STATES.map((s) => ({ key: s, label: s }))} value={profile.region || "NSW"}
+              onChange={(r) => updateProfile({ region: r })} testIDPrefix="set-state" />
+          </View>
+        ) : null}
       </Section>
 
       {/* Work type */}
@@ -238,14 +274,16 @@ export default function Settings() {
         <PrimaryButton testID="set-vehicle-save" label="Save vehicle details" onPress={saveVehicle} style={{ marginTop: 6 }} />
       </Section>
 
-      {/* Deduction method (AU) */}
+      {/* Deduction method */}
       <Section title="Deduction method">
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Ionicons name="lock-closed" size={16} color={colors.dim} style={{ marginRight: 8 }} />
+          <Ionicons name={profile.country === "US" ? "git-compare" : "lock-closed"} size={16} color={colors.dim} style={{ marginRight: 8 }} />
           <View style={{ flex: 1 }}>
-            <AppText variant="bodyMed">Logbook method</AppText>
+            <AppText variant="bodyMed">{profile.country === "US" ? "Standard mileage vs actual" : "Logbook method"}</AppText>
             <AppText variant="caption" color={colors.dim}>
-              Australia uses the logbook method. Cents-per-km is capped at 5,000 business km/year (88c/km FY25-26, 91c from 1 Jul 2026) — not offered, since full-time drivers exceed the cap in weeks.
+              {profile.country === "US"
+                ? "United States — GigTax compares the IRS standard mileage rate (72.5¢/mi Jan–Jun 2026, 76¢ from 1 Jul) against your actual expenses and recommends the larger deduction on Schedule C."
+                : "Australia uses the logbook method. Cents-per-km is capped at 5,000 business km/year (88c/km FY25-26, 91c from 1 Jul 2026) — not offered, since full-time drivers exceed the cap in weeks."}
             </AppText>
           </View>
         </View>
