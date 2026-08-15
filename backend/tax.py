@@ -20,6 +20,39 @@ FULL_CLAIM_CATEGORIES = {"tolls", "phone", "other"}  # claimed in full
 
 CYCLE_DAYS = {"weekly": 7.0, "fortnightly": 14.0, "monthly": 365.0 / 12.0}
 
+# Cents-per-km rate by AU financial year (year = the July the FY starts).
+AU_CENTS_PER_KM = {2024: 0.88, 2025: 0.88, 2026: 0.91}
+AU_CPK_MAX_KM = 5000
+
+# Trip purpose taxonomy (used for the audit trail; classification lives on `type`)
+BUSINESS_PURPOSES = {"collect", "deliver", "between_jobs", "other_business"}
+PRIVATE_PURPOSES = {"home", "shopping", "appointment", "personal_other"}
+LOGBOOK_WINDOW_DAYS = 84  # 12 continuous weeks
+
+
+def cpk_rate(fy_start_year: int) -> float:
+    if fy_start_year in AU_CENTS_PER_KM:
+        return AU_CENTS_PER_KM[fy_start_year]
+    return AU_CENTS_PER_KM[max(AU_CENTS_PER_KM)]
+
+
+def trip_business_km(t: dict) -> float:
+    """Business kilometres for a trip, honouring mixed-trip business_pct."""
+    typ = t.get("type", "business")
+    d = float(t.get("distance_km") or 0)
+    if typ == "personal":
+        return 0.0
+    if typ == "mixed":
+        pct = t.get("business_pct")
+        pct = 100.0 if pct is None else float(pct)
+        return round(d * max(0.0, min(100.0, pct)) / 100.0, 3)
+    return d
+
+
+def trip_personal_km(t: dict) -> float:
+    d = float(t.get("distance_km") or 0)
+    return round(d - trip_business_km(t), 3)
+
 
 def parse_date(s: str) -> date:
     return datetime.fromisoformat(str(s)[:10]).date()
@@ -134,11 +167,8 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
     p_exp = [e for e in expenses if in_period(e)]
 
     # ---- business-use % (derived, never typed) ----
-    def is_business(t):
-        return t.get("type", "business") != "personal"  # untagged -> business
-
-    business_km = round(sum(t["distance_km"] for t in p_trips if is_business(t)), 2)
-    personal_km = round(sum(t["distance_km"] for t in p_trips if not is_business(t)), 2)
+    business_km = round(sum(trip_business_km(t) for t in p_trips), 2)
+    personal_km = round(sum(trip_personal_km(t) for t in p_trips), 2)
     total_km = round(business_km + personal_km, 2)
     fallback = float(profile.get("business_use_fallback", 100)) / 100.0
     business_use = (business_km / total_km) if total_km > 0 else fallback
@@ -273,9 +303,9 @@ def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str,
 
         inc = sum(x["amount"] for x in incomes if in_w(x))
         exp = sum(x["amount"] for x in expenses if in_w(x))
-        wt = [t for t in trips if in_w(t) and t.get("type", "business") != "personal"]
-        bkm = sum(t["distance_km"] for t in wt)
-        mins = sum((t.get("duration_min") or 0) for t in wt)
+        wt = [t for t in trips if in_w(t)]
+        bkm = sum(trip_business_km(t) for t in wt)
+        mins = sum((t.get("duration_min") or 0) for t in wt if trip_business_km(t) > 0)
         weeks.append({
             "label": ws.strftime("%d/%m"),
             "start": ws.isoformat(),
@@ -310,9 +340,8 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date) -> Dict[str,
     t_iso = today.isoformat()
     income_today = round(sum(i["amount"] for i in incomes if str(i["date"])[:10] == t_iso), 2)
     expense_today = round(sum(e["amount"] for e in expenses if str(e["date"])[:10] == t_iso), 2)
-    business_today = round(sum(t["distance_km"] for t in trips
-                              if str(t["date"])[:10] == t_iso
-                              and t.get("type", "business") != "personal"), 2)
+    business_today = round(sum(trip_business_km(t) for t in trips
+                              if str(t["date"])[:10] == t_iso), 2)
 
     # recurring status for the current BAS quarter
     q_start, q_end = au_bas_quarter(today)
@@ -359,4 +388,279 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date) -> Dict[str,
         },
         "recent": items[:8],
         "tax_setup_complete": tax_setup_complete,
+    }
+
+
+
+# ---------------------------------------------------------------------------
+# Tax Mileage engine — ATO logbook, method comparison, odometer reconciliation
+# ---------------------------------------------------------------------------
+def _fy_bounds(ref: date):
+    start = au_fy_start(ref)
+    return start, date(start.year + 1, 7, 1)
+
+
+def _fy_label(start: date) -> str:
+    return f"{start.year}\u2013{str(start.year + 1)[2:]}"
+
+
+def best_logbook_window(trips: List[dict], window_days: int = LOGBOOK_WINDOW_DAYS,
+                        min_business_km: float = 1.0) -> Optional[Dict[str, Any]]:
+    """Slide a continuous 12-week window across the trips and pick the most
+    representative one (highest business-use %, tie-break on total km). This is
+    what the ATO logbook method needs: one continuous representative period.
+
+    Only windows that are *fully* covered by the available data are considered
+    (start + 84 days must sit within the data span) so we never recommend a
+    sparse tail window. If there isn't yet 12 weeks of data, the whole dataset
+    is returned as an in-progress (incomplete) window."""
+    dated = sorted([t for t in trips if t.get("distance_km")],
+                   key=lambda t: parse_date(t["date"]))
+    if not dated:
+        return None
+    first = parse_date(dated[0]["date"])
+    last = parse_date(dated[-1]["date"])
+    data_span_days = (last - first).days + 1
+
+    def build(start: date, end: date, complete: bool):
+        window = [t for t in dated if start <= parse_date(t["date"]) < end]
+        tkm = sum(float(t["distance_km"]) for t in window)
+        if tkm <= 0:
+            return None
+        bkm = sum(trip_business_km(t) for t in window)
+        if bkm < min_business_km:
+            return None
+        return {
+            "start": start.isoformat(),
+            "end": (end - timedelta(days=1)).isoformat(),
+            "start_label": start.strftime(DATE_FMT),
+            "end_label": (end - timedelta(days=1)).strftime(DATE_FMT),
+            "business_km": round(bkm, 2),
+            "private_km": round(tkm - bkm, 2),
+            "total_km": round(tkm, 2),
+            "business_pct": round(bkm / tkm * 100, 2),
+            "journeys": len(window),
+            "complete": complete,
+            "data_span_days": data_span_days,
+            "window": window,
+            "_score": (round(bkm / tkm, 4), round(tkm, 2)),
+        }
+
+    # Not enough data yet for a full 12-week period → return the whole set.
+    if data_span_days < window_days:
+        w = build(first, last + timedelta(days=1), complete=False)
+        if w:
+            w.pop("_score", None)
+        return w
+
+    best = None
+    latest_start = last + timedelta(days=1) - timedelta(days=window_days)
+    for anchor in dated:
+        start = parse_date(anchor["date"])
+        if start > latest_start:  # window would run past our data → skip
+            continue
+        w = build(start, start + timedelta(days=window_days), complete=True)
+        if w is None:
+            continue
+        if best is None or w["_score"] > best["_score"]:
+            best = w
+    if best is None:  # fallback: representative pct not found, use full set
+        best = build(first, last + timedelta(days=1), complete=False)
+    if best:
+        best.pop("_score", None)
+    return best
+
+
+def logbook_summary(profile: dict, trips: List[dict], ref: date) -> Dict[str, Any]:
+    fy_start, fy_end = _fy_bounds(ref)
+    fy_trips = [t for t in trips if fy_start <= parse_date(t["date"]) < fy_end]
+    lb = best_logbook_window(fy_trips) or best_logbook_window(trips)
+    if not lb:
+        return {
+            "available": False,
+            "business_pct": None,
+            "message": "Log at least a few business and private trips to build your 12-week ATO logbook.",
+        }
+    journeys = []
+    for t in sorted(lb.pop("window", []), key=lambda x: parse_date(x["date"])):
+        journeys.append({
+            "id": t.get("id"),
+            "date": str(t["date"])[:10],
+            "date_label": parse_date(t["date"]).strftime(DATE_FMT),
+            "distance_km": round(float(t["distance_km"]), 2),
+            "business_km": trip_business_km(t),
+            "type": t.get("type", "business"),
+            "purpose": t.get("purpose"),
+            "from_label": t.get("from_label"),
+            "to_label": t.get("to_label"),
+            "odo_start": t.get("odo_start"),
+            "odo_end": t.get("odo_end"),
+        })
+    return {
+        "available": True,
+        "period_start": lb["start"],
+        "period_end": lb["end"],
+        "period_label": f"{lb['start_label']} \u2013 {lb['end_label']}",
+        "business_km": lb["business_km"],
+        "private_km": lb["private_km"],
+        "total_km": lb["total_km"],
+        "business_pct": lb["business_pct"],
+        "journey_count": lb["journeys"],
+        "complete": lb["complete"],
+        "journeys": journeys[:200],
+        "note": ("A valid ATO logbook must cover a continuous 12-week period that "
+                 "represents your typical driving. Keep going for the full 12 weeks."),
+    }
+
+
+def _fy_vehicle_expenses(profile: dict, expenses: List[dict], fy_start: date, fy_end: date):
+    cats = {"fuel": 0.0, "vehicle": 0.0, "tolls": 0.0, "phone": 0.0, "other": 0.0}
+    for e in expenses:
+        d = parse_date(e["date"])
+        if fy_start <= d < fy_end:
+            c = e.get("category", "other")
+            cats[c] = cats.get(c, 0.0) + float(e.get("amount") or 0)
+    rec = profile.get("recurring_payment")
+    recurring = recurring_owed(rec, fy_start, fy_end, date.today())
+    cats = {k: round(v, 2) for k, v in cats.items()}
+    # Eligible for the vehicle-cost pool (running costs apportioned by business use).
+    eligible = round(cats["fuel"] + cats["vehicle"] + recurring, 2)
+    return cats, round(recurring, 2), eligible
+
+
+def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
+                      ref: date) -> Dict[str, Any]:
+    fy_start, fy_end = _fy_bounds(ref)
+    fy_trips = [t for t in trips if fy_start <= parse_date(t["date"]) < fy_end]
+    business_km = round(sum(trip_business_km(t) for t in fy_trips), 2)
+    total_km = round(sum(float(t["distance_km"]) for t in fy_trips), 2)
+
+    lb = best_logbook_window(fy_trips) or best_logbook_window(trips)
+    if lb:
+        logbook_pct = lb["business_pct"] / 100.0
+        pct_source = "logbook"
+    elif total_km > 0:
+        logbook_pct = business_km / total_km
+        pct_source = "derived"
+    else:
+        logbook_pct = float(profile.get("business_use_fallback", 100)) / 100.0
+        pct_source = "fallback"
+
+    cats, recurring, eligible = _fy_vehicle_expenses(profile, expenses, fy_start, fy_end)
+    logbook_deduction = round(eligible * logbook_pct, 2)
+
+    rate = cpk_rate(fy_start.year)
+    capped_km = min(business_km, AU_CPK_MAX_KM)
+    cpk_deduction = round(capped_km * rate, 2)
+
+    recommend = "logbook" if logbook_deduction >= cpk_deduction else "cents_per_km"
+    difference = round(abs(logbook_deduction - cpk_deduction), 2)
+
+    return {
+        "fy_start": fy_start.isoformat(),
+        "fy_end": fy_end.isoformat(),
+        "fy_label": _fy_label(fy_start),
+        "business_km": business_km,
+        "total_km": total_km,
+        "logbook": {
+            "business_pct": round(logbook_pct * 100, 2),
+            "pct_source": pct_source,
+            "eligible_expenses": eligible,
+            "expense_breakdown": {"fuel": cats["fuel"], "vehicle": cats["vehicle"],
+                                   "recurring_payment": recurring},
+            "deduction": logbook_deduction,
+        },
+        "cents_per_km": {
+            "rate": rate,
+            "rate_cents": round(rate * 100),
+            "max_km": AU_CPK_MAX_KM,
+            "claimable_km": round(capped_km, 2),
+            "capped": business_km > AU_CPK_MAX_KM,
+            "deduction": cpk_deduction,
+            "max_deduction": round(AU_CPK_MAX_KM * rate, 2),
+        },
+        "recommend": recommend,
+        "recommend_label": "Logbook method" if recommend == "logbook" else "Cents per kilometre",
+        "difference": difference,
+        "disclaimer": ("This is an estimate, not tax advice. Your final deduction "
+                       "depends on your actual eligible expenses, vehicle circumstances "
+                       "and ATO requirements."),
+    }
+
+
+def odometer_check(profile: dict, trips: List[dict], ref: date) -> Dict[str, Any]:
+    fy_start, fy_end = _fy_bounds(ref)
+    v = profile.get("vehicle") or {}
+    gps_km = round(sum(float(t["distance_km"]) for t in trips
+                       if fy_start <= parse_date(t["date"]) < fy_end), 2)
+    opening = v.get("opening_odometer")
+    closing = v.get("closing_odometer")
+    if opening is None or closing is None:
+        return {"has_odometer": False, "gps_km": gps_km, "odometer_km": None,
+                "opening": opening, "closing": closing, "discrepancy": None,
+                "discrepancy_pct": None, "warning": None,
+                "prompt": ("Enter your odometer at the start (1 July) and end (30 June) "
+                           "of the financial year for an audit-proof total.")}
+    odo_km = round(float(closing) - float(opening), 2)
+    disc = round(odo_km - gps_km, 2)
+    pct = round(abs(disc) / odo_km * 100, 1) if odo_km > 0 else 0.0
+    warning = None
+    if odo_km > 0 and pct >= 10:
+        warning = (f"Your GPS records show {gps_km:,.0f} km but your odometer shows "
+                   f"{odo_km:,.0f} km. Review your mileage records.")
+    return {
+        "has_odometer": True, "gps_km": gps_km, "odometer_km": odo_km,
+        "opening": round(float(opening), 2), "closing": round(float(closing), 2),
+        "discrepancy": disc, "discrepancy_pct": pct, "warning": warning,
+    }
+
+
+def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
+                expenses: List[dict], ref: date) -> Dict[str, Any]:
+    fy_start, fy_end = _fy_bounds(ref)
+    t_iso = ref.isoformat()
+
+    def in_fy(row):
+        return fy_start <= parse_date(row["date"]) < fy_end
+
+    # ---- today ----
+    today_trips = [t for t in trips if str(t["date"])[:10] == t_iso]
+    today_biz = round(sum(trip_business_km(t) for t in today_trips), 2)
+    today_priv = round(sum(trip_personal_km(t) for t in today_trips), 2)
+    today_total = round(today_biz + today_priv, 2)
+    today_income = round(sum(i["amount"] for i in incomes if str(i["date"])[:10] == t_iso), 2)
+
+    # ---- financial year ----
+    fy_trips = [t for t in trips if in_fy(t)]
+    fy_biz = round(sum(trip_business_km(t) for t in fy_trips), 2)
+    fy_priv = round(sum(trip_personal_km(t) for t in fy_trips), 2)
+    fy_total = round(fy_biz + fy_priv, 2)
+    fy_income = round(sum(i["amount"] for i in incomes if in_fy(i)), 2)
+
+    return {
+        "currency": "AUD", "symbol": "$", "distance_unit": "km",
+        "today": {
+            "date": t_iso,
+            "total_km": today_total,
+            "business_km": today_biz,
+            "private_km": today_priv,
+            "business_pct": round(today_biz / today_total * 100, 1) if today_total > 0 else 0.0,
+            "income": today_income,
+            "per_business_km": round(today_income / today_biz, 2) if today_biz > 0 else None,
+        },
+        "financial_year": {
+            "label": _fy_label(fy_start),
+            "start": fy_start.isoformat(),
+            "end": fy_end.isoformat(),
+            "total_km": fy_total,
+            "business_km": fy_biz,
+            "private_km": fy_priv,
+            "business_pct": round(fy_biz / fy_total * 100, 2) if fy_total > 0 else 0.0,
+            "income": fy_income,
+            "per_business_km": round(fy_income / fy_biz, 2) if fy_biz > 0 else None,
+        },
+        "logbook": logbook_summary(profile, trips, ref),
+        "method_comparison": method_comparison(profile, trips, expenses, ref),
+        "odometer": odometer_check(profile, trips, ref),
+        "vehicle": profile.get("vehicle") or {},
     }

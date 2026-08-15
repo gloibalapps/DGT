@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { View, Pressable, Linking, RefreshControl } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,7 +11,7 @@ import { displayDateShort } from "@/src/date";
 import { getPendingDrives, clearPendingDrive, PendingDrive } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, Money, IconButton, Spinner,
-  EmptyState, PrimaryButton, SecondaryButton, Badge, useToast,
+  EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney,
 } from "@/src/ui";
 
 function haversine(a: any, b: any) {
@@ -24,12 +24,13 @@ function haversine(a: any, b: any) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-export default function Trips() {
+export default function Mileage() {
   const { colors } = useTheme();
   const { version, refresh } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const [trips, setTrips] = useState<TripT[]>([]);
+  const [tm, setTm] = useState<any>(null);
   const [autoDrives, setAutoDrives] = useState<PendingDrive[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,48 +38,36 @@ export default function Trips() {
   // GPS shift state
   const [tracking, setTracking] = useState(false);
   const [dist, setDist] = useState(0);
-  const [pendingTag, setPendingTag] = useState<number | null>(null); // km awaiting classification
-  const [pendingDuration, setPendingDuration] = useState(0); // minutes
+  const [pendingTag, setPendingTag] = useState<number | null>(null);
+  const [pendingDuration, setPendingDuration] = useState(0);
   const subRef = useRef<Location.LocationSubscription | null>(null);
   const lastRef = useRef<any>(null);
   const startTimeRef = useRef<number>(0);
 
   const load = useCallback(async () => {
     try {
-      setTrips(await api.listTrips());
-      setAutoDrives(await getPendingDrives());
+      const [t, m, a] = await Promise.all([
+        api.listTrips(), api.taxMileage(todayISO()), getPendingDrives(),
+      ]);
+      setTrips(t); setTm(m); setAutoDrives(a);
     } catch {
-      show("Couldn't load trips", "error");
+      show("Couldn't load mileage", "error");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setLoading(false); setRefreshing(false);
     }
   }, [show]);
 
   useFocusEffect(useCallback(() => { load(); }, [load, version]));
 
-  const stats = useMemo(() => {
-    let biz = 0, per = 0;
-    for (const t of trips) {
-      if (t.type === "personal") per += t.distance_km;
-      else biz += t.distance_km;
-    }
-    const total = biz + per;
-    return { biz: Math.round(biz * 10) / 10, per: Math.round(per * 10) / 10, pct: total > 0 ? Math.round((biz / total) * 1000) / 10 : 100 };
-  }, [trips]);
-
   const startShift = async () => {
     let perm = await Location.getForegroundPermissionsAsync();
     if (!perm.granted && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) {
-      show("Location needed to auto-track drives", "error");
+      show("Location needed to track your drive", "error");
       if (!perm.canAskAgain) Linking.openSettings();
       return;
     }
-    setDist(0);
-    lastRef.current = null;
-    startTimeRef.current = Date.now();
-    setTracking(true);
+    setDist(0); lastRef.current = null; startTimeRef.current = Date.now(); setTracking(true);
     subRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 20, timeInterval: 4000 },
       (loc) => {
@@ -93,90 +82,160 @@ export default function Trips() {
   };
 
   const stopShift = async () => {
-    try { subRef.current?.remove(); } catch { /* expo-location web lacks removeSubscription */ }
-    subRef.current = null;
-    setTracking(false);
+    try { subRef.current?.remove(); } catch { /* web */ }
+    subRef.current = null; setTracking(false);
     const km = Math.round(dist * 100) / 100;
     if (km <= 0) { show("No distance recorded", "info"); return; }
     setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
-    setPendingTag(km); // GPS can tell THAT you drove, never WHY — ask.
+    setPendingTag(km);
   };
 
   const saveGpsTrip = async (type: "business" | "personal") => {
     if (pendingTag == null) return;
     try {
       await api.addTrip({ date: todayISO(), distance_km: pendingTag, duration_min: pendingDuration, type, source: "gps" });
-      show(`${pendingTag} km logged as ${type}`, "success");
-      setPendingTag(null);
-      refresh();
-      load();
-    } catch {
-      show("Couldn't save trip — try again", "error");
-    }
+      show(`${pendingTag} km logged as ${type === "business" ? "business" : "private"}`, "success");
+      setPendingTag(null); refresh(); load();
+    } catch { show("Couldn't save trip — try again", "error"); }
   };
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
     try {
       await api.addTrip({ date: d.date, distance_km: d.distance_km, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps" });
       await clearPendingDrive(d.id);
-      show(`${d.distance_km} km logged as ${type}`, "success");
-      refresh();
-      load();
-    } catch {
-      show("Couldn't save trip — try again", "error");
-    }
-  };
-
-  const flip = async (t: TripT) => {
-    const next = t.type === "personal" ? "business" : "personal";
-    try {
-      await api.updateTrip(t.id, { type: next });
-      load();
-      refresh();
-    } catch {
-      show("Couldn't update — try again", "error");
-    }
+      show(`${d.distance_km} km logged`, "success");
+      refresh(); load();
+    } catch { show("Couldn't save trip — try again", "error"); }
   };
 
   const del = async (id: string) => {
-    try {
-      await api.deleteTrip(id);
-      show("Trip deleted", "success");
-      load();
-      refresh();
-    } catch {
-      show("Couldn't delete — try again", "error");
-    }
+    try { await api.deleteTrip(id); show("Trip deleted", "success"); load(); refresh(); }
+    catch { show("Couldn't delete — try again", "error"); }
   };
+
+  const exportReport = async () => {
+    const url = await api.exportMileageUrl(todayISO());
+    Linking.openURL(url);
+  };
+
+  const typeColor = (t: string) => t === "personal" ? colors.dim : t === "mixed" ? colors.warm : colors.profit;
+  const typeLabel = (t: string, pct?: number | null) =>
+    t === "personal" ? "Private" : t === "mixed" ? `Mixed ${pct ?? 50}%` : "Business";
 
   if (loading) return <Screen><Spinner /></Screen>;
 
+  const today = tm?.today;
+  const fy = tm?.financial_year;
+  const mc = tm?.method_comparison;
+  const lb = tm?.logbook;
+  const odo = tm?.odometer;
+  const hasVehicle = tm?.vehicle && Object.keys(tm.vehicle).length > 0 && (tm.vehicle.make_model || tm.vehicle.registration);
+
   return (
     <Screen
-      header={<ScreenHeader subtitle="Logbook" title="Trips" />}
+      header={<ScreenHeader subtitle="GPS → Logbook → Deduction" title="Tax Mileage" />}
       scroll
       refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent}
         onRefresh={() => { setRefreshing(true); load(); }} />}
     >
-      {/* Business-use gauge */}
-      <Card style={{ marginBottom: 14, alignItems: "center" }}>
-        <AppText variant="label" color={colors.dim}>BUSINESS-USE %</AppText>
-        <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 64, color: colors.accent, fontVariant: ["tabular-nums"] }}>
-          {stats.pct}%
-        </AppText>
-        <View style={{ flexDirection: "row", gap: 28, marginTop: 4 }}>
-          <View style={{ alignItems: "center" }}>
-            <AppText variant="bodySemi" color={colors.profit}>{stats.biz} km</AppText>
-            <AppText variant="caption" color={colors.dim}>Business</AppText>
+      {/* ---- Today ---- */}
+      <Card style={{ marginBottom: 14 }}>
+        <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <View>
+            <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
+              {today.total_km} km
+            </AppText>
+            <AppText variant="caption" color={colors.dim}>Total driven</AppText>
           </View>
-          <View style={{ alignItems: "center" }}>
-            <AppText variant="bodySemi" color={colors.dim}>{stats.per} km</AppText>
-            <AppText variant="caption" color={colors.dim}>Personal</AppText>
+          <View style={{ alignItems: "flex-end" }}>
+            <AppText variant="bodySemi" color={colors.profit}>{today.business_km} km business</AppText>
+            <AppText variant="caption" color={colors.dim}>{today.private_km} km private · {today.business_pct}% business</AppText>
+            {today.per_business_km != null ? (
+              <View style={{ marginTop: 6, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                <AppText variant="caption" color={colors.accent}>{fmtMoney(today.per_business_km)}/business km</AppText>
+              </View>
+            ) : null}
           </View>
         </View>
       </Card>
 
-      {/* Auto-detected drives awaiting classification */}
+      {/* ---- Method comparison (killer feature) ---- */}
+      {mc ? (
+        <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+          <AppText variant="label" color={colors.dim} style={{ marginBottom: 4 }}>
+            WHICH METHOD IS BETTER? · FY {mc.fy_label}
+          </AppText>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "logbook" ? colors.profit : colors.border }]}>
+              <AppText variant="caption" color={colors.dim}>Logbook</AppText>
+              <Money value={mc.logbook.deduction} size={22} />
+              <AppText variant="caption" color={colors.dim}>{mc.logbook.business_pct}% of {fmtMoney(mc.logbook.eligible_expenses)}</AppText>
+            </View>
+            <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "cents_per_km" ? colors.profit : colors.border }]}>
+              <AppText variant="caption" color={colors.dim}>Cents / km</AppText>
+              <Money value={mc.cents_per_km.deduction} size={22} />
+              <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.rate_cents}c × {mc.cents_per_km.claimable_km} km{mc.cents_per_km.capped ? " (cap)" : ""}</AppText>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12 }}>
+            <Ionicons name="trophy" size={20} color={colors.warm} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi" color={colors.profit}>{mc.recommend_label}</AppText>
+              <AppText variant="caption" color={colors.dim}>Potentially higher by {fmtMoney(mc.difference)}</AppText>
+            </View>
+          </View>
+          <AppText variant="caption" color={colors.dim} style={{ marginTop: 10, lineHeight: 16 }}>{mc.disclaimer}</AppText>
+        </Card>
+      ) : null}
+
+      {/* ---- Logbook ---- */}
+      <Pressable testID="mileage-open-logbook" onPress={() => router.push("/logbook" as any)}>
+        <Card style={{ marginBottom: 14, flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="book-outline" size={22} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodySemi">ATO Logbook</AppText>
+            {lb?.available ? (
+              <AppText variant="caption" color={colors.dim}>
+                {lb.business_pct}% business · {lb.journey_count} journeys · {lb.complete ? "12-week period ready" : "in progress"}
+              </AppText>
+            ) : (
+              <AppText variant="caption" color={colors.dim}>Classify trips to build your 12-week logbook</AppText>
+            )}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+        </Card>
+      </Pressable>
+
+      {/* ---- Odometer ---- */}
+      <Pressable testID="mileage-open-vehicle" onPress={() => router.push("/vehicle" as any)}>
+        <Card style={{ marginBottom: 14, borderColor: odo?.warning ? colors.warm : colors.border }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+              <Ionicons name="speedometer-outline" size={22} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">{hasVehicle ? (tm.vehicle.make_model || "My Vehicle") : "Set up your vehicle"}</AppText>
+              {odo?.has_odometer ? (
+                <AppText variant="caption" color={colors.dim}>Odometer {odo.odometer_km} km · GPS {odo.gps_km} km</AppText>
+              ) : (
+                <AppText variant="caption" color={colors.dim}>{hasVehicle ? "Add odometer readings for audit protection" : "Add rego, model & odometer"}</AppText>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+          </View>
+          {odo?.warning ? (
+            <View style={{ flexDirection: "row", marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: 10, padding: 10 }}>
+              <Ionicons name="warning-outline" size={16} color={colors.warm} style={{ marginRight: 8, marginTop: 1 }} />
+              <AppText variant="caption" color={colors.warm} style={{ flex: 1, lineHeight: 16 }}>{odo.warning}</AppText>
+            </View>
+          ) : null}
+        </Card>
+      </Pressable>
+
+      {/* ---- Auto-detected drives ---- */}
       {autoDrives.length > 0 && (
         <View style={{ marginBottom: 14 }}>
           <AppText variant="label" color={colors.warm} style={{ marginBottom: 8, marginLeft: 4 }}>
@@ -186,27 +245,27 @@ export default function Trips() {
             <Card key={d.id} testID={`auto-drive-${d.id}`} style={{ marginBottom: 8, borderColor: colors.warm }}>
               <AppText variant="bodySemi" style={{ marginBottom: 2 }}>{d.distance_km} km drive</AppText>
               <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
-                {displayDateShort(d.date)} · detected automatically — business or personal?
+                {displayDateShort(d.date)} · detected automatically — business or private?
               </AppText>
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <PrimaryButton testID={`auto-business-${d.id}`} label="Business" onPress={() => classifyAuto(d, "business")} style={{ flex: 1 }} />
-                <SecondaryButton testID={`auto-personal-${d.id}`} label="Personal" onPress={() => classifyAuto(d, "personal")} style={{ flex: 1 }} />
+                <SecondaryButton testID={`auto-personal-${d.id}`} label="Private" onPress={() => classifyAuto(d, "personal")} style={{ flex: 1 }} />
               </View>
             </Card>
           ))}
         </View>
       )}
 
-      {/* GPS shift tracker */}
+      {/* ---- Logging controls ---- */}
       {pendingTag != null ? (
         <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
           <AppText variant="h2" style={{ marginBottom: 4 }}>{pendingTag} km drive</AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
-            Was this trip business or personal? GPS knows you drove, not why.
+            Was this trip business or private? GPS knows you drove, not why.
           </AppText>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <PrimaryButton testID="gps-tag-business" label="Business" onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
-            <SecondaryButton testID="gps-tag-personal" label="Personal" onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
+            <SecondaryButton testID="gps-tag-personal" label="Private" onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
           </View>
         </Card>
       ) : tracking ? (
@@ -229,9 +288,18 @@ export default function Trips() {
         </View>
       )}
 
-      <AppText variant="h2" style={{ marginBottom: 10 }}>History</AppText>
+      {/* ---- History ---- */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <AppText variant="h2">History</AppText>
+        {trips.length > 0 ? (
+          <Pressable testID="mileage-export" onPress={exportReport} hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="download-outline" size={16} color={colors.accent} style={{ marginRight: 4 }} />
+            <AppText variant="caption" color={colors.accent}>Motor vehicle report</AppText>
+          </Pressable>
+        ) : null}
+      </View>
       {trips.length === 0 ? (
-        <EmptyState icon="navigate-outline" title="No trips recorded" subtitle="Add a trip or start a GPS shift to build your logbook." />
+        <EmptyState icon="car-sport-outline" title="No trips recorded" subtitle="Add a trip or start a GPS shift to build your logbook." />
       ) : (
         trips.map((t) => (
           <Pressable key={t.id} testID={`trip-${t.id}`}
@@ -243,11 +311,7 @@ export default function Trips() {
                   {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
                 </AppText>
               </View>
-              <Pressable testID={`trip-toggle-${t.id}`} onPress={() => flip(t)} style={{ marginRight: 6 }}>
-                <Badge label={t.type === "personal" ? "Personal" : "Business"}
-                  color={t.type === "personal" ? colors.dim : colors.profit}
-                  bg={colors.surfaceAlt} />
-              </Pressable>
+              <Badge label={typeLabel(t.type, t.business_pct)} color={typeColor(t.type)} bg={colors.surfaceAlt} />
               <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`trip-del-${t.id}`}
                 onPress={() => del(t.id)} />
             </Card>
@@ -257,3 +321,7 @@ export default function Trips() {
     </Screen>
   );
 }
+
+const methodBox = {
+  flex: 1, borderRadius: 14, padding: 12, borderWidth: 1, gap: 2,
+} as const;

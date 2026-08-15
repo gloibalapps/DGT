@@ -93,6 +93,35 @@ export const FREQUENCIES = [
   { key: "monthly", label: "Monthly" },
 ] as const;
 
+// Trip purpose taxonomy — journey recorded first, classified second.
+export const TRIP_TYPES = [
+  { key: "business", label: "Business", color: "profit" },
+  { key: "mixed", label: "Mixed", color: "warm" },
+  { key: "personal", label: "Private", color: "dim" },
+] as const;
+
+export const BUSINESS_PURPOSES = [
+  { key: "collect", label: "Collecting an order" },
+  { key: "deliver", label: "Delivering an order" },
+  { key: "between_jobs", label: "Between delivery jobs" },
+  { key: "other_business", label: "Other business travel" },
+] as const;
+
+export const PRIVATE_PURPOSES = [
+  { key: "home", label: "Going home" },
+  { key: "shopping", label: "Shopping" },
+  { key: "appointment", label: "Personal appointment" },
+  { key: "personal_other", label: "Personal travel" },
+] as const;
+
+export const FUEL_TYPES = [
+  { key: "petrol", label: "Petrol" },
+  { key: "diesel", label: "Diesel" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "electric", label: "Electric" },
+  { key: "lpg", label: "LPG" },
+] as const;
+
 export const PERIODS = [
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },

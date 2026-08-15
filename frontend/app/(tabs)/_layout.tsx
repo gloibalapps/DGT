@@ -5,7 +5,7 @@ import { useTheme, FONT } from "@/src/theme";
 
 const ICONS: Record<string, { on: any; off: any }> = {
   home: { on: "speedometer", off: "speedometer-outline" },
-  trips: { on: "navigate", off: "navigate-outline" },
+  trips: { on: "car-sport", off: "car-sport-outline" },
   expenses: { on: "wallet", off: "wallet-outline" },
   reports: { on: "bar-chart", off: "bar-chart-outline" },
   settings: { on: "settings", off: "settings-outline" },
@@ -35,7 +35,7 @@ export default function TabsLayout() {
       })}
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home" }} />
-      <Tabs.Screen name="trips" options={{ title: "Trips", tabBarButtonTestID: "tab-trips" }} />
+      <Tabs.Screen name="trips" options={{ title: "Mileage", tabBarButtonTestID: "tab-trips" }} />
       <Tabs.Screen name="expenses" options={{ title: "Ledger", tabBarButtonTestID: "tab-expenses" }} />
       <Tabs.Screen name="reports" options={{ title: "Reports", tabBarButtonTestID: "tab-reports" }} />
       <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings" }} />

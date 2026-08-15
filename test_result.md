@@ -101,3 +101,9 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Tax Mileage feature (Phases 1-3) — added by main agent
+- Backend engine in tax.py: trip_business_km (mixed-trip aware), best_logbook_window (continuous 12-week ATO logbook, representative window), logbook_summary, method_comparison (logbook vs cents-per-km 91c/5000km cap), odometer_check, tax_mileage aggregator.
+- New endpoints: GET /api/tax-mileage, GET /api/export-mileage (CSV motor vehicle report).
+- Models extended: Profile.vehicle (Vehicle: registration, make_model, year, purchase_price, fuel_type, business_use_start, opening/closing odometer + dates); Trip gained type "mixed", business_pct, purpose, from_label, to_label, odo_start/end.
+- Frontend: "Trips" tab renamed to "Mileage" (Tax Mileage hub at app/(tabs)/trips.tsx). New screens app/vehicle.tsx (My Vehicle setup + odometer) and app/logbook.tsx (12-week journeys audit trail). entry.tsx trip form now Business/Mixed/Private + purpose chips + mixed business% + from/to. Home has a Tax Mileage deduction-estimate pillar.
+- Local profile only (no auth). ATO cents-per-km rate 2026-27 = 91c, 5000km cap (verified via web).

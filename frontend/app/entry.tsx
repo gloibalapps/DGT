@@ -10,7 +10,7 @@ import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { todayISO } from "@/src/api";
 import { isValidDate } from "@/src/date";
-import { CATEGORIES, TAX_TREATMENTS } from "@/src/config";
+import { CATEGORIES, TAX_TREATMENTS, TRIP_TYPES, BUSINESS_PURPOSES, PRIVATE_PURPOSES } from "@/src/config";
 import {
   AppText, Card, Input, Field, ChipRow, PrimaryButton, SecondaryButton,
   IconButton, Spinner, useToast, DateField,
@@ -43,7 +43,11 @@ export default function Entry() {
   const [treatment, setTreatment] = useState("inclusive");
   const [distance, setDistance] = useState("");
   const [minutes, setMinutes] = useState("");
-  const [tripType, setTripType] = useState<"business" | "personal">("business");
+  const [tripType, setTripType] = useState<"business" | "personal" | "mixed">("business");
+  const [purpose, setPurpose] = useState<string>("deliver");
+  const [businessPct, setBusinessPct] = useState("50");
+  const [fromLabel, setFromLabel] = useState("");
+  const [toLabel, setToLabel] = useState("");
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,7 +72,7 @@ export default function Entry() {
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateISO(it.date); setNote(it.note || ""); setTripType(it.type); }
+          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateISO(it.date); setNote(it.note || ""); setTripType(it.type); setPurpose(it.purpose || (it.type === "personal" ? "personal_other" : "deliver")); if (it.business_pct != null) setBusinessPct(String(it.business_pct)); setFromLabel(it.from_label || ""); setToLabel(it.to_label || ""); }
         }
       } finally { setLoading(false); }
     })();
@@ -96,7 +100,13 @@ export default function Entry() {
         const km = parseFloat(distance);
         if (!km) { show("Enter a distance", "error"); setSaving(false); return; }
         const mins = parseFloat(minutes);
-        const payload: any = { date: iso, distance_km: km, type: tripType, note };
+        const payload: any = { date: iso, distance_km: km, type: tripType, purpose, note };
+        if (fromLabel) payload.from_label = fromLabel;
+        if (toLabel) payload.to_label = toLabel;
+        if (tripType === "mixed") {
+          const pct = parseFloat(businessPct);
+          payload.business_pct = isNaN(pct) ? 50 : Math.max(0, Math.min(100, pct));
+        }
         if (mins) payload.duration_min = mins;
         if (editing) await api.updateTrip(params.id!, payload); else await api.addTrip(payload);
       }
@@ -145,21 +155,48 @@ export default function Entry() {
                 <Field label="Time (minutes, optional)" hint="Powers your $/hour on Home">
                   <Input testID="entry-minutes" value={minutes} onChangeText={setMinutes} keyboardType="decimal-pad" placeholder="45" />
                 </Field>
-                <Field label="Type">
-                  <View style={{ flexDirection: "row", gap: 10 }}>
-                    {(["business", "personal"] as const).map((t) => {
-                      const active = tripType === t;
+                <Field label="What was this trip for?" hint="GigTax records the journey first, then you classify it.">
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {TRIP_TYPES.map((tt) => {
+                      const active = tripType === tt.key;
+                      const c = (colors as any)[tt.color] || colors.accent;
                       return (
-                        <Pressable key={t} testID={`entry-triptype-${t}`} onPress={() => setTripType(t)}
+                        <Pressable key={tt.key} testID={`entry-triptype-${tt.key}`}
+                          onPress={() => {
+                            setTripType(tt.key);
+                            setPurpose(tt.key === "personal" ? "personal_other" : "deliver");
+                          }}
                           style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center",
-                            backgroundColor: active ? (t === "business" ? colors.profit : colors.surfaceAlt) : colors.surfaceAlt,
-                            borderWidth: 1, borderColor: active ? (t === "business" ? colors.profit : colors.accent) : colors.border }}>
-                          <AppText variant="bodySemi" color={active && t === "business" ? colors.bg : colors.text} style={{ textTransform: "capitalize" }}>{t}</AppText>
+                            backgroundColor: colors.surfaceAlt,
+                            borderWidth: 1, borderColor: active ? c : colors.border }}>
+                          <AppText variant="bodySemi" color={active ? c : colors.text}>{tt.label}</AppText>
                         </Pressable>
                       );
                     })}
                   </View>
                 </Field>
+                {tripType === "mixed" ? (
+                  <Field label="Business portion (%)" hint="How much of this trip was business?">
+                    <Input testID="entry-business-pct" value={businessPct} onChangeText={setBusinessPct} keyboardType="number-pad" placeholder="50" maxLength={3} />
+                  </Field>
+                ) : null}
+                <Field label="Purpose">
+                  <ChipRow
+                    options={(tripType === "personal" ? PRIVATE_PURPOSES : BUSINESS_PURPOSES).map((p) => ({ key: p.key, label: p.label }))}
+                    value={purpose} onChange={setPurpose} testIDPrefix="entry-purpose" />
+                </Field>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Field label="From (optional)">
+                      <Input testID="entry-from" value={fromLabel} onChangeText={setFromLabel} placeholder="Home" />
+                    </Field>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Field label="To (optional)">
+                      <Input testID="entry-to" value={toLabel} onChangeText={setToLabel} placeholder="Restaurant" />
+                    </Field>
+                  </View>
+                </View>
               </>
             ) : (
               <Field label="Amount">

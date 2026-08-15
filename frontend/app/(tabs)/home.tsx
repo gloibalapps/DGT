@@ -50,15 +50,17 @@ export default function Home() {
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [perf, setPerf] = useState<any>(null);
+  const [tm, setTm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
-      const [d, p] = await Promise.all([api.dashboard(today), api.performance(today)]);
+      const [d, p, m] = await Promise.all([api.dashboard(today), api.performance(today), api.taxMileage(today)]);
       setData(d);
       setPerf(p);
+      setTm(m);
     } catch {
       show("Couldn't load dashboard", "error");
     } finally {
@@ -140,6 +142,40 @@ export default function Home() {
           )}
         </Card>
       </View>
+
+      {/* Tax Mileage pillar — vehicle deduction estimate */}
+      {tm?.method_comparison ? (
+        <Pressable testID="home-mileage-pillar" onPress={() => router.push("/trips" as any)} style={{ marginBottom: 14 }}>
+          <Card style={{ borderColor: colors.accent }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="car-sport" size={18} color={colors.accent} style={{ marginRight: 6 }} />
+                <AppText variant="label" color={colors.dim}>TAX MILEAGE · FY {tm.method_comparison.fy_label}</AppText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
+              <View>
+                <AppText variant="caption" color={colors.dim}>Estimated vehicle deduction</AppText>
+                <Money
+                  value={tm.method_comparison.recommend === "logbook"
+                    ? tm.method_comparison.logbook.deduction
+                    : tm.method_comparison.cents_per_km.deduction}
+                  symbol={data.symbol} size={34} color={colors.profit} />
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                  <Ionicons name="trophy" size={13} color={colors.warm} style={{ marginRight: 4 }} />
+                  <AppText variant="caption" color={colors.text}>{tm.method_comparison.recommend_label}</AppText>
+                </View>
+                <AppText variant="caption" color={colors.dim} style={{ marginTop: 4 }}>
+                  {tm.financial_year.business_pct}% business · {tm.financial_year.business_km} km
+                </AppText>
+              </View>
+            </View>
+          </Card>
+        </Pressable>
+      ) : null}
 
       {/* Performance — last 4 weeks */}
       {perf && (

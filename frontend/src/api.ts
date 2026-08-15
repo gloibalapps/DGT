@@ -58,6 +58,19 @@ async function req(path: string, opts: RequestInit = {}, retries = 2): Promise<a
   }
 }
 
+export interface VehicleT {
+  registration?: string | null;
+  make_model?: string | null;
+  year?: number | null;
+  purchase_price?: number | null;
+  fuel_type?: "petrol" | "diesel" | "hybrid" | "electric" | "lpg" | null;
+  business_use_start?: string | null;
+  opening_odometer?: number | null;
+  opening_odometer_date?: string | null;
+  closing_odometer?: number | null;
+  closing_odometer_date?: string | null;
+}
+
 export interface ProfileT {
   profile_id: string;
   country: string;
@@ -80,6 +93,7 @@ export interface ProfileT {
   registration_date?: string | null;
   reporting_frequency?: string | null;
   business_use_fallback: number;
+  vehicle?: VehicleT | null;
   theme: "dark" | "light";
   onboarded: boolean;
 }
@@ -87,7 +101,10 @@ export interface ProfileT {
 export interface TripT {
   id: string; profile_id: string; date: string; distance_km: number;
   duration_min?: number | null;
-  type: "business" | "personal"; note?: string | null; source?: string;
+  type: "business" | "personal" | "mixed"; business_pct?: number | null;
+  purpose?: string | null; from_label?: string | null; to_label?: string | null;
+  odo_start?: number | null; odo_end?: number | null;
+  note?: string | null; source?: string;
 }
 export interface IncomeT {
   id: string; profile_id: string; date: string; amount: number;
@@ -156,6 +173,10 @@ export const api = {
     const pid = await getProfileId();
     return req(`/performance?profile_id=${pid}&ref_date=${refDate}`);
   },
+  async taxMileage(refDate: string) {
+    const pid = await getProfileId();
+    return req(`/tax-mileage?profile_id=${pid}&ref_date=${refDate}`);
+  },
   async report(period: string, refDate: string) {
     const pid = await getProfileId();
     return req(`/reports?profile_id=${pid}&period=${period}&ref_date=${refDate}`);
@@ -163,6 +184,10 @@ export const api = {
   async exportUrl(period: string, refDate: string) {
     const pid = await getProfileId();
     return `${BASE}/api/export?profile_id=${pid}&period=${period}&ref_date=${refDate}`;
+  },
+  async exportMileageUrl(refDate: string) {
+    const pid = await getProfileId();
+    return `${BASE}/api/export-mileage?profile_id=${pid}&ref_date=${refDate}`;
   },
 };
 

@@ -1,0 +1,48 @@
+{
+  "summary": "Tax Mileage feature (backend engine + Mileage tab + Home pillar) verified end-to-end. Backend: 27/27 pytest pass (20 existing + 7 new Tax Mileage tests + 9 sub-cases). All target scenarios validated: GET /api/tax-mileage returns today/financial_year/logbook/method_comparison(logbook vs cents_per_km with recommend/label/difference)/odometer/vehicle sections; mixed trip 50km@60%=30 business km in tax-mileage AND in /api/reports & /api/dashboard (regression); FY 2026-27 cpk rate=0.91 with 5000km cap → max $4550 verified with a 6000km trip; logbook.complete=true for 120-day span with continuous 12-week (84-day) window selected; logbook.complete=false with <12 weeks; odometer discrepancy warning fires when GPS 5000km vs odometer 10000km (50% off); GET /api/export-mileage returns 200 text/csv with 'Motor Vehicle Report' and 'Method comparison'; existing /api/reports, /api/dashboard, /api/performance still work with mixed-aware business km. Frontend (Expo web, viewport 390x844): Home shows home-mileage-pillar with 'TAX MILEAGE · FY 2026-27' + estimated deduction + recommend chip; tapping navigates to /trips (Mileage tab). Mileage hub renders TODAY (50 km / 30 km business), 'WHICH METHOD IS BETTER?' comparison card (Logbook $0.00 vs Cents/km $27.30 with trophy 'Cents per kilometre — Potentially higher by $27.30'), ATO Logbook row (mileage-open-logbook), Vehicle row (mileage-open-vehicle) with visible odometer discrepancy warning, and 'Add trip' + 'GPS shift' buttons. Vehicle screen (/vehicle): filling veh-rego/veh-model/veh-year/veh-open-odo/veh-close-odo and tapping veh-save persists to /api/profile (verified via GET). Logbook screen (/logbook) opens with logbook-back and lists the journey. Entry trip (/entry?type=trip): trip-type selector Business/Mixed/Private, choosing Mixed reveals entry-business-pct, purpose chips entry-purpose-collect/deliver visible, saving a 25km/40% mixed/collect trip persists via /api/trips (business_pct=40.0, purpose='collect'). No red-screen errors. Existing calendar/DateField feature not re-tested per request.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Non-blocking console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Originates from a third-party or older RN component — not tied to Tax Mileage code. Carried over from previous RN versions."},
+      {"component": "expo-image", "issue": "Non-blocking (carried from iteration_6): 'Image: style.tintColor is deprecated. Please use props.tintColor.'"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gigtax_api.py",
+    "/app/backend/tests/test_tax_mileage.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/pytest_tax_mileage.xml",
+    "/app/test_reports/iteration_7.json"
+  ],
+  "action_items": [
+    "None required for Tax Mileage — feature is working across backend + UI + persistence as specified.",
+    "Optional: silence 'props.pointerEvents is deprecated' RN-web warning by migrating pointerEvents={...} to style.pointerEvents on any custom components (grep the codebase; likely inside src/ui.tsx or a Modal wrapper).",
+    "Optional (carried): migrate style.tintColor → props.tintColor on expo-image usages."
+  ],
+  "critical_code_review_comments": [
+    "backend/tax.py::best_logbook_window is well-scoped: only considers windows fully covered by the data span (start + 84 days <= last), and falls back to the whole set for <12-week data as an in-progress window. Returns a stable, deterministic pick (highest business-pct with total_km tiebreak).",
+    "backend/tax.py::method_comparison correctly prefers the logbook business_pct (when available), falls back to derived (business_km/total_km), then to profile.business_use_fallback. cpk cap at 5000 km and rate lookup by fy_start_year are correctly implemented.",
+    "backend/server.py::tax_mileage endpoint composes all four sub-sections via taxlib.tax_mileage and honours ref_date; excludes MongoDB _id via clean() everywhere. Good.",
+    "backend/tax.py::odometer_check safely handles the 'no readings' state and returns a prompt; discrepancy_pct rounded to 1dp; warning message uses '{gps_km:,.0f}' / '{odo_km:,.0f}' formatting — clean.",
+    "frontend/app/(tabs)/trips.tsx correctly gates on tm/method_comparison, uses testIDs mileage-open-logbook, mileage-open-vehicle, mileage-export, trips-add, gps-start, gps-tag-business, gps-tag-personal — all consistent with review request.",
+    "frontend/app/vehicle.tsx: veh-save wired to updateProfile({vehicle}); numeric fields parsed with parseFloat/parseInt and null-fallback; odometer fields use decimal-pad keyboard — good UX.",
+    "frontend/app/entry.tsx: entry-triptype-* switches purpose default correctly when toggling to personal; entry-business-pct clamped to 0–100 in save(); parses businessPct with sane fallback of 50 for mixed.",
+    "frontend/app/(tabs)/home.tsx home-mileage-pillar routes to '/trips' (tab); shows recommended deduction and business_pct/business_km — correct.",
+    "Storage-shape observation (already latent, not introduced by this feature): the app's storage layer JSON.parses values in localStorage — testing agents must JSON.stringify strings when priming gigtax.profile_id. This is app-standard behaviour, not a bug."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tax_mileage.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (27/27 pytest — 20 existing + 7 new Tax Mileage sub-cases; 9 mileage assertions)",
+    "frontend": "100% (all review-request scenarios verified: home-mileage-pillar, Mileage hub with method comparison + ATO Logbook + Vehicle rows + Add trip / GPS shift, /vehicle save+persist, /logbook open, /entry?type=trip with Mixed + business_pct + purpose chips + save+persist)"
+  },
+  "seed_data_creation": "Two ephemeral test profiles created via API (TEST_* prefix): (1) profile with mixed 50km@60% trip + $200 Uber income + vehicle 10000→20000 odometers → drove UI walkthrough; (2) 27 pytest fixtures each create their own TEST_* profile. All test data is prefixed TEST_ and isolated per run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server 'today' is ~2026-08-15 (FY 2026-27 starts 2026-07-01). To activate a specific profile in the web preview, set localStorage BEFORE reload: window.localStorage.setItem('gigtax.profile_id', JSON.stringify('<pid>')) — the app JSON.parses stored values, so unquoted strings will trigger a benign parse warning and fall back to fresh onboarding. Home pillar testID='home-mileage-pillar' routes to '/trips'. Mileage tab testIDs: mileage-open-logbook, mileage-open-vehicle, mileage-export, trips-add, gps-start, gps-stop, gps-tag-business, gps-tag-personal. Vehicle screen testIDs: veh-rego, veh-model, veh-year, veh-price, veh-fuel-<type>, veh-bizstart, veh-open-odo, veh-open-odo-date, veh-close-odo, veh-close-odo-date, veh-save, vehicle-close. Trip entry testIDs: entry-triptype-business/mixed/personal, entry-business-pct (only when mixed), entry-purpose-<key>, entry-distance, entry-minutes, entry-from, entry-to, entry-date, entry-save. Real endpoint list: /api/tax-mileage, /api/export-mileage, /api/trips (plural), /api/income (singular), /api/expenses (plural). FY 2026-27 cpk rate = 0.91 cents/km, cap 5000km.",
+  "rca_of_issue": "N/A — no defects reproduced this iteration."
+}

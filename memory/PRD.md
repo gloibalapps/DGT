@@ -40,7 +40,8 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - **P2:** Per-vehicle method lock-ins (US/UK), depreciation/CCA helpers, multi-vehicle.
 
 ## Recently completed
-- **Calendar date picker (DONE, tested iteration_6):** All manual date-typing removed. Every date field app-wide (entry, onboarding, tax-setup, settings) now uses the `DateField` pop-out calendar (react-native-calendars) showing DD/MM/YYYY. Fixed prior stray-JSX bundle crash in entry.tsx and onboarding.tsx.
+- **Tax Mileage (Phases 1-3, DONE, tested iteration_7):** Logbook-method-first kilometre system with live method comparison (ATO logbook vs cents-per-km 91c/5000km cap → recommends higher deduction). Rich vehicle setup + odometer reconciliation, journey classification (Business/Mixed/Private + purpose), continuous 12-week ATO logbook, motor-vehicle CSV report. "Trips" tab renamed "Mileage"; Home has a deduction-estimate pillar. Backend: /api/tax-mileage, /api/export-mileage; 27/27 pytest pass.
+- **Calendar date picker (DONE, tested iteration_6):** All manual date-typing removed.
 
 ## Notes
 - GPS shift tracker uses **foreground** location — full background auto-tracking requires a native dev/prod build (cannot be validated in Expo Go/web preview).

@@ -50,6 +50,21 @@ class RecurringPayment(BaseModel):
     anchor_date: str  # YYYY-MM-DD
 
 
+class Vehicle(BaseModel):
+    """Rich vehicle record powering the Tax Mileage / logbook engine."""
+    model_config = ConfigDict(extra="allow")
+    registration: Optional[str] = None
+    make_model: Optional[str] = None
+    year: Optional[int] = None
+    purchase_price: Optional[float] = None
+    fuel_type: Optional[Literal["petrol", "diesel", "hybrid", "electric", "lpg"]] = None
+    business_use_start: Optional[str] = None      # YYYY-MM-DD
+    opening_odometer: Optional[float] = None       # FY opening reading
+    opening_odometer_date: Optional[str] = None
+    closing_odometer: Optional[float] = None       # FY closing reading
+    closing_odometer_date: Optional[str] = None
+
+
 class Profile(BaseModel):
     model_config = ConfigDict(extra="allow")
     profile_id: str
@@ -61,6 +76,7 @@ class Profile(BaseModel):
     vehicle_ownership: Literal["own", "loan", "lease", "rental", "rent_to_buy"] = "own"
     acquisition_date: Optional[str] = None
     recurring_payment: Optional[RecurringPayment] = None
+    vehicle: Optional[Vehicle] = None
     # tax setup
     legal_name: Optional[str] = None
     accounting_method: Literal["cash", "accrual"] = "cash"
@@ -83,7 +99,13 @@ class Trip(BaseModel):
     date: str
     distance_km: float
     duration_min: Optional[float] = None
-    type: Literal["business", "personal"] = "business"
+    type: Literal["business", "personal", "mixed"] = "business"
+    business_pct: Optional[float] = None  # for mixed trips (0-100)
+    purpose: Optional[str] = None         # collect/deliver/between_jobs/other_business/home/shopping/appointment/personal_other
+    from_label: Optional[str] = None
+    to_label: Optional[str] = None
+    odo_start: Optional[float] = None
+    odo_end: Optional[float] = None
     note: Optional[str] = None
     source: Literal["manual", "gps"] = "manual"
     created_at: str = Field(default_factory=now_iso)
@@ -282,6 +304,15 @@ async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Qu
     return taxlib.performance(profile, trips, income, expenses, ref)
 
 
+@api_router.get("/tax-mileage")
+async def tax_mileage(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+    """Full Tax Mileage engine: today, FY summary, ATO logbook, method
+    comparison (logbook vs cents-per-km) and odometer reconciliation."""
+    profile, trips, income, expenses = await _load_all(profile_id)
+    ref = taxlib.parse_date(ref_date) if ref_date else date.today()
+    return taxlib.tax_mileage(profile, trips, income, expenses, ref)
+
+
 @api_router.get("/export")
 async def export_csv(profile_id: str = Query(...),
                      period: str = Query("quarter"),
@@ -336,6 +367,62 @@ async def export_csv(profile_id: str = Query(...),
     return StreamingResponse(
         iter([buf.getvalue()]), media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=gigtax_{period}.csv"})
+
+
+@api_router.get("/export-mileage")
+async def export_mileage_csv(profile_id: str = Query(...),
+                             ref_date: Optional[str] = Query(None)):
+    profile, trips, income, expenses = await _load_all(profile_id)
+    ref = taxlib.parse_date(ref_date) if ref_date else date.today()
+    tm = taxlib.tax_mileage(profile, trips, income, expenses, ref)
+    v = tm["vehicle"] or {}
+    fy = tm["financial_year"]
+    lb = tm["logbook"]
+    mc = tm["method_comparison"]
+    odo = tm["odometer"]
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["GigTax — Motor Vehicle Report", f"FY {fy['label']}"])
+    w.writerow([])
+    w.writerow(["Vehicle", v.get("make_model") or ""])
+    w.writerow(["Registration", v.get("registration") or ""])
+    w.writerow(["Year", v.get("year") or ""])
+    w.writerow(["Fuel type", v.get("fuel_type") or ""])
+    w.writerow(["Opening odometer", odo.get("opening") or ""])
+    w.writerow(["Closing odometer", odo.get("closing") or ""])
+    w.writerow(["Odometer kilometres", odo.get("odometer_km") or ""])
+    w.writerow(["GPS kilometres", odo.get("gps_km")])
+    w.writerow([])
+    w.writerow(["Total kilometres (FY)", fy["total_km"]])
+    w.writerow(["Business kilometres (FY)", fy["business_km"]])
+    w.writerow(["Private kilometres (FY)", fy["private_km"]])
+    w.writerow(["Business-use %", fy["business_pct"]])
+    w.writerow([])
+    if lb.get("available"):
+        w.writerow(["--- ATO Logbook (12-week) ---"])
+        w.writerow(["Period", lb["period_label"]])
+        w.writerow(["Business %", lb["business_pct"]])
+        w.writerow(["Journeys", lb["journey_count"]])
+        w.writerow([])
+        w.writerow(["Date", "From", "To", "Distance (km)", "Business (km)", "Type", "Purpose"])
+        for j in lb.get("journeys", []):
+            w.writerow([j["date_label"], j.get("from_label") or "", j.get("to_label") or "",
+                        j["distance_km"], j["business_km"], j["type"], j.get("purpose") or ""])
+        w.writerow([])
+    w.writerow(["--- Method comparison ---"])
+    w.writerow(["Logbook deduction", f"{mc['logbook']['deduction']:.2f}",
+                f"({mc['logbook']['business_pct']}% of ${mc['logbook']['eligible_expenses']:.2f})"])
+    w.writerow(["Cents per km deduction", f"{mc['cents_per_km']['deduction']:.2f}",
+                f"({mc['cents_per_km']['rate_cents']}c x {mc['cents_per_km']['claimable_km']:.0f} km)"])
+    w.writerow(["Recommended method", mc["recommend_label"], f"better by ${mc['difference']:.2f}"])
+    w.writerow([])
+    w.writerow([mc["disclaimer"]])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=gigtax_motor_vehicle.csv"})
 
 
 # ---------------------------------------------------------------------------
