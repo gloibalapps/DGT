@@ -10,7 +10,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast, DateField } from "@/src/ui";
-import { COUNTRIES, AU_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
+import { COUNTRIES, AU_STATES, US_STATES, WORK_TYPES, PLATFORMS, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -122,7 +122,7 @@ export default function Onboarding() {
                 return (
                   <Pressable key={c.code} testID={`country-${c.code}`}
                     disabled={!c.active}
-                    onPress={() => { setCountry(c.code); }}
+                    onPress={() => { setCountry(c.code); if (c.code === "US") setRegion("CA"); else if (c.code === "AU") setRegion("NSW"); }}
                     style={{ marginBottom: 10, opacity: c.active ? 1 : 0.4 }}>
                     <Card style={{ borderColor: active ? colors.accent : colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                       <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
@@ -144,6 +144,13 @@ export default function Onboarding() {
                   <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>State / Territory</AppText>
                   <ChipRow options={AU_STATES.map((s) => ({ key: s, label: s }))} value={region}
                     onChange={setRegion} testIDPrefix="state" />
+                </View>
+              )}
+              {country === "US" && (
+                <View style={{ marginTop: 14 }}>
+                  <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>State</AppText>
+                  <ChipRow options={US_STATES.map((s) => ({ key: s, label: s }))} value={region || "CA"}
+                    onChange={setRegion} testIDPrefix="usstate" />
                 </View>
               )}
             </View>

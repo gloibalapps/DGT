@@ -11,7 +11,7 @@ import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
 import {
-  WORK_TYPES, OWNERSHIP, PLATFORMS, FREQUENCIES, AU_STATES, COUNTRIES, flagUrl,
+  WORK_TYPES, OWNERSHIP, PLATFORMS, FREQUENCIES, AU_STATES, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
@@ -162,7 +162,7 @@ export default function Settings() {
               disabled={!c.active}
               onPress={() => {
                 if (c.code === profile.country) return;
-                updateProfile({ country: c.code as any, region: c.code === "AU" ? (profile.region || "NSW") : null } as any);
+                updateProfile({ country: c.code as any, region: c.code === "AU" ? (profile.region || "NSW") : (c.code === "US" ? (profile.region || "CA") : null) } as any);
                 show(`Switched to ${c.name}`, "success");
               }}
               style={{ marginBottom: 8, opacity: c.active ? 1 : 0.4 }}>
@@ -190,6 +190,18 @@ export default function Settings() {
             <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>STATE / TERRITORY</AppText>
             <ChipRow options={AU_STATES.map((s) => ({ key: s, label: s }))} value={profile.region || "NSW"}
               onChange={(r) => updateProfile({ region: r })} testIDPrefix="set-state" />
+          </View>
+        ) : null}
+        {profile.country === "US" ? (
+          <View style={{ marginTop: 8 }}>
+            <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>STATE</AppText>
+            <ChipRow options={US_STATES.map((s) => ({ key: s, label: s }))} value={profile.region || "CA"}
+              onChange={(r) => updateProfile({ region: r })} testIDPrefix="set-usstate" />
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 8 }}>
+              {US_NO_INCOME_TAX_STATES.includes(profile.region || "")
+                ? `${profile.region} has no state income tax. Reports estimate federal tax only.`
+                : "Used for future state income-tax guidance. Reports currently estimate federal tax only."}
+            </AppText>
           </View>
         ) : null}
       </Section>
