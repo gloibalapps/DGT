@@ -164,15 +164,15 @@ export default function VehicleSetup() {
           <AppText variant="label" color={colors.dim} style={{ marginBottom: 8, marginLeft: 4 }}>ODOMETER PROTECTION</AppText>
           <Card style={{ marginBottom: 16 }}>
             <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
-              Enter your odometer at the start (1 July) and end (30 June) of the financial year. GigTax reconciles this against your GPS records for this car.
+              Enter your odometer at the start and end of the tax year. GigTax reconciles this against your GPS records for this car.
             </AppText>
-            <Field label="Opening odometer (1 July)">
+            <Field label="Opening odometer (tax-year start)">
               <Input testID="veh-open-odo" value={openOdo} onChangeText={setOpenOdo} keyboardType="decimal-pad" placeholder="72481" />
             </Field>
             <Field label="Opening reading date">
               <DateField testID="veh-open-odo-date" value={openOdoDate} onChange={setOpenOdoDate} />
             </Field>
-            <Field label="Closing odometer (30 June)">
+            <Field label="Closing odometer (tax-year end)">
               <Input testID="veh-close-odo" value={closeOdo} onChangeText={setCloseOdo} keyboardType="decimal-pad" placeholder="126842" />
             </Field>
             <Field label="Closing reading date">

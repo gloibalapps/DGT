@@ -169,7 +169,7 @@ export default function Home() {
                   <AppText variant="caption" color={colors.text}>{tm.method_comparison.recommend_label}</AppText>
                 </View>
                 <AppText variant="caption" color={colors.dim} style={{ marginTop: 4 }}>
-                  {tm.financial_year.business_pct}% business · {tm.financial_year.business_km} km
+                  {tm.financial_year.business_pct}% business · {tm.financial_year.business_km} {tm.distance_unit || "km"}
                 </AppText>
               </View>
             </View>

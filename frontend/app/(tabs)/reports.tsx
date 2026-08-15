@@ -91,69 +91,125 @@ export default function Reports() {
             <Row label="Total deductions" value={-rep.total_deductions} symbol={rep.symbol} />
           </Card>
 
-          {/* Vehicle deduction breakdown */}
-          <Card style={{ marginBottom: 14 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <AppText variant="h2">Vehicle deduction</AppText>
-              <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                <AppText variant="caption" color={colors.accent}>
-                  {rep.business_use_pct}% business{rep.business_use_is_fallback ? " (default)" : ""}
+          {rep.country === "US" ? (
+            <>
+              {/* Schedule C summary */}
+              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+                <AppText variant="h2" style={{ marginBottom: 2 }}>Schedule C (Form 1040)</AppText>
+                <AppText variant="caption" color={colors.dim} style={{ marginBottom: 8 }}>
+                  Estimated profit or loss from your gig business.
                 </AppText>
-              </View>
-            </View>
-            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
-              Fuel & vehicle costs apportioned by business-use %.
-            </AppText>
-            <Row label="Fuel" value={rep.vehicle_deduction.fuel} symbol={rep.symbol} />
-            <Row label="Vehicle costs" value={rep.vehicle_deduction.vehicle_costs} symbol={rep.symbol} />
-            <Row label="Recurring payment (calculated)" value={rep.vehicle_deduction.recurring_payment} symbol={rep.symbol}
-              sub={rep.vehicle_deduction.recurring_payment_gross ? `${rep.symbol}${rep.vehicle_deduction.recurring_payment_gross} gross × ${rep.business_use_pct}%` : undefined} />
-            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
-            <Row label="Vehicle deduction total" value={rep.vehicle_deduction.total} symbol={rep.symbol} strong />
-          </Card>
+                <Row label="Gross receipts (Line 1)" value={rep.schedule_c.gross_receipts} symbol={rep.symbol} />
+                <Row label="Car & truck expenses (Line 9)" value={-rep.schedule_c.car_and_truck} symbol={rep.symbol}
+                  sub={`${rep.schedule_c.car_method_label} · ${rep.business_use_pct}% business use`} />
+                <Row label="Other business expenses" value={-rep.schedule_c.other_expenses} symbol={rep.symbol} />
+                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+                <Row label="Net profit (Line 31)" value={rep.schedule_c.net_profit} symbol={rep.symbol} strong
+                  color={rep.schedule_c.net_profit >= 0 ? colors.profit : colors.loss} />
+              </Card>
 
-          {/* Full-claim work expenses */}
-          <Card style={{ marginBottom: 14 }}>
-            <AppText variant="h2" style={{ marginBottom: 4 }}>Other work expenses</AppText>
-            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Claimed in full — not apportioned.</AppText>
-            <Row label="Tolls" value={rep.full_claim.tolls} symbol={rep.symbol} />
-            <Row label="Phone" value={rep.full_claim.phone} symbol={rep.symbol} />
-            <Row label="Other" value={rep.full_claim.other} symbol={rep.symbol} />
-            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
-            <Row label="Total" value={rep.full_claim.total} symbol={rep.symbol} strong />
-          </Card>
+              {/* Which car method */}
+              <Card style={{ marginBottom: 14 }}>
+                <AppText variant="h2" style={{ marginBottom: 6 }}>Car expense method</AppText>
+                <Row label="Standard mileage (IRS rate)" value={rep.schedule_c.standard_mileage} symbol={rep.symbol} />
+                <Row label="Actual expenses" value={rep.schedule_c.actual_expenses} symbol={rep.symbol}
+                  sub={`Fuel + vehicle costs × ${rep.business_use_pct}%`} />
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12 }}>
+                  <Ionicons name="trophy" size={18} color={colors.warm} style={{ marginRight: 10 }} />
+                  <AppText variant="caption" color={colors.text} style={{ flex: 1 }}>
+                    Using <AppText variant="bodySemi" color={colors.profit}>{rep.schedule_c.car_method_label}</AppText> — the larger deduction.
+                  </AppText>
+                </View>
+              </Card>
 
-          {/* BAS / GST */}
-          {rep.show_bas ? (
-            <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-              <AppText variant="h2" style={{ marginBottom: 2 }}>BAS / GST summary</AppText>
-              <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
-                Copy these onto your ATO Business Activity Statement.
-              </AppText>
-              <Row label="G1 — Total sales (incl GST)" value={rep.bas.G1} symbol={rep.symbol} />
-              <Row label="1A — GST on sales" value={rep.bas["1A"]} symbol={rep.symbol} />
-              <Row label="1B — GST on purchases" value={rep.bas["1B"]} symbol={rep.symbol} />
-              <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
-              <Row label="Net GST (1A − 1B)" value={rep.bas.net_gst} symbol={rep.symbol} strong
-                color={rep.bas.net_gst >= 0 ? colors.text : colors.profit} />
-              <AppText variant="caption" color={rep.bas.sanity_ok ? colors.profit : colors.loss} style={{ marginTop: 8 }}>
-                {rep.bas.sanity_ok ? "✓ 1A equals G1 ÷ 11 at the 10% rate" : "⚠ GST sanity check failed"}
-              </AppText>
-            </Card>
+              {/* Self-employment tax */}
+              <Card style={{ marginBottom: 14, borderColor: colors.warm }}>
+                <AppText variant="h2" style={{ marginBottom: 2 }}>Set aside for taxes</AppText>
+                <AppText variant="caption" color={colors.dim} style={{ marginBottom: 8 }}>
+                  Self-employment tax (~15.3%) on your net earnings.
+                </AppText>
+                <Row label="Net SE earnings (92.35%)" value={rep.se_tax.net_earnings} symbol={rep.symbol} />
+                <Row label="Self-employment tax" value={rep.se_tax.amount} symbol={rep.symbol} strong color={colors.warm} />
+                {rep.se_tax.quarter_due ? (
+                  <AppText variant="caption" color={colors.dim} style={{ marginTop: 6 }}>
+                    Estimated payment (Form 1040-ES) due {rep.se_tax.quarter_due}.
+                  </AppText>
+                ) : null}
+                <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 16 }}>{rep.se_tax.note}</AppText>
+              </Card>
+            </>
           ) : (
-            <Card style={{ marginBottom: 14, flexDirection: "row" }}>
-              <Ionicons name="information-circle-outline" size={20} color={colors.dim} style={{ marginRight: 10, marginTop: 2 }} />
-              <AppText variant="caption" color={colors.dim} style={{ flex: 1 }}>
-                {rep.work_type === "delivery"
-                  ? "No BAS shown — delivery-only drivers register for GST only above $75,000 turnover. Mark yourself registered in Settings if that changes."
-                  : "Mark your GST registration as 'registered' in Settings > Tax setup to see your BAS/GST summary."}
-              </AppText>
-            </Card>
+            <>
+              {/* Vehicle deduction breakdown */}
+              <Card style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <AppText variant="h2">Vehicle deduction</AppText>
+                  <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <AppText variant="caption" color={colors.accent}>
+                      {rep.business_use_pct}% business{rep.business_use_is_fallback ? " (default)" : ""}
+                    </AppText>
+                  </View>
+                </View>
+                <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
+                  Fuel & vehicle costs apportioned by business-use %.
+                </AppText>
+                <Row label="Fuel" value={rep.vehicle_deduction.fuel} symbol={rep.symbol} />
+                <Row label="Vehicle costs" value={rep.vehicle_deduction.vehicle_costs} symbol={rep.symbol} />
+                <Row label="Recurring payment (calculated)" value={rep.vehicle_deduction.recurring_payment} symbol={rep.symbol}
+                  sub={rep.vehicle_deduction.recurring_payment_gross ? `${rep.symbol}${rep.vehicle_deduction.recurring_payment_gross} gross × ${rep.business_use_pct}%` : undefined} />
+                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+                <Row label="Vehicle deduction total" value={rep.vehicle_deduction.total} symbol={rep.symbol} strong />
+              </Card>
+
+              {/* Full-claim work expenses */}
+              <Card style={{ marginBottom: 14 }}>
+                <AppText variant="h2" style={{ marginBottom: 4 }}>Other work expenses</AppText>
+                <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Claimed in full — not apportioned.</AppText>
+                <Row label="Tolls" value={rep.full_claim.tolls} symbol={rep.symbol} />
+                <Row label="Phone" value={rep.full_claim.phone} symbol={rep.symbol} />
+                <Row label="Other" value={rep.full_claim.other} symbol={rep.symbol} />
+                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+                <Row label="Total" value={rep.full_claim.total} symbol={rep.symbol} strong />
+              </Card>
+
+              {/* BAS / GST */}
+              {rep.show_bas ? (
+                <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+                  <AppText variant="h2" style={{ marginBottom: 2 }}>BAS / GST summary</AppText>
+                  <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
+                    Copy these onto your ATO Business Activity Statement.
+                  </AppText>
+                  <Row label="G1 — Total sales (incl GST)" value={rep.bas.G1} symbol={rep.symbol} />
+                  <Row label="1A — GST on sales" value={rep.bas["1A"]} symbol={rep.symbol} />
+                  <Row label="1B — GST on purchases" value={rep.bas["1B"]} symbol={rep.symbol} />
+                  <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+                  <Row label="Net GST (1A − 1B)" value={rep.bas.net_gst} symbol={rep.symbol} strong
+                    color={rep.bas.net_gst >= 0 ? colors.text : colors.profit} />
+                  <AppText variant="caption" color={rep.bas.sanity_ok ? colors.profit : colors.loss} style={{ marginTop: 8 }}>
+                    {rep.bas.sanity_ok ? "✓ 1A equals G1 ÷ 11 at the 10% rate" : "⚠ GST sanity check failed"}
+                  </AppText>
+                </Card>
+              ) : (
+                <Card style={{ marginBottom: 14, flexDirection: "row" }}>
+                  <Ionicons name="information-circle-outline" size={20} color={colors.dim} style={{ marginRight: 10, marginTop: 2 }} />
+                  <AppText variant="caption" color={colors.dim} style={{ flex: 1 }}>
+                    {rep.work_type === "delivery"
+                      ? "No BAS shown — delivery-only drivers register for GST only above $75,000 turnover. Mark yourself registered in Settings if that changes."
+                      : "Mark your GST registration as 'registered' in Settings > Tax setup to see your BAS/GST summary."}
+                  </AppText>
+                </Card>
+              )}
+            </>
           )}
 
           <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
-            <SecondaryButton testID="reports-ato" label="ATO gig guide" icon="open-outline" style={{ flex: 1 }}
-              onPress={() => WebBrowser.openBrowserAsync(ATO_LINK)} />
+            {rep.country === "US" ? (
+              <SecondaryButton testID="reports-ato" label="IRS Schedule C" icon="open-outline" style={{ flex: 1 }}
+                onPress={() => WebBrowser.openBrowserAsync("https://www.irs.gov/forms-pubs/about-schedule-c-form-1040")} />
+            ) : (
+              <SecondaryButton testID="reports-ato" label="ATO gig guide" icon="open-outline" style={{ flex: 1 }}
+                onPress={() => WebBrowser.openBrowserAsync(ATO_LINK)} />
+            )}
             <PrimaryButton testID="reports-export" label="Export CSV" icon="download-outline" style={{ flex: 1 }}
               onPress={exportCsv} />
           </View>

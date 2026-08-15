@@ -11,7 +11,7 @@ export interface CountryCfg {
 
 export const COUNTRIES: CountryCfg[] = [
   { code: "AU", name: "Australia", currency: "AUD", symbol: "$", distanceUnit: "km", active: true },
-  { code: "US", name: "United States", currency: "USD", symbol: "$", distanceUnit: "mi", active: false },
+  { code: "US", name: "United States", currency: "USD", symbol: "$", distanceUnit: "mi", active: true },
   { code: "UK", name: "United Kingdom", currency: "GBP", symbol: "£", distanceUnit: "mi", active: false },
   { code: "CA", name: "Canada", currency: "CAD", symbol: "$", distanceUnit: "km", active: false },
 ];

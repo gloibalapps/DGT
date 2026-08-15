@@ -1,0 +1,43 @@
+{
+  "summary": "US tax support verified end-to-end alongside AU regression. Backend: 53/53 pytest pass (45 existing regressions + 8 new US/AU tests). Frontend (Expo web, 390x844): US and AU profile flows both render correctly with no red-screens; all 5 tabs (Home, Mileage, Ledger, Reports, Settings) load without errors. US: PUT /api/profile {country:'US'} + seeded 1000mi (2026-03) + 1000mi (2026-08) + 500 personal + $800 fuel → GET /api/tax-mileage returns country='US', distance_unit='mi', method_comparison.cents_per_km.title='Standard mileage' with deduction=1485.0 (date-keyed 1000*0.725 + 1000*0.76, NO 5000 cap; max_km=None), method_comparison.logbook.title='Actual expenses' with pct_source='annual', business_pct=80.0, deduction=640.0, recommend_label='Standard mileage', financial_year.label='2026'. US logbook: us_mode=true, complete=true, spans 2026-01-01→2026-12-31 (whole tax year, not a 12-week window). US Schedule C /api/reports?period=year returns show_bas=false, schedule_c{gross_receipts=5000, standard_mileage=1485, actual_expenses=640, car_and_truck=1485, car_method_label='Standard mileage', net_profit=3515}, se_tax{net_earnings=round(0.9235*3515,2), amount=round(net_earnings*0.153,2)}, period_label in MM/DD/YYYY starting '01/01/2026'. US calendar quarters /api/reports?period=quarter&ref_date=2026-08-15 → period_start=2026-07-01, period_end=2026-10-01, se_tax.quarter_due='15 Sep'. US /api/export-mileage → 200 text/csv. Multi-vehicle under US: car-scoped method_comparison respects vehicle_id (500 mi Aug*0.76=380.0 for car2 only). AU regression: an AU profile still returns distance_unit='km', method_comparison.cents_per_km.title='Cents / km' with rate=0.91 and max_km=5000 (capped=true when >5000 km biz; deduction=4550 at cap), logbook not us_mode. /api/reports?period=quarter returns show_bas=true with BAS G1/1A/1B present; AU FY label '2026-27' (en-dash); period_label DD/MM/YYYY '01/07/2026'. Frontend (US): Reports tab renders 'Schedule C (Form 1040)', 'Car expense method' (Standard mileage IRS rate + Actual expenses), 'Set aside for taxes' — no BAS/GST card. Mileage tab shows Actual expenses $640.00 vs Standard mileage $1,485.00 (2000 mi · IRS rate), 'IRS Mileage Log — 80% business · 3 trips' (whole-year US logbook mode), 'mi' units, financial year 'FY 2026'. Frontend (AU): Reports tab renders 'Vehicle deduction' (100% business, Fuel $100.00, total $100.00), 'BAS / GST' present; Net profit $1,000 on the seeded $1,100 income & $100 fuel. Mileage tab shows Logbook $100.00 vs Cents / km $182.00 (91c × 200 km), 'ATO Logbook — 100% business · 1 trips · in progress', 'km' units, 'FY 2026-27'. No console errors, no red-screens.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Non-blocking console warning carried from prior iterations: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not introduced by US support."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_us_tax.py",
+    "/app/test_reports/pytest/pytest_us_tax.xml",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_9.json"
+  ],
+  "action_items": [
+    "None required for US tax support — feature is working across backend + UI + persistence as specified."
+  ],
+  "critical_code_review_comments": [
+    "backend/tax.py::us_mileage_rate is correctly date-keyed (0.725 Jan–Jun 2026, 0.76 Jul–Dec 2026); us_standard_mileage_deduction sums business_km × rate per trip with no cap. Correct.",
+    "backend/tax.py::compute_report dispatches to compute_report_us when profile.country=='US'; US branch does NOT emit 'bas'/'show_bas=true'. Schedule C picks max(standard_mileage, actual_expenses) and sets car_method_label accordingly. SE tax = net_profit * 0.9235 * 0.153, floored at 0 for losses. Quarter-due only set when period='quarter'. Correct.",
+    "backend/tax.py::period_range with country='US' returns calendar quarters (Jan-Mar/Apr-Jun/Jul-Sep/Oct-Dec) and calendar year (Jan 1 – Dec 31). fmt_period_label uses MM/DD/YYYY for US. Correct.",
+    "backend/tax.py::method_comparison under US uses annual business-use % (biz_mi / total_mi across the whole FY) rather than a 12-week window, and skips the 5000-mi cap. Labels swap to Standard mileage / Actual expenses. Correct.",
+    "backend/tax.py::logbook_summary under US returns us_mode=true, spans the full calendar year, journeys[] carry MM/DD/YYYY date_label. Correct.",
+    "backend/tax.py::_fy_label returns 4-digit year for US ('2026') vs 'YYYY-YY' for AU ('2026-27'). Correct.",
+    "backend/server.py wires ref_date/vehicle_id query params correctly; profile-country routing happens inside taxlib.compute_report / tax_mileage — no server.py branching needed. Clean.",
+    "frontend/app/(tabs)/reports.tsx conditionally renders Schedule C + Car expense method + Set aside for taxes when rep.schedule_c/se_tax present, and the BAS card only when rep.show_bas. Verified in browser for both US and AU seeded profiles."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_us_tax.py (new — 8 tests covering US method comparison, US logbook, Schedule C, quarter, export, AU regression, AU BAS, multi-vehicle US)"
+  ],
+  "success_rate": {
+    "backend": "100% (53/53 pytest — 45 existing + 8 new US/AU)",
+    "frontend": "100% (US: Reports shows Schedule C + Car expense method + Set aside for taxes, Mileage shows Standard mileage/Actual expenses + mi units + IRS Mileage Log; AU: Reports shows BAS/GST + Vehicle deduction, Mileage shows Cents/km + ATO Logbook + km units; all 5 tabs load without red-screen)"
+  },
+  "seed_data_creation": "Two ephemeral profiles via public API: TEST_US_* (country=US, 1000 mi Mar + 1000 mi Aug business, 500 mi personal, $800 fuel, $5000 income) and TEST_AU_* (country=AU registered, 200 km business, $1100 income, $100 fuel). Each of the 8 pytest tests creates its own TEST_* profile.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "US endpoints: GET /api/tax-mileage returns country='US', distance_unit='mi', method_comparison.cents_per_km.title='Standard mileage' + logbook.title='Actual expenses'; GET /api/reports?period=year returns 'schedule_c' + 'se_tax' blocks, no 'bas'; period_label MM/DD/YYYY; quarter due labels 15 Apr / 15 Jun / 15 Sep / 15 Jan. AU still unchanged (91c rate for FY 2026-27, 5000-km cap, 12-week logbook, BAS G1/1A/1B when registered). To prime the UI in browser tests use JSON.stringify: window.localStorage.setItem('gigtax.profile_id', JSON.stringify('<pid>')) then navigate directly to /reports or /trips to skip onboarding. Seeded profile MUST have onboarded:true to bypass the country picker.",
+  "rca_of_issue": "N/A — no defects reproduced."
+}

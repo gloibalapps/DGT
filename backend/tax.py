@@ -24,6 +24,34 @@ CYCLE_DAYS = {"weekly": 7.0, "fortnightly": 14.0, "monthly": 365.0 / 12.0}
 AU_CENTS_PER_KM = {2024: 0.88, 2025: 0.88, 2026: 0.91}
 AU_CPK_MAX_KM = 5000
 
+# ---------------------------------------------------------------------------
+# United States configuration (calendar tax year, Schedule C, SE tax)
+# ---------------------------------------------------------------------------
+US_SE_TAX_RATE = 0.153        # 12.4% Social Security + 2.9% Medicare
+US_SE_NET_FACTOR = 0.9235     # net earnings from SE = 92.35% of net profit
+US_QUARTER_DUE = {1: "15 Apr", 2: "15 Jun", 3: "15 Sep", 4: "15 Jan"}
+
+
+def us_mileage_rate(d: date) -> float:
+    """IRS business standard mileage rate, date-keyed (rate can change mid-year)."""
+    y = d.year
+    if y <= 2024:
+        return 0.67
+    if y == 2025:
+        return 0.70
+    if y == 2026:
+        return 0.725 if d.month <= 6 else 0.76   # 72.5c Jan-Jun, 76c Jul-Dec
+    return 0.76  # sensible default for future years until updated
+
+
+def us_standard_mileage_deduction(trips: List[dict]) -> float:
+    """Sum business miles x the IRS rate applicable to each trip's date."""
+    total = 0.0
+    for t in trips:
+        total += trip_business_km(t) * us_mileage_rate(parse_date(t["date"]))
+    return round(total, 2)
+
+
 # Trip purpose taxonomy (used for the audit trail; classification lives on `type`)
 BUSINESS_PURPOSES = {"collect", "deliver", "between_jobs", "other_business"}
 PRIVATE_PURPOSES = {"home", "shopping", "appointment", "personal_other"}
@@ -78,11 +106,27 @@ def au_bas_quarter(d: date):
     return date(d.year, 4, 1), date(d.year, 7, 1)
 
 
+def us_calendar_quarter(d: date):
+    """US calendar quarters: Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec. [start, end)."""
+    q = (d.month - 1) // 3          # 0..3
+    sm = q * 3 + 1
+    start = date(d.year, sm, 1)
+    end = date(d.year + 1, 1, 1) if sm == 10 else date(d.year, sm + 3, 1)
+    return start, end
+
+
+def fy_start(d: date, country: str = "AU") -> date:
+    """Tax-year start: AU = 1 Jul, US = 1 Jan (calendar year)."""
+    if country == "US":
+        return date(d.year, 1, 1)
+    return au_fy_start(d)
+
+
 def _add_month(d: date) -> date:
     return date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
 
 
-def period_range(period: str, ref: date):
+def period_range(period: str, ref: date, country: str = "AU"):
     """Return [start, end_exclusive) for the given calendar-aligned period."""
     if period == "week":
         start = ref - timedelta(days=ref.weekday())  # Monday
@@ -91,18 +135,20 @@ def period_range(period: str, ref: date):
         start = date(ref.year, ref.month, 1)
         return start, _add_month(start)
     if period == "quarter":
-        return au_bas_quarter(ref)
-    # year -> financial year
-    start = au_fy_start(ref)
-    return start, date(start.year + 1, 7, 1)
+        return us_calendar_quarter(ref) if country == "US" else au_bas_quarter(ref)
+    # year -> tax year
+    start = fy_start(ref, country)
+    return start, (date(start.year + 1, 1, 1) if country == "US"
+                   else date(start.year + 1, 7, 1))
 
 
 DATE_FMT = "%d/%m/%Y"
 
 
-def fmt_period_label(period: str, start: date, end: date) -> str:
+def fmt_period_label(period: str, start: date, end: date, country: str = "AU") -> str:
     last = end - timedelta(days=1)
-    return f"{start.strftime(DATE_FMT)} – {last.strftime(DATE_FMT)}"
+    fmt = "%m/%d/%Y" if country == "US" else DATE_FMT
+    return f"{start.strftime(fmt)} \u2013 {last.strftime(fmt)}"
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +202,8 @@ def _add_month_keep_day(d: date) -> date:
 def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
                    expenses: List[dict], period: str, ref: date,
                    vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
+    if profile.get("country") == "US":
+        return compute_report_us(profile, trips, incomes, expenses, period, ref, vehicles)
     start, end = period_range(period, ref)
     today = date.today()
 
@@ -321,6 +369,139 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
     }
 
 
+def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
+                      expenses: List[dict], period: str, ref: date,
+                      vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
+    """US Schedule C summary: car & truck expense (higher of IRS standard
+    mileage vs actual expenses), other business expenses, net profit and a
+    self-employment tax estimate. Calendar tax year, miles, no GST."""
+    start, end = period_range(period, ref, "US")
+    today = date.today()
+
+    def in_period(row):
+        return start <= parse_date(row["date"]) < end
+
+    p_trips = [t for t in trips if in_period(t)]
+    p_income = [i for i in incomes if in_period(i)]
+    p_exp = [e for e in expenses if in_period(e)]
+
+    business_km = round(sum(trip_business_km(t) for t in p_trips), 2)
+    personal_km = round(sum(trip_personal_km(t) for t in p_trips), 2)
+    total_km = round(business_km + personal_km, 2)
+    fallback = float(profile.get("business_use_fallback", 100)) / 100.0
+    business_use = (business_km / total_km) if total_km > 0 else fallback
+
+    total_income = round(sum(i["amount"] for i in p_income), 2)
+
+    cat_totals = {c: 0.0 for c in ["fuel", "tolls", "vehicle", "phone", "other"]}
+    for e in p_exp:
+        c = e.get("category", "other")
+        cat_totals[c] = cat_totals.get(c, 0.0) + e["amount"]
+    cat_totals = {k: round(v, 2) for k, v in cat_totals.items()}
+
+    # ---- actual expense method (apportioned per vehicle) ----
+    veh_list = vehicles if vehicles else [{
+        "id": "__default__", "ownership": profile.get("vehicle_ownership", "own"),
+        "recurring_payment": profile.get("recurring_payment"),
+    }]
+
+    def period_vehicle_use(vid):
+        vt = [t for t in p_trips if (t.get("vehicle_id") or "__default__") == vid]
+        b = sum(trip_business_km(t) for t in vt)
+        tot = sum(float(t["distance_km"]) for t in vt)
+        return (b / tot) if tot > 0 else business_use
+
+    uses = {v["id"]: period_vehicle_use(v["id"]) for v in veh_list}
+    fuel_ded = vehicle_ded = recurring_ded = recurring_gross = 0.0
+    for e in p_exp:
+        c = e.get("category", "other")
+        if c not in ("fuel", "vehicle"):
+            continue
+        use = uses.get(e.get("vehicle_id") or "__default__", business_use)
+        if c == "fuel":
+            fuel_ded += e["amount"] * use
+        else:
+            vehicle_ded += e["amount"] * use
+    for v in veh_list:
+        rg = recurring_owed(v.get("recurring_payment"), start, end, today)
+        recurring_gross += rg
+        recurring_ded += rg * uses[v["id"]]
+    actual_expense = round(fuel_ded + vehicle_ded + recurring_ded, 2)
+
+    # ---- standard mileage method (date-keyed IRS rate, no cap) ----
+    standard_mileage = us_standard_mileage_deduction(p_trips)
+
+    car_and_truck = round(max(standard_mileage, actual_expense), 2)
+    car_method = "standard_mileage" if standard_mileage >= actual_expense else "actual"
+
+    # ---- other business expenses (tolls/parking, phone, supplies) ----
+    other_expenses = round(cat_totals["tolls"] + cat_totals["phone"] + cat_totals["other"], 2)
+    total_deductions = round(car_and_truck + other_expenses, 2)
+    net_profit = round(total_income - total_deductions, 2)
+
+    # ---- self-employment tax estimate ----
+    net_se = round(max(0.0, net_profit) * US_SE_NET_FACTOR, 2)
+    se_tax = round(net_se * US_SE_TAX_RATE, 2)
+
+    q_due = None
+    if period == "quarter":
+        q = (start.month - 1) // 3 + 1
+        q_due = US_QUARTER_DUE.get(q)
+
+    return {
+        "country": "US",
+        "period": period,
+        "period_start": start.isoformat(),
+        "period_end": end.isoformat(),
+        "period_label": fmt_period_label(period, start, end, "US"),
+        "currency": "USD", "symbol": "$", "distance_unit": "mi",
+        "business_km": business_km, "personal_km": personal_km, "total_km": total_km,
+        "business_use_pct": round(business_use * 100, 1),
+        "business_use_is_fallback": total_km == 0,
+        "total_income": total_income,
+        "total_deductions": total_deductions,
+        "net_profit": net_profit,
+        "category_totals": cat_totals,
+        "vehicle_deduction": {
+            "fuel": round(fuel_ded, 2),
+            "vehicle_costs": round(vehicle_ded, 2),
+            "recurring_payment": round(recurring_ded, 2),
+            "recurring_payment_gross": round(recurring_gross, 2),
+            "business_use_pct": round(business_use * 100, 1),
+            "total": actual_expense,
+        },
+        "full_claim": {
+            "tolls": cat_totals["tolls"], "phone": cat_totals["phone"],
+            "other": cat_totals["other"], "total": other_expenses,
+        },
+        "schedule_c": {
+            "gross_receipts": total_income,
+            "standard_mileage": standard_mileage,
+            "actual_expenses": actual_expense,
+            "car_and_truck": car_and_truck,
+            "car_method": car_method,
+            "car_method_label": "Standard mileage" if car_method == "standard_mileage" else "Actual expenses",
+            "other_expenses": other_expenses,
+            "total_expenses": total_deductions,
+            "net_profit": net_profit,
+        },
+        "se_tax": {
+            "net_earnings": net_se,
+            "rate": US_SE_TAX_RATE,
+            "amount": se_tax,
+            "quarter_due": q_due,
+            "note": ("Self-employment tax is ~15.3% of 92.35% of net profit. "
+                     "Set this aside and pay quarterly estimated taxes (Form 1040-ES). "
+                     "This is an estimate, not tax advice."),
+        },
+        "show_bas": False,
+        "registration_warning": None,
+        "work_type": profile.get("work_type", "delivery"),
+        "vehicle_ownership": profile.get("vehicle_ownership"),
+    }
+
+
+
 def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str, Any]:
     """Last 4 calendar weeks (Mon-Sun) ending in the week containing ref."""
     monday = ref - timedelta(days=ref.weekday())
@@ -377,8 +558,9 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
     business_today = round(sum(trip_business_km(t) for t in trips
                               if str(t["date"])[:10] == t_iso), 2)
 
-    # recurring status for the current BAS quarter — summed across all vehicles
-    q_start, q_end = au_bas_quarter(today)
+    country = profile.get("country", "AU")
+    # recurring status for the current quarter — summed across all vehicles
+    q_start, q_end = period_range("quarter", today, country)
     veh_list = vehicles if vehicles else (
         [{"recurring_payment": profile.get("recurring_payment")}]
         if profile.get("recurring_payment") else [])
@@ -411,8 +593,11 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
                       "subtitle": "Business" if biz else "Personal", "amount": None})
     items.sort(key=lambda x: (x["date"], x["created_at"]), reverse=True)
 
-    tax_setup_complete = bool(profile.get("legal_name")) and \
-        profile.get("registration_status") in ("registered", "not_registered")
+    if country == "US":
+        tax_setup_complete = bool(profile.get("legal_name"))
+    else:
+        tax_setup_complete = bool(profile.get("legal_name")) and \
+            profile.get("registration_status") in ("registered", "not_registered")
 
     return {
         "date": t_iso,
@@ -420,14 +605,15 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
         "expense_today": expense_today,
         "net_today": round(income_today - expense_today, 2),
         "business_distance_today": business_today,
-        "currency": "AUD", "symbol": "$", "distance_unit": "km",
+        "currency": "USD" if country == "US" else "AUD", "symbol": "$",
+        "distance_unit": "mi" if country == "US" else "km",
         "recurring": {
             "enabled": rec_enabled,
             "amount": rec_amount,
             "frequency": freq,
             "owed_this_quarter": rec_owed,
             "next_due": next_due,
-            "quarter_label": fmt_period_label("quarter", q_start, q_end),
+            "quarter_label": fmt_period_label("quarter", q_start, q_end, country),
         },
         "recent": items[:8],
         "tax_setup_complete": tax_setup_complete,
@@ -438,12 +624,15 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
 # ---------------------------------------------------------------------------
 # Tax Mileage engine — ATO logbook, method comparison, odometer reconciliation
 # ---------------------------------------------------------------------------
-def _fy_bounds(ref: date):
-    start = au_fy_start(ref)
-    return start, date(start.year + 1, 7, 1)
+def _fy_bounds(ref: date, country: str = "AU"):
+    start = fy_start(ref, country)
+    end = date(start.year + 1, 1, 1) if country == "US" else date(start.year + 1, 7, 1)
+    return start, end
 
 
-def _fy_label(start: date) -> str:
+def _fy_label(start: date, country: str = "AU") -> str:
+    if country == "US":
+        return str(start.year)          # US tax year = calendar year
     return f"{start.year}\u2013{str(start.year + 1)[2:]}"
 
 
@@ -514,9 +703,42 @@ def best_logbook_window(trips: List[dict], window_days: int = LOGBOOK_WINDOW_DAY
     return best
 
 
-def logbook_summary(profile: dict, trips: List[dict], ref: date) -> Dict[str, Any]:
-    fy_start, fy_end = _fy_bounds(ref)
-    fy_trips = [t for t in trips if fy_start <= parse_date(t["date"]) < fy_end]
+def logbook_summary(profile: dict, trips: List[dict], ref: date,
+                    country: str = "AU") -> Dict[str, Any]:
+    us = country == "US"
+    fy_s, fy_e = _fy_bounds(ref, country)
+    fy_trips = [t for t in trips if fy_s <= parse_date(t["date"]) < fy_e]
+    dfmt = "%m/%d/%Y" if us else DATE_FMT
+    # US IRS wants a mileage log for the whole tax year (no 12-week window).
+    if us:
+        biz = round(sum(trip_business_km(t) for t in fy_trips), 2)
+        tot = round(sum(float(t["distance_km"]) for t in fy_trips), 2)
+        if tot <= 0:
+            return {"available": False, "business_pct": None,
+                    "message": "Log business and personal miles to build your IRS mileage log."}
+        journeys = []
+        for t in sorted(fy_trips, key=lambda x: parse_date(x["date"])):
+            journeys.append({
+                "id": t.get("id"), "date": str(t["date"])[:10],
+                "date_label": parse_date(t["date"]).strftime(dfmt),
+                "distance_km": round(float(t["distance_km"]), 2),
+                "business_km": trip_business_km(t),
+                "type": t.get("type", "business"), "purpose": t.get("purpose"),
+                "from_label": t.get("from_label"), "to_label": t.get("to_label"),
+                "odo_start": t.get("odo_start"), "odo_end": t.get("odo_end"),
+            })
+        return {
+            "available": True, "us_mode": True,
+            "period_start": fy_s.isoformat(), "period_end": (fy_e - timedelta(days=1)).isoformat(),
+            "period_label": _fy_label(fy_s, country),
+            "business_km": biz, "private_km": round(tot - biz, 2), "total_km": tot,
+            "business_pct": round(biz / tot * 100, 2),
+            "journey_count": len(fy_trips), "complete": True,
+            "journeys": journeys[:200],
+            "note": ("Keep a contemporaneous mileage log — date, purpose and miles for "
+                     "each business trip supports your Schedule C car expenses."),
+        }
+
     lb = best_logbook_window(fy_trips) or best_logbook_window(trips)
     if not lb:
         return {
@@ -572,64 +794,99 @@ def _fy_vehicle_expenses(expenses: List[dict], fy_start: date, fy_end: date,
 
 
 def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
-                      ref: date, vehicle: Optional[dict] = None) -> Dict[str, Any]:
-    fy_start, fy_end = _fy_bounds(ref)
-    fy_trips = [t for t in trips if fy_start <= parse_date(t["date"]) < fy_end]
+                      ref: date, vehicle: Optional[dict] = None,
+                      country: str = "AU") -> Dict[str, Any]:
+    us = country == "US"
+    unit = "mi" if us else "km"
+    fy_s, fy_e = _fy_bounds(ref, country)
+    fy_trips = [t for t in trips if fy_s <= parse_date(t["date"]) < fy_e]
     business_km = round(sum(trip_business_km(t) for t in fy_trips), 2)
     total_km = round(sum(float(t["distance_km"]) for t in fy_trips), 2)
 
-    lb = best_logbook_window(fy_trips) or best_logbook_window(trips)
-    if lb:
-        logbook_pct = lb["business_pct"] / 100.0
-        pct_source = "logbook"
-    elif total_km > 0:
-        logbook_pct = business_km / total_km
-        pct_source = "derived"
+    if us:
+        # US actual-expense method uses annual business-use % (miles), not a 12-week window.
+        logbook_pct = (business_km / total_km) if total_km > 0 else \
+            float(profile.get("business_use_fallback", 100)) / 100.0
+        pct_source = "annual" if total_km > 0 else "fallback"
     else:
-        logbook_pct = float(profile.get("business_use_fallback", 100)) / 100.0
-        pct_source = "fallback"
+        lb = best_logbook_window(fy_trips) or best_logbook_window(trips)
+        if lb:
+            logbook_pct = lb["business_pct"] / 100.0
+            pct_source = "logbook"
+        elif total_km > 0:
+            logbook_pct = business_km / total_km
+            pct_source = "derived"
+        else:
+            logbook_pct = float(profile.get("business_use_fallback", 100)) / 100.0
+            pct_source = "fallback"
 
     recurring_payment = (vehicle or {}).get("recurring_payment") if vehicle else profile.get("recurring_payment")
-    cats, recurring, eligible = _fy_vehicle_expenses(expenses, fy_start, fy_end, recurring_payment)
-    logbook_deduction = round(eligible * logbook_pct, 2)
+    cats, recurring, eligible = _fy_vehicle_expenses(expenses, fy_s, fy_e, recurring_payment)
+    actual_deduction = round(eligible * logbook_pct, 2)  # "logbook" (AU) / "actual" (US)
 
-    rate = cpk_rate(fy_start.year)
-    capped_km = min(business_km, AU_CPK_MAX_KM)
-    cpk_deduction = round(capped_km * rate, 2)
+    if us:
+        rate = us_mileage_rate(fy_s)
+        mileage_deduction = us_standard_mileage_deduction(fy_trips)  # date-keyed, no cap
+        capped = False
+        claimable = business_km
+        max_deduction = None
+        rate_detail = f"{business_km:g} mi \u00b7 IRS rate"
+    else:
+        rate = cpk_rate(fy_s.year)
+        claimable = min(business_km, AU_CPK_MAX_KM)
+        mileage_deduction = round(claimable * rate, 2)
+        capped = business_km > AU_CPK_MAX_KM
+        max_deduction = round(AU_CPK_MAX_KM * rate, 2)
+        rate_detail = f"{round(rate * 100)}c \u00d7 {round(claimable)} km{' (cap)' if capped else ''}"
 
-    recommend = "logbook" if logbook_deduction >= cpk_deduction else "cents_per_km"
-    difference = round(abs(logbook_deduction - cpk_deduction), 2)
+    # "logbook" key = the % / actual-cost method; "cents_per_km" key = the flat mileage method.
+    recommend = "logbook" if actual_deduction >= mileage_deduction else "cents_per_km"
+    difference = round(abs(actual_deduction - mileage_deduction), 2)
+
+    actual_title = "Actual expenses" if us else "Logbook"
+    mileage_title = "Standard mileage" if us else "Cents / km"
+    label_actual = "Actual expense method" if us else "Logbook method"
+    label_mileage = "Standard mileage" if us else "Cents per kilometre"
+    disclaimer = (
+        "This is an estimate, not tax advice. Your final deduction depends on your "
+        "actual expenses and IRS rules — report car & truck expenses on Schedule C."
+        if us else
+        "This is an estimate, not tax advice. Your final deduction depends on your "
+        "actual eligible expenses, vehicle circumstances and ATO requirements.")
 
     return {
-        "fy_start": fy_start.isoformat(),
-        "fy_end": fy_end.isoformat(),
-        "fy_label": _fy_label(fy_start),
+        "country": country,
+        "unit": unit,
+        "fy_start": fy_s.isoformat(),
+        "fy_end": fy_e.isoformat(),
+        "fy_label": _fy_label(fy_s, country),
         "business_km": business_km,
         "total_km": total_km,
         "logbook": {
+            "title": actual_title,
             "business_pct": round(logbook_pct * 100, 2),
             "pct_source": pct_source,
             "eligible_expenses": eligible,
             "expense_breakdown": {"fuel": cats["fuel"], "vehicle": cats["vehicle"],
                                    "recurring_payment": recurring},
-            "deduction": logbook_deduction,
+            "deduction": actual_deduction,
         },
         "cents_per_km": {
+            "title": mileage_title,
+            "detail": rate_detail,
             "rate": rate,
             "rate_cents": round(rate * 100),
-            "max_km": AU_CPK_MAX_KM,
-            "claimable_km": round(capped_km, 2),
-            "capped": business_km > AU_CPK_MAX_KM,
-            "deduction": cpk_deduction,
-            "max_deduction": round(AU_CPK_MAX_KM * rate, 2),
+            "max_km": None if us else AU_CPK_MAX_KM,
+            "claimable_km": round(claimable, 2),
+            "capped": capped,
+            "deduction": mileage_deduction,
+            "max_deduction": max_deduction,
         },
         "recommend": recommend,
-        "recommend_label": "Logbook method" if recommend == "logbook" else "Cents per kilometre",
-        "recommended_deduction": logbook_deduction if recommend == "logbook" else cpk_deduction,
+        "recommend_label": label_actual if recommend == "logbook" else label_mileage,
+        "recommended_deduction": actual_deduction if recommend == "logbook" else mileage_deduction,
         "difference": difference,
-        "disclaimer": ("This is an estimate, not tax advice. Your final deduction "
-                       "depends on your actual eligible expenses, vehicle circumstances "
-                       "and ATO requirements."),
+        "disclaimer": disclaimer,
     }
 
 
@@ -664,7 +921,10 @@ def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
                 expenses: List[dict], ref: date,
                 vehicles: Optional[List[dict]] = None,
                 vehicle_id: Optional[str] = None) -> Dict[str, Any]:
-    fy_start, fy_end = _fy_bounds(ref)
+    country = profile.get("country", "AU")
+    us = country == "US"
+    unit = "mi" if us else "km"
+    fy_start, fy_end = _fy_bounds(ref, country)
     t_iso = ref.isoformat()
 
     def in_fy(row):
@@ -706,7 +966,7 @@ def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
     for v in veh_list:
         vt = veh_trips(v["id"])
         ve = veh_exp(v["id"])
-        mc = method_comparison(profile, vt, ve, ref, vehicle=v)
+        mc = method_comparison(profile, vt, ve, ref, vehicle=v, country=country)
         summaries.append({
             "id": v["id"],
             "name": v.get("name") or v.get("make_model") or "Vehicle",
@@ -719,7 +979,8 @@ def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
         })
 
     return {
-        "currency": "AUD", "symbol": "$", "distance_unit": "km",
+        "country": country,
+        "currency": "USD" if us else "AUD", "symbol": "$", "distance_unit": unit,
         "today": {
             "date": t_iso,
             "total_km": today_total,
@@ -730,7 +991,7 @@ def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
             "per_business_km": round(today_income / today_biz, 2) if today_biz > 0 else None,
         },
         "financial_year": {
-            "label": _fy_label(fy_start),
+            "label": _fy_label(fy_start, country),
             "start": fy_start.isoformat(),
             "end": fy_end.isoformat(),
             "total_km": fy_total,
@@ -740,8 +1001,8 @@ def tax_mileage(profile: dict, trips: List[dict], incomes: List[dict],
             "income": fy_income,
             "per_business_km": round(fy_income / fy_biz, 2) if fy_biz > 0 else None,
         },
-        "logbook": logbook_summary(profile, v_trips, ref),
-        "method_comparison": method_comparison(profile, v_trips, v_exp, ref, vehicle=selected),
+        "logbook": logbook_summary(profile, v_trips, ref, country),
+        "method_comparison": method_comparison(profile, v_trips, v_exp, ref, vehicle=selected, country=country),
         "odometer": odometer_check(selected, v_trips, ref),
         "vehicle": selected or (profile.get("vehicle") or {}),
         "vehicles": summaries,

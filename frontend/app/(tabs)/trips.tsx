@@ -125,6 +125,8 @@ export default function Mileage() {
   if (loading) return <Screen><Spinner /></Screen>;
 
   const today = tm?.today;
+  const unit = tm?.distance_unit || "km";
+  const isUS = tm?.country === "US";
   const fy = tm?.financial_year;
   const mc = tm?.method_comparison;
   const lb = tm?.logbook;
@@ -171,16 +173,16 @@ export default function Mileage() {
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <View>
             <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
-              {today.total_km} km
+              {today.total_km} {unit}
             </AppText>
             <AppText variant="caption" color={colors.dim}>Total driven</AppText>
           </View>
           <View style={{ alignItems: "flex-end" }}>
-            <AppText variant="bodySemi" color={colors.profit}>{today.business_km} km business</AppText>
-            <AppText variant="caption" color={colors.dim}>{today.private_km} km private · {today.business_pct}% business</AppText>
+            <AppText variant="bodySemi" color={colors.profit}>{today.business_km} {unit} business</AppText>
+            <AppText variant="caption" color={colors.dim}>{today.private_km} {unit} private · {today.business_pct}% business</AppText>
             {today.per_business_km != null ? (
               <View style={{ marginTop: 6, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                <AppText variant="caption" color={colors.accent}>{fmtMoney(today.per_business_km)}/business km</AppText>
+                <AppText variant="caption" color={colors.accent}>{fmtMoney(today.per_business_km)}/business {unit}</AppText>
               </View>
             ) : null}
           </View>
@@ -195,14 +197,14 @@ export default function Mileage() {
           </AppText>
           <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
             <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "logbook" ? colors.profit : colors.border }]}>
-              <AppText variant="caption" color={colors.dim}>Logbook</AppText>
+              <AppText variant="caption" color={colors.dim}>{mc.logbook.title}</AppText>
               <Money value={mc.logbook.deduction} size={22} />
               <AppText variant="caption" color={colors.dim}>{mc.logbook.business_pct}% of {fmtMoney(mc.logbook.eligible_expenses)}</AppText>
             </View>
             <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "cents_per_km" ? colors.profit : colors.border }]}>
-              <AppText variant="caption" color={colors.dim}>Cents / km</AppText>
+              <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.title}</AppText>
               <Money value={mc.cents_per_km.deduction} size={22} />
-              <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.rate_cents}c × {mc.cents_per_km.claimable_km} km{mc.cents_per_km.capped ? " (cap)" : ""}</AppText>
+              <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.detail}</AppText>
             </View>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12 }}>
@@ -223,13 +225,13 @@ export default function Mileage() {
             <Ionicons name="book-outline" size={22} color={colors.accent} />
           </View>
           <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">ATO Logbook</AppText>
+            <AppText variant="bodySemi">{isUS ? "IRS Mileage Log" : "ATO Logbook"}</AppText>
             {lb?.available ? (
               <AppText variant="caption" color={colors.dim}>
-                {lb.business_pct}% business · {lb.journey_count} journeys · {lb.complete ? "12-week period ready" : "in progress"}
+                {lb.business_pct}% business · {lb.journey_count} trips{isUS ? "" : ` · ${lb.complete ? "12-week period ready" : "in progress"}`}
               </AppText>
             ) : (
-              <AppText variant="caption" color={colors.dim}>Classify trips to build your 12-week logbook</AppText>
+              <AppText variant="caption" color={colors.dim}>{isUS ? "Log trips to build your IRS mileage log" : "Classify trips to build your 12-week logbook"}</AppText>
             )}
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.dim} />
@@ -246,7 +248,7 @@ export default function Mileage() {
             <View style={{ flex: 1 }}>
               <AppText variant="bodySemi">{hasVehicle ? (tm.vehicle.make_model || "My Vehicle") : "Set up your vehicle"}</AppText>
               {odo?.has_odometer ? (
-                <AppText variant="caption" color={colors.dim}>Odometer {odo.odometer_km} km · GPS {odo.gps_km} km</AppText>
+                <AppText variant="caption" color={colors.dim}>Odometer {odo.odometer_km} {unit} · GPS {odo.gps_km} {unit}</AppText>
               ) : (
                 <AppText variant="caption" color={colors.dim}>{hasVehicle ? "Add odometer readings for audit protection" : "Add rego, model & odometer"}</AppText>
               )}
@@ -270,7 +272,7 @@ export default function Mileage() {
           </AppText>
           {autoDrives.map((d) => (
             <Card key={d.id} testID={`auto-drive-${d.id}`} style={{ marginBottom: 8, borderColor: colors.warm }}>
-              <AppText variant="bodySemi" style={{ marginBottom: 2 }}>{d.distance_km} km drive</AppText>
+              <AppText variant="bodySemi" style={{ marginBottom: 2 }}>{d.distance_km} {unit} drive</AppText>
               <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
                 {displayDateShort(d.date)} · detected automatically — business or private?
               </AppText>
@@ -286,7 +288,7 @@ export default function Mileage() {
       {/* ---- Logging controls ---- */}
       {pendingTag != null ? (
         <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-          <AppText variant="h2" style={{ marginBottom: 4 }}>{pendingTag} km drive</AppText>
+          <AppText variant="h2" style={{ marginBottom: 4 }}>{pendingTag} {unit} drive</AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
             Was this trip business or private? GPS knows you drove, not why.
           </AppText>
@@ -302,7 +304,7 @@ export default function Mileage() {
             <AppText variant="label" color={colors.dim}>TRACKING SHIFT</AppText>
           </View>
           <Money value={Math.round(dist * 100) / 100} symbol="" size={46} />
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>km this drive</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>{unit} this drive</AppText>
           <SecondaryButton testID="gps-stop" label="End drive" icon="stop-circle-outline" tone="danger"
             onPress={stopShift} style={{ alignSelf: "stretch" }} />
         </Card>
@@ -333,7 +335,7 @@ export default function Mileage() {
             onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip", id: t.id } })}>
             <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
               <View style={{ flex: 1 }}>
-                <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{t.distance_km} km</AppText>
+                <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{t.distance_km} {unit}</AppText>
                 <AppText variant="caption" color={colors.dim}>
                   {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
                 </AppText>
