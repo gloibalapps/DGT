@@ -153,10 +153,12 @@ export default function Reports() {
                 <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
                   Fuel & vehicle costs apportioned by business-use %.
                 </AppText>
-                <Row label="Fuel" value={rep.vehicle_deduction.fuel} symbol={rep.symbol} />
-                <Row label="Vehicle costs" value={rep.vehicle_deduction.vehicle_costs} symbol={rep.symbol} />
-                <Row label="Recurring payment (calculated)" value={rep.vehicle_deduction.recurring_payment} symbol={rep.symbol}
-                  sub={rep.vehicle_deduction.recurring_payment_gross ? `${rep.symbol}${rep.vehicle_deduction.recurring_payment_gross} gross × ${rep.business_use_pct}%` : undefined} />
+                {rep.vehicle_deduction.fuel !== 0 ? <Row label="Fuel" value={rep.vehicle_deduction.fuel} symbol={rep.symbol} /> : null}
+                {rep.vehicle_deduction.vehicle_costs !== 0 ? <Row label="Vehicle costs" value={rep.vehicle_deduction.vehicle_costs} symbol={rep.symbol} /> : null}
+                {rep.vehicle_deduction.recurring_payment !== 0 ? (
+                  <Row label="Recurring payment (calculated)" value={rep.vehicle_deduction.recurring_payment} symbol={rep.symbol}
+                    sub={rep.vehicle_deduction.recurring_payment_gross ? `${rep.symbol}${rep.vehicle_deduction.recurring_payment_gross} gross × ${rep.business_use_pct}%` : undefined} />
+                ) : null}
                 <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
                 <Row label="Vehicle deduction total" value={rep.vehicle_deduction.total} symbol={rep.symbol} strong />
               </Card>
@@ -165,11 +167,17 @@ export default function Reports() {
               <Card style={{ marginBottom: 14 }}>
                 <AppText variant="h2" style={{ marginBottom: 4 }}>Other work expenses</AppText>
                 <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Claimed in full — not apportioned.</AppText>
-                <Row label="Tolls" value={rep.full_claim.tolls} symbol={rep.symbol} />
-                <Row label="Phone" value={rep.full_claim.phone} symbol={rep.symbol} />
-                <Row label="Other" value={rep.full_claim.other} symbol={rep.symbol} />
-                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
-                <Row label="Total" value={rep.full_claim.total} symbol={rep.symbol} strong />
+                {rep.full_claim.tolls !== 0 ? <Row label="Tolls" value={rep.full_claim.tolls} symbol={rep.symbol} /> : null}
+                {rep.full_claim.phone !== 0 ? <Row label="Phone" value={rep.full_claim.phone} symbol={rep.symbol} /> : null}
+                {rep.full_claim.other !== 0 ? <Row label="Other" value={rep.full_claim.other} symbol={rep.symbol} /> : null}
+                {rep.full_claim.total === 0 ? (
+                  <AppText variant="caption" color={colors.dim}>No other work expenses logged this period.</AppText>
+                ) : (
+                  <>
+                    <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+                    <Row label="Total" value={rep.full_claim.total} symbol={rep.symbol} strong />
+                  </>
+                )}
               </Card>
 
               {/* BAS / GST */}

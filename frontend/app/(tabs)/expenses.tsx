@@ -116,24 +116,26 @@ export default function Ledger() {
         </View>
       </Card>
 
-      {/* Expense category breakdown */}
-      <Card style={{ marginBottom: 14 }}>
-        <AppText variant="label" color={colors.dim} style={{ marginBottom: 12 }}>EXPENSES BY CATEGORY</AppText>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {CATEGORIES.map((c) => (
-            <View key={c.key} style={{
-              flexBasis: "48%", flexGrow: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12,
-              padding: 12, flexDirection: "row", alignItems: "center",
-            }}>
-              <Ionicons name={c.icon as any} size={18} color={colors.accent} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1 }}>
-                <AppText variant="caption" color={colors.dim}>{c.label}</AppText>
-                <Money value={Math.round((totals.cat[c.key] || 0) * 100) / 100} symbol="$" size={16} />
+      {/* Expense category breakdown — only categories with spend */}
+      {CATEGORIES.some((c) => (totals.cat[c.key] || 0) > 0) ? (
+        <Card style={{ marginBottom: 14 }}>
+          <AppText variant="label" color={colors.dim} style={{ marginBottom: 12 }}>EXPENSES BY CATEGORY</AppText>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {CATEGORIES.filter((c) => (totals.cat[c.key] || 0) > 0).map((c) => (
+              <View key={c.key} style={{
+                flexBasis: "48%", flexGrow: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12,
+                padding: 12, flexDirection: "row", alignItems: "center",
+              }}>
+                <Ionicons name={c.icon as any} size={18} color={colors.accent} style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="caption" color={colors.dim}>{c.label}</AppText>
+                  <Money value={Math.round((totals.cat[c.key] || 0) * 100) / 100} symbol="$" size={16} />
+                </View>
               </View>
-            </View>
-          ))}
-        </View>
-      </Card>
+            ))}
+          </View>
+        </Card>
+      ) : null}
 
       {/* Actions — add income or expense, or scan */}
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
