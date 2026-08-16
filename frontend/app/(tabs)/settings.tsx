@@ -80,7 +80,7 @@ export default function Settings() {
   const taxComplete = !!profile.legal_name && (profile.registration_status === "registered" || profile.registration_status === "not_registered");
 
   return (
-    <Screen header={<ScreenHeader subtitle="Configuration" title="Settings" />} scroll>
+    <Screen header={<ScreenHeader subtitle="Account & settings" title="Profile" />} scroll>
       {/* Account */}
       {user ? (
         <Section title="Account">
@@ -131,6 +131,22 @@ export default function Settings() {
           ) : (
             <Ionicons name="chevron-forward" size={20} color={colors.dim} />
           )}
+        </Pressable>
+      </Section>
+
+      {/* Help & user guide */}
+      <Section title="Help">
+        <Pressable testID="set-manual" onPress={() => router.push("/manual" as any)}
+          style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="book" size={20} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodySemi">User guide</AppText>
+            <AppText variant="caption" color={colors.dim}>How to log trips, expenses & read your tax reports</AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
         </Pressable>
       </Section>
 
