@@ -1,0 +1,43 @@
+{
+  "summary": "Ledger→Money consolidation verified end-to-end. FRONTEND (Expo web, 390x844): bottom tab bar shows exactly 5 tabs — Money, Mileage, Reports, Ask, Profile — with testIDs tab-home/tab-trips/tab-reports/tab-ask/tab-settings. The old Ledger tab (tab-expenses) is REMOVED (querySelector returns null). All 5 tabs navigate cleanly with no red-screen and no pageerrors. Money tab (/home) period toggle works: tapping money-period-today shows 'NET EARNINGS · TODAY', money-period-fy shows 'NET EARNINGS · FY 26–27' (AU Jul–Jun, country-aware from profile), money-period-all shows 'NET EARNINGS · ALL-TIME'; Net/Income/Expenses figures recompute per period. Quick-add flows: ledger-add-income opens /entry?type=income; expense-add opens /entry?type=expense; saving via entry-save returns to /home and updates Net (verified $100 income + $40 expense → Net $60, Income $100, Expenses $40, category tile 'Fuel $40.00'). ledger-history-toggle expands History; testIDs ledger-<uuid> and ledger-del-<uuid> render for each row; the count line reads '2 entries · today' and toggling to FY updates to '2 entries · fy 26–27' (filtering is per-period). Tapping a row navigates to /entry?type=expense&id=<uuid> with entry-amount prefilled ('40'). Deletion via ledger-del-<uuid> removes the row from the DOM. BACKEND: full pytest suite 68/68 pass on retry (test_ask_assistant.py::test_ask_au_out_of_scope_refuses is intermittently flaky — the LLM correctly refuses the France/Netflix question but occasionally uses phrasing outside the strict refuse_markers list; not related to this consolidation; passes on rerun). Direct curl against the external base URL: GET /api/dashboard, GET /api/tax-mileage, GET /api/reports?period=quarter, GET /api/vehicles (profile_id=smoketest) all return 200; POST /api/ask {question, country:'AU'} returns 200. No MongoDB _id leak observed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/ask (AU out-of-scope)", "issue": "Pre-existing stochastic flakiness in test_ask_assistant.py::test_ask_au_out_of_scope_refuses — Claude sometimes refuses with 'isn\\'t something I can help with — I\\'m only set up to answer Australian gig-economy tax questions' instead of the strict 'verified sources / registered tax professional' phrases in refuse_markers. The refusal behavior is correct; only the assertion is too strict. Suggest broadening markers to include 'only set up to answer' / 'can\\'t help with'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Pre-existing non-blocking console warning carried from prior iterations: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not introduced by this consolidation."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gigtax_api.py",
+    "/app/backend/tests/test_ask_assistant.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_12.json"
+  ],
+  "action_items": [
+    "None blocking — feature ready to ship. Optional: broaden refuse_markers in test_ask_assistant.py::test_ask_au_out_of_scope_refuses to include 'only set up to answer', 'can\\'t help with', 'isn\\'t something I can help with' to eliminate stochastic LLM flakiness (behavior is correct)."
+  ],
+  "critical_code_review_comments": [
+    "frontend/app/(tabs)/_layout.tsx now declares exactly 5 Tabs.Screen entries (home/trips/reports/ask/settings) with corresponding tabBarButtonTestIDs. Ledger removed cleanly (expenses.tsx deleted per handoff note).",
+    "frontend/app/(tabs)/home.tsx cleanly implements the merged Money screen: PERIODS array drives testIDs money-period-{today,fy,all}; range is derived via useMemo (today from toLocaleDateString('en-CA'); AU FY = Jul–Jun, US FY = Jan–Dec); summary + rows are useMemo'd off inRange filter — recomputes instantly on period change. Category breakdown and business-km card both honour the selected range. History rows use stable key `${row.kind}-${row.id}` and testID `ledger-${row.id}` / `ledger-del-${row.id}`.",
+    "Client-side FY filter is country-aware from the profile store (default AU). Verified 'FY 26–26' label rendered as 'FY 26–27' for August 2026, matching AU FY26–27 (1 Jul 2026 – 30 Jun 2027).",
+    "No MongoDB _id leak on any tested endpoint (spot-checked /api/vehicles and /api/dashboard responses).",
+    "home.tsx is 365 lines — under the 700-line file-size guideline."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (68/68 pytest — retry-stable; 1 LLM-stochastic test passes on rerun)",
+    "frontend": "100% (5-tab layout, period toggle, quick-add, history expand, row-tap prefill, delete — all verified)"
+  },
+  "seed_data_creation": "Ephemeral profile_id='smoketest' used for e2e; created 1 income ($100) and 1 expense ($40) during history/delete flow, both cleaned up at end of run (dashboard shows income_today=0, expense_today=0).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "5 tabs = tab-home (Money), tab-trips (Mileage), tab-reports (Reports), tab-ask (Ask), tab-settings (Profile). No tab-expenses. Money tab testIDs: money-period-{today,fy,all}, ledger-add-income, expense-add, expense-scan, ledger-history-toggle, ledger-<uuid>, ledger-del-<uuid>. Entry screen testIDs: entry-amount, entry-save, entry-close, entry-merchant (expense only), entry-platform-*, entry-treatment-*, entry-date, entry-note. FY is country-aware: AU Jul–Jun (default), US Jan–Dec. To bootstrap /home: set localStorage 'gigtax.profile_id'=JSON.stringify('<pid>') and PUT /api/profile?profile_id=<pid> with {onboarded:true, country:'AU'}. Cleanup test data via DELETE /api/income/<id>?profile_id=<pid> and DELETE /api/expenses/<id>?profile_id=<pid>.",
+  "rca_of_issue": "N/A — no defects reproduced in the consolidation. The one intermittent pytest failure is a pre-existing over-strict assertion on LLM refusal phrasing and is unrelated to the Money-tab merge."
+}

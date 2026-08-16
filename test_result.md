@@ -142,3 +142,18 @@ Frontend:
 5. Ask tab: type a question -> assistant replies; a suggestion chip works.
 6. Profile > Help > User guide opens /manual; sections expand; mentions the Ask tab.
 7. Mileage & Ledger: tapping History header expands the list.
+
+## Consolidation — Ledger merged into new "Money" tab (added by main agent)
+- Ledger tab REMOVED (app/(tabs)/expenses.tsx deleted). Home tab renamed to "Money" (wallet icon). Bottom tabs now: Money, Mileage, Reports, Ask, Profile (5).
+- Money tab (app/(tabs)/home.tsx) rewritten: hero has a period segmented toggle testIDs money-period-today / money-period-fy / money-period-all. Net earnings + Income + Expenses recompute client-side for the selected period from api.listIncome/listExpenses/listTrips. FY is country-aware (AU Jul–Jun, US Jan–Dec); All-time = everything; Today = today only.
+- Also on Money tab: quick-add (ledger-add-income / expense-add / expense-scan), expenses-by-category (period), Performance chart (last 4 weeks, period-independent), business-km tile (period) + recurring-owed tile (this quarter, from /api/dashboard), and collapsible History (ledger-history-toggle) filtered to the period with edit (tap row) + delete (ledger-del-*).
+- No backend change; uses existing endpoints. No auth (login removed).
+
+### What to test now (both):
+Frontend (priority):
+1. All 5 tabs load without red-screen: Money(/home), Mileage(/trips), Reports(/reports), Ask(/ask), Profile(/settings). Confirm there is NO Ledger tab.
+2. Money tab period toggle: tap money-period-today / money-period-fy / money-period-all — hero label + Net/Income/Expenses update; History count line updates to the period.
+3. Add an income and an expense via quick-add (entry flow); verify they appear in History (expand ledger-history-toggle) and Net updates; delete one via ledger-del-*.
+4. Editing: tapping a history row opens /entry prefilled.
+Backend regression:
+5. GET /api/dashboard, /api/tax-mileage, /api/report, /api/vehicles, and POST /api/ask still return 200.

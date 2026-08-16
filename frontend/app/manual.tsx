@@ -81,7 +81,7 @@ export default function Manual() {
         "GigTax turns your driving into the income, mileage and tax figures you actually need to lodge.",
         "Built for rideshare and delivery drivers (Uber, DoorDash, Uber Eats, Menulog, Amazon Flex and more).",
         "Everything you log is saved securely so your income, mileage and tax figures are always up to date.",
-        "The bottom tabs are your main areas: Home, Mileage, Ledger, Reports, Ask and Profile.",
+        "The bottom tabs are your main areas: Money, Mileage, Reports, Ask and Profile.",
       ],
     },
     {
@@ -95,22 +95,23 @@ export default function Manual() {
       ],
     },
     {
-      icon: "home",
-      title: "Your Home dashboard",
+      icon: "wallet",
+      title: "Your Money dashboard",
       lines: [
-        "The top card shows your net earnings today, with income and expenses beside it.",
-        "The Performance chart (last 4 weeks of profit, $/km and $/hr) sits just below.",
-        "At the bottom you'll see business km driven today and any recurring vehicle payment owed this quarter.",
+        "The Money tab is your home base — income, expenses and net earnings in one place.",
+        "Use the toggle on the top card to switch between Today, This financial year, and All-time.",
+        "Add income or an expense, or scan a receipt, right below the summary.",
+        "The Performance chart (last 4 weeks of profit, $/km and $/hr), your business km and any recurring payment owed this quarter sit underneath.",
       ],
     },
     {
       icon: "add-circle",
       title: "Logging income & expenses",
       lines: [
-        "Use the quick-add on Home, or the Ledger tab, to add income or an expense.",
+        "On the Money tab, tap Add income or Add expense to log an entry.",
         "Tag each expense with a category (fuel, tolls, vehicle, phone, other) and the vehicle it belongs to.",
         "Scan a receipt with your camera and GigTax reads the amount and merchant for you.",
-        "Tap the History header on Ledger to expand your past entries; tap any entry to edit or delete it.",
+        "Tap the History header to expand your entries for the selected period; tap any entry to edit or delete it.",
       ],
     },
     {

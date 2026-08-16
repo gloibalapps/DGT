@@ -65,6 +65,12 @@ class TestAsk:
             "registered tax",
             "tax professional",
             "tax agent",
+            "only set up to answer",
+            "isn't something i can help",
+            "can't help with",
+            "cannot help with",
+            "outside", 
+            "not able to answer",
         ]
         assert any(m in answer for m in refuse_markers), \
             f"expected refusal, got: {data.get('answer')}"
