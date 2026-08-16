@@ -203,6 +203,7 @@ class Profile(BaseModel):
     registration_date: Optional[str] = None
     reporting_frequency: Optional[str] = None
     business_use_fallback: float = 100.0
+    weekly_goal: Optional[float] = None
     vehicle_method: Optional[str] = None  # US/UK only
     vehicle_first_business_year: Optional[str] = None
     theme: Literal["dark", "light"] = "dark"

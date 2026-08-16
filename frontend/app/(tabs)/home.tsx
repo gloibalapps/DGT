@@ -135,6 +135,20 @@ export default function Money_() {
     [shifts, inRange],
   );
 
+  // This week's income (Mon–Sun) — powers the weekly-goal progress on the hero.
+  const weekIncome = useMemo(() => {
+    const now = new Date();
+    const diffToMon = (now.getDay() + 6) % 7; // 0=Sun..6=Sat -> days since Monday
+    const mon = new Date(now); mon.setDate(now.getDate() - diffToMon);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const monISO = mon.toLocaleDateString("en-CA");
+    const sunISO = sun.toLocaleDateString("en-CA");
+    const total = income
+      .filter((i) => { const d = String(i.date).slice(0, 10); return d >= monISO && d <= sunISO; })
+      .reduce((s, i) => s + (i.amount || 0), 0);
+    return Math.round(total * 100) / 100;
+  }, [income]);
+
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = [];
     for (const i of income) {
@@ -225,6 +239,41 @@ export default function Money_() {
           <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Expenses</AppText>
           <Money value={summary.exp} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#FF7A7A" />
         </View>
+
+        {/* Weekly goal progress */}
+        <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.18)", marginTop: 12, marginBottom: 12 }} />
+        {(() => {
+          const goal = profile?.weekly_goal;
+          if (!goal || goal <= 0) {
+            return (
+              <Pressable testID="money-set-goal" onPress={() => router.push("/weekly-goal" as any)}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons name="flag-outline" size={16} color={colors.onGradient} style={{ marginRight: 8, opacity: 0.9 }} />
+                  <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Set a weekly goal</AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.onGradient} style={{ opacity: 0.8 }} />
+              </Pressable>
+            );
+          }
+          const pct = Math.round((weekIncome / goal) * 100);
+          const done = pct >= 100;
+          return (
+            <Pressable testID="money-week-goal" onPress={() => router.push("/weekly-goal" as any)}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Weekly goal</AppText>
+                <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                  <AppText variant="bodySemi" color="#FFFFFF">{fmtMoney(weekIncome, symbol)}</AppText>
+                  <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.8 }}> / {fmtMoney(goal, symbol)}</AppText>
+                  <AppText variant="bodySemi" color={done ? "#2BD47D" : "#FFFFFF"} style={{ marginLeft: 6 }}>({pct}%)</AppText>
+                </View>
+              </View>
+              <View style={{ height: 8, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.22)", marginTop: 8, overflow: "hidden" }}>
+                <View style={{ height: 8, borderRadius: 999, width: `${Math.max(2, Math.min(100, pct))}%`, backgroundColor: "#2BD47D" }} />
+              </View>
+            </Pressable>
+          );
+        })()}
       </GradientCard>
 
       {/* Quick add */}

@@ -113,6 +113,7 @@ export interface ProfileT {
   registration_date?: string | null;
   reporting_frequency?: string | null;
   business_use_fallback: number;
+  weekly_goal?: number | null;
   vehicle?: VehicleT | null;
   theme: "dark" | "light";
   onboarded: boolean;
