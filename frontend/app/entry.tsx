@@ -17,7 +17,7 @@ import {
 } from "@/src/ui";
 import { receiptStash } from "@/src/scanStash";
 
-type Kind = "income" | "expense" | "trip";
+type Kind = "income" | "expense" | "trip" | "shift";
 
 export default function Entry() {
   const { colors } = useTheme();
@@ -43,6 +43,7 @@ export default function Entry() {
   const [treatment, setTreatment] = useState("inclusive");
   const [distance, setDistance] = useState("");
   const [minutes, setMinutes] = useState("");
+  const [hours, setHours] = useState("");
   const [tripType, setTripType] = useState<"business" | "personal" | "mixed">("business");
   const [purpose, setPurpose] = useState<string>("deliver");
   const [businessPct, setBusinessPct] = useState("50");
@@ -69,6 +70,10 @@ export default function Entry() {
           const list = await api.listExpenses();
           const it = list.find((x) => x.id === params.id);
           if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
+        } else if (kind === "shift") {
+          const list = await api.listShifts();
+          const it = list.find((x) => x.id === params.id);
+          if (it) { setHours(String(it.hours)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); }
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
@@ -97,6 +102,12 @@ export default function Entry() {
         if (receiptImage) payload.receipt_image = receiptImage;
         if ((category === "fuel" || category === "vehicle") && activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (editing) await api.updateExpense(params.id!, payload); else await api.addExpense(payload);
+      } else if (kind === "shift") {
+        const hrs = parseFloat(hours);
+        if (!hrs || hrs <= 0) { show("Enter your online hours", "error"); setSaving(false); return; }
+        const payload: any = { date: iso, hours: hrs, platform, note };
+        if (activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
+        if (editing) await api.updateShift(params.id!, payload); else await api.addShift(payload);
       } else {
         const km = parseFloat(distance);
         if (!km) { show("Enter a distance", "error"); setSaving(false); return; }
@@ -126,6 +137,7 @@ export default function Entry() {
     try {
       if (kind === "income") await api.deleteIncome(params.id!);
       else if (kind === "expense") await api.deleteExpense(params.id!);
+      else if (kind === "shift") await api.deleteShift(params.id!);
       else await api.deleteTrip(params.id!);
       show("Deleted", "success");
       refresh();
@@ -200,13 +212,17 @@ export default function Entry() {
                   </View>
                 </View>
               </>
+            ) : kind === "shift" ? (
+              <Field label="Hours online" hint="Total hours you were online this shift — powers your $/hour metric.">
+                <Input testID="entry-hours" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="6.5" />
+              </Field>
             ) : (
               <Field label="Amount">
                 <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
               </Field>
             )}
 
-            {kind === "income" && (
+            {(kind === "income" || kind === "shift") && (
               <Field label="Platform">
                 <ChipRow options={(profile?.platforms?.length ? profile.platforms : ["Other"]).map((p) => ({ key: p, label: p }))}
                   value={platform} onChange={setPlatform} testIDPrefix="entry-platform" />
@@ -230,7 +246,7 @@ export default function Entry() {
               </>
             )}
 
-            {kind !== "trip" && (
+            {(kind === "income" || kind === "expense") && (
               <Field label="GST treatment">
                 <ChipRow options={TAX_TREATMENTS.map((t) => ({ key: t.key, label: t.label }))} value={treatment} onChange={setTreatment} testIDPrefix="entry-treatment" />
               </Field>

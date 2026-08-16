@@ -101,6 +101,7 @@ export default function Manual() {
         "The Money tab is your home base — income, expenses and net earnings in one place.",
         "Use the toggle on the top card to switch between Today, This financial year, and All-time.",
         "Add income or an expense, or scan a receipt, right below the summary.",
+        "Tap Log hours in the Online hours card to record how long you were online each shift — GigTax then shows your true $/hour, counting waiting time, not just driving.",
         "The Performance chart (last 4 weeks of profit, $/km and $/hr), your business km and any recurring payment owed this quarter sit underneath.",
       ],
     },

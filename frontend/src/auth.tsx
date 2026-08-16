@@ -1,9 +1,12 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { Platform } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { storage } from "@/src/utils/storage";
 import { api, setAuthProfileId, setAuthToken, getLocalProfileId } from "@/src/api";
+
+// Finalise any pending auth session (native browser dismissal handling).
+WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = "gigtax.session_token";
 const USER_KEY = "gigtax.user";
@@ -39,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const sentIds = useRef<Set<string>>(new Set());
 
   const applySession = useCallback(async (token: string, u: AuthUser) => {
     setAuthToken(token);
@@ -49,6 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const completeWithSessionId = useCallback(async (sessionId: string) => {
+    // Guard: a re-mount, hot deep link and the auth-session result can all
+    // surface the same session_id — only exchange it once.
+    if (!sessionId || sentIds.current.has(sessionId)) return;
+    sentIds.current.add(sessionId);
     const res = await api.authSession(sessionId);
     await applySession(res.session_token, res.user);
     // one-time: move this device's local data onto the account
@@ -88,6 +96,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, []);
+
+  // Native: handle cold-start deep link + hot links (Android Custom Tabs often
+  // returns `dismiss` with no URL, so these sources are co-equal, not fallbacks).
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    let active = true;
+    const tryUrl = (url?: string | null) => {
+      const sid = url ? parseSessionId(url) : null;
+      if (!sid || !active) return;
+      setSigningIn(true);
+      completeWithSessionId(sid)
+        .catch((e) => console.log("auth complete failed", e))
+        .finally(() => { if (active) setSigningIn(false); });
+    };
+    Linking.getInitialURL().then(tryUrl);
+    const sub = Linking.addEventListener("url", ({ url }) => tryUrl(url));
+    return () => { active = false; sub.remove(); };
+  }, [completeWithSessionId]);
 
   // Web: handle redirect back with #session_id
   useEffect(() => {

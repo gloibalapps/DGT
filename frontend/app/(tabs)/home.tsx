@@ -88,6 +88,7 @@ export default function Money_() {
   const [income, setIncome] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>("today");
@@ -96,11 +97,11 @@ export default function Money_() {
   const load = useCallback(async () => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
-      const [d, p, inc, ex, tr] = await Promise.all([
+      const [d, p, inc, ex, tr, sh] = await Promise.all([
         api.dashboard(today), api.performance(today),
-        api.listIncome(), api.listExpenses(), api.listTrips(),
+        api.listIncome(), api.listExpenses(), api.listTrips(), api.listShifts(),
       ]);
-      setDash(d); setPerf(p); setIncome(inc); setExpenses(ex); setTrips(tr);
+      setDash(d); setPerf(p); setIncome(inc); setExpenses(ex); setTrips(tr); setShifts(sh);
     } catch {
       show("Couldn't load your money summary", "error");
     } finally {
@@ -132,9 +133,11 @@ export default function Money_() {
     const incF = income.filter((i) => inRange(i.date));
     const expF = expenses.filter((e) => inRange(e.date));
     const trF = trips.filter((t) => inRange(t.date));
+    const shF = shifts.filter((s) => inRange(s.date));
     const inc = incF.reduce((s, i) => s + (i.amount || 0), 0);
     const exp = expF.reduce((s, e) => s + (e.amount || 0), 0);
     const bizKm = trF.reduce((s, t) => s + tripBizKm(t), 0);
+    const hrs = shF.reduce((s, x) => s + (x.hours || 0), 0);
     const cat: Record<string, number> = {};
     for (const e of expF) cat[e.category] = (cat[e.category] || 0) + (e.amount || 0);
     return {
@@ -142,9 +145,15 @@ export default function Money_() {
       exp: Math.round(exp * 100) / 100,
       net: Math.round((inc - exp) * 100) / 100,
       bizKm: Math.round(bizKm * 10) / 10,
+      hours: Math.round(hrs * 10) / 10,
       cat,
     };
-  }, [income, expenses, trips, inRange]);
+  }, [income, expenses, trips, shifts, inRange]);
+
+  const shiftRows = useMemo(
+    () => shifts.filter((s) => inRange(s.date)).sort((a, b) => (a.date < b.date ? 1 : -1)),
+    [shifts, inRange],
+  );
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = [];
@@ -167,6 +176,16 @@ export default function Money_() {
     try {
       if (row.kind === "income") await api.deleteIncome(row.id);
       else await api.deleteExpense(row.id);
+      show("Deleted", "success");
+      load(); refresh();
+    } catch {
+      show("Couldn't delete — try again", "error");
+    }
+  };
+
+  const delShift = async (id: string) => {
+    try {
+      await api.deleteShift(id);
       show("Deleted", "success");
       load(); refresh();
     } catch {
@@ -299,6 +318,48 @@ export default function Money_() {
           </View>
         </Card>
       )}
+
+      {/* Online hours (this period) */}
+      <Card style={{ marginBottom: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: summary.hours > 0 ? 12 : 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="time-outline" size={18} color={colors.accent} style={{ marginRight: 8 }} />
+            <AppText variant="h2">Online hours</AppText>
+          </View>
+          <Pressable testID="hours-add" hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}
+            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift" } })}>
+            <Ionicons name="add-circle" size={18} color={colors.accent} />
+            <AppText variant="bodySemi" color={colors.accent} style={{ marginLeft: 4 }}>Log hours</AppText>
+          </Pressable>
+        </View>
+        {summary.hours > 0 ? (
+          <>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+              <Kpi label={`hours · ${range.label.toLowerCase()}`} value={String(summary.hours)} />
+              <Kpi label={`${symbol}/hr online`} value={`${symbol}${Math.round((summary.inc / summary.hours) * 100) / 100}`} />
+            </View>
+            {shiftRows.map((s) => (
+              <Pressable key={s.id} testID={`shift-${s.id}`}
+                onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift", id: s.id } })}
+                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10,
+                  borderTopWidth: 1, borderTopColor: colors.border }}>
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyMed">{s.hours} hrs</AppText>
+                  <AppText variant="caption" color={colors.dim}>
+                    {displayDateShort(String(s.date).slice(0, 10))}{s.platform ? ` · ${s.platform}` : ""}
+                  </AppText>
+                </View>
+                <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`shift-del-${s.id}`}
+                  onPress={() => delShift(s.id)} />
+              </Pressable>
+            ))}
+          </>
+        ) : (
+          <AppText variant="caption" color={colors.dim}>
+            Log the hours you were online each shift to see your true earnings-per-hour — counting waiting time, not just driving.
+          </AppText>
+        )}
+      </Card>
 
       {/* Business km (period) + recurring owed */}
       <View style={{ flexDirection: "row", gap: 12, marginBottom: 14 }}>

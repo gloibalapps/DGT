@@ -74,3 +74,29 @@ class TestPerformance:
         assert cur["profit"] == 510.0
         assert cur["business_km"] == 120.0
         assert cur["hours"] == 5.0
+
+    def test_online_hours_override_driving(self, base_url, api_client):
+        """Manually logged online hours drive $/hour instead of trip driving time."""
+        pid = f"TEST_{uuid.uuid4().hex[:12]}"
+        api_client.put(f"{base_url}/api/profile", json={"profile_id": pid})
+        d = _weekday_iso_of_ref()
+        api_client.post(f"{base_url}/api/income", json={
+            "profile_id": pid, "date": d, "amount": 600, "tax_treatment": "inclusive"})
+        # 300 driving min => 5h ($120/h); but 10 logged online hours => $60/h
+        api_client.post(f"{base_url}/api/trips", json={
+            "profile_id": pid, "date": d, "distance_km": 120,
+            "duration_min": 300, "type": "business"})
+        api_client.post(f"{base_url}/api/shifts", json={
+            "profile_id": pid, "date": d, "hours": 10})
+        j = api_client.get(f"{base_url}/api/performance",
+                           params={"profile_id": pid, "ref_date": REF}).json()
+        assert j["hours_source"] == "online"
+        assert j["total_hours"] == 10.0
+        assert j["per_hour"] == 60.0
+
+    def test_hours_source_defaults_to_driving(self, base_url, api_client):
+        pid = f"TEST_{uuid.uuid4().hex[:12]}"
+        api_client.put(f"{base_url}/api/profile", json={"profile_id": pid})
+        j = api_client.get(f"{base_url}/api/performance",
+                           params={"profile_id": pid, "ref_date": REF}).json()
+        assert j["hours_source"] == "driving"

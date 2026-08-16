@@ -13,6 +13,7 @@ import { ToastProvider } from "@/src/ui";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { SubscriptionProvider, useSubscription } from "@/src/subscription";
 import PaywallScreen from "@/src/PaywallScreen";
+import LoginScreen from "@/src/LoginScreen";
 import { syncAutotrack } from "@/src/autotrack";
 
 LogBox.ignoreAllLogs(true);
@@ -45,9 +46,9 @@ function SubGate() {
 }
 
 function AuthGate() {
-  const { loading } = useAuth();
+  const { user, loading } = useAuth();
   if (loading) return null;  // splash stays until any stored session resolves
-  // Google login gate removed — the app opens directly (uses a local profile).
+  if (!user) return <LoginScreen />;  // Google sign-in gate
   return (
     <SubscriptionProvider>
       <SubGate />

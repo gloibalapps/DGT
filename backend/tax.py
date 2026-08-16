@@ -570,11 +570,17 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
 
 
 
-def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str, Any]:
-    """Last 4 calendar weeks (Mon-Sun) ending in the week containing ref."""
+def performance(profile: dict, trips, incomes, expenses, ref: date, shifts=None) -> Dict[str, Any]:
+    """Last 4 calendar weeks (Mon-Sun) ending in the week containing ref.
+
+    Hours prefer manually logged online-hours (shifts) when present for a week,
+    otherwise fall back to business trip driving time. This lets earnings-per-hour
+    reflect real online time (including idle/waiting), not just driving minutes.
+    """
     monday = ref - timedelta(days=ref.weekday())
+    shifts = shifts or []
     weeks = []
-    tot_inc = tot_exp = tot_km = tot_min = 0.0
+    tot_inc = tot_exp = tot_km = tot_hours = tot_online = 0.0
     for i in range(3, -1, -1):
         ws = monday - timedelta(weeks=i)
         we = ws + timedelta(days=7)
@@ -588,6 +594,8 @@ def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str,
         wt = [t for t in trips if in_w(t)]
         bkm = sum(trip_business_km(t) for t in wt)
         mins = sum((t.get("duration_min") or 0) for t in wt if trip_business_km(t) > 0)
+        online_h = sum((s.get("hours") or 0) for s in shifts if in_w(s))
+        wk_hours = online_h if online_h > 0 else mins / 60.0
         weeks.append({
             "label": ws.strftime("%d/%m"),
             "start": ws.isoformat(),
@@ -595,23 +603,24 @@ def performance(profile: dict, trips, incomes, expenses, ref: date) -> Dict[str,
             "expenses": round(exp, 2),
             "profit": round(inc - exp, 2),
             "business_km": round(bkm, 2),
-            "hours": round(mins / 60.0, 2),
+            "hours": round(wk_hours, 2),
         })
         tot_inc += inc
         tot_exp += exp
         tot_km += bkm
-        tot_min += mins
+        tot_hours += wk_hours
+        tot_online += online_h
 
-    hours = tot_min / 60.0
     return {
         "weeks": weeks,
         "total_income": round(tot_inc, 2),
         "total_expenses": round(tot_exp, 2),
         "total_profit": round(tot_inc - tot_exp, 2),
         "total_km": round(tot_km, 2),
-        "total_hours": round(hours, 2),
+        "total_hours": round(tot_hours, 2),
+        "hours_source": "online" if tot_online > 0 else "driving",
         "per_km": round(tot_inc / tot_km, 2) if tot_km > 0 else None,
-        "per_hour": round(tot_inc / hours, 2) if hours > 0 else None,
+        "per_hour": round(tot_inc / tot_hours, 2) if tot_hours > 0 else None,
         "symbol": "$",
         "distance_unit": "km",
     }

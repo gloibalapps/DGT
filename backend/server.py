@@ -255,6 +255,18 @@ class Expense(BaseModel):
     created_at: str = Field(default_factory=now_iso)
 
 
+class Shift(BaseModel):
+    """A manually logged online/working session — powers earnings-per-hour."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    profile_id: str
+    date: str
+    hours: float
+    platform: Optional[str] = None
+    vehicle_id: Optional[str] = None
+    note: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+
+
 def clean(doc: dict) -> dict:
     doc = dict(doc)
     doc.pop("_id", None)
@@ -489,6 +501,36 @@ async def delete_expense(item_id: str):
     return {"ok": True}
 
 
+# Shifts — manually logged online hours
+@api_router.get("/shifts")
+async def list_shifts(profile_id: str = Query(...)):
+    return await _list("shifts", profile_id)
+
+
+@api_router.post("/shifts")
+async def add_shift(payload: dict):
+    obj = Shift(**payload)
+    await db.shifts.insert_one(obj.model_dump())
+    return clean(obj.model_dump())
+
+
+@api_router.put("/shifts/{item_id}")
+async def update_shift(item_id: str, payload: dict):
+    existing = await db.shifts.find_one({"id": item_id})
+    if not existing:
+        raise HTTPException(404, "shift not found")
+    base = clean(existing); base.update(payload)
+    obj = Shift(**base)
+    await db.shifts.update_one({"id": item_id}, {"$set": obj.model_dump()})
+    return clean(obj.model_dump())
+
+
+@api_router.delete("/shifts/{item_id}")
+async def delete_shift(item_id: str):
+    await db.shifts.delete_one({"id": item_id})
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Reports / dashboard
 # ---------------------------------------------------------------------------
@@ -523,8 +565,9 @@ async def dashboard(profile_id: str = Query(...), ref_date: Optional[str] = Quer
 @api_router.get("/performance")
 async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
+    shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
-    return taxlib.performance(profile, trips, income, expenses, ref)
+    return taxlib.performance(profile, trips, income, expenses, ref, shifts=shifts)
 
 
 @api_router.get("/tax-mileage")

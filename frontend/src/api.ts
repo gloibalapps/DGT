@@ -138,6 +138,10 @@ export interface ExpenseT {
   tax_treatment: string; note?: string | null;
   receipt_image?: string | null;
 }
+export interface ShiftT {
+  id: string; profile_id: string; date: string; hours: number;
+  platform?: string | null; vehicle_id?: string | null; note?: string | null;
+}
 
 export const api = {
   async authSession(sessionId: string) {
@@ -191,6 +195,18 @@ export const api = {
   updateExpense: (id: string, e: Partial<ExpenseT>) =>
     req(`/expenses/${id}`, { method: "PUT", body: JSON.stringify(e) }),
   deleteExpense: (id: string) => req(`/expenses/${id}`, { method: "DELETE" }),
+
+  async listShifts(): Promise<ShiftT[]> {
+    const pid = await getProfileId();
+    return req(`/shifts?profile_id=${pid}`);
+  },
+  async addShift(s: Partial<ShiftT>) {
+    const pid = await getProfileId();
+    return req(`/shifts`, { method: "POST", body: JSON.stringify({ ...s, profile_id: pid }) });
+  },
+  updateShift: (id: string, s: Partial<ShiftT>) =>
+    req(`/shifts/${id}`, { method: "PUT", body: JSON.stringify(s) }),
+  deleteShift: (id: string) => req(`/shifts/${id}`, { method: "DELETE" }),
 
   async scanReceipt(image_base64: string) {
     return req(`/receipts/scan`, { method: "POST", body: JSON.stringify({ image_base64 }) });
