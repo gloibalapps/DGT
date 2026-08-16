@@ -158,6 +158,38 @@ export default function Mileage() {
         </View>
       ) : null}
 
+      {/* ---- Logging controls ---- */}
+      {pendingTag != null ? (
+        <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+          <AppText variant="h2" style={{ marginBottom: 4 }}>{pendingTag} {unit} drive</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+            Was this trip business or private? GPS knows you drove, not why.
+          </AppText>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <PrimaryButton testID="gps-tag-business" label="Business" onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
+            <SecondaryButton testID="gps-tag-personal" label="Private" onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
+          </View>
+        </Card>
+      ) : tracking ? (
+        <Card style={{ marginBottom: 14, borderColor: colors.profit, alignItems: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.loss, marginRight: 8 }} />
+            <AppText variant="label" color={colors.dim}>TRACKING SHIFT</AppText>
+          </View>
+          <Money value={Math.round(dist * 100) / 100} symbol="" size={46} />
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>{unit} this drive</AppText>
+          <SecondaryButton testID="gps-stop" label="End drive" icon="stop-circle-outline" tone="danger"
+            onPress={stopShift} style={{ alignSelf: "stretch" }} />
+        </Card>
+      ) : (
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+          <PrimaryButton testID="trips-add" label="Add trip" icon="add" style={{ flex: 1 }}
+            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip" } })} />
+          <SecondaryButton testID="gps-start" label="GPS shift" icon="radio-outline" style={{ flex: 1 }}
+            onPress={startShift} />
+        </View>
+      )}
+
       {/* ---- Today ---- */}
       <Card style={{ marginBottom: 14 }}>
         <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
@@ -219,38 +251,6 @@ export default function Mileage() {
               </View>
             </Card>
           ))}
-        </View>
-      )}
-
-      {/* ---- Logging controls ---- */}
-      {pendingTag != null ? (
-        <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-          <AppText variant="h2" style={{ marginBottom: 4 }}>{pendingTag} {unit} drive</AppText>
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
-            Was this trip business or private? GPS knows you drove, not why.
-          </AppText>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <PrimaryButton testID="gps-tag-business" label="Business" onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
-            <SecondaryButton testID="gps-tag-personal" label="Private" onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
-          </View>
-        </Card>
-      ) : tracking ? (
-        <Card style={{ marginBottom: 14, borderColor: colors.profit, alignItems: "center" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.loss, marginRight: 8 }} />
-            <AppText variant="label" color={colors.dim}>TRACKING SHIFT</AppText>
-          </View>
-          <Money value={Math.round(dist * 100) / 100} symbol="" size={46} />
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>{unit} this drive</AppText>
-          <SecondaryButton testID="gps-stop" label="End drive" icon="stop-circle-outline" tone="danger"
-            onPress={stopShift} style={{ alignSelf: "stretch" }} />
-        </Card>
-      ) : (
-        <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-          <PrimaryButton testID="trips-add" label="Add trip" icon="add" style={{ flex: 1 }}
-            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip" } })} />
-          <SecondaryButton testID="gps-start" label="GPS shift" icon="radio-outline" style={{ flex: 1 }}
-            onPress={startShift} />
         </View>
       )}
 
