@@ -153,7 +153,7 @@ export default function Mileage() {
                     backgroundColor: active ? colors.accent : colors.surfaceAlt,
                     borderWidth: 1, borderColor: active ? colors.accent : colors.border }}>
                   <Ionicons name="car-sport" size={15} color={active ? colors.bg : colors.dim} style={{ marginRight: 6 }} />
-                  <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{v.name || v.make_model || "Vehicle"}</AppText>
+                  <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{v.registration || v.make_model || "Vehicle"}</AppText>
                 </Pressable>
               );
             })}

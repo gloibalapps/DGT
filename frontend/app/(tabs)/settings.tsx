@@ -258,7 +258,8 @@ export default function Settings() {
         </AppText>
         {vehicles.map((v) => {
           const active = v.id === activeVehicleId;
-          const sub = [v.make_model, v.registration].filter(Boolean).join(" · ");
+          const label = v.registration || v.make_model || "Vehicle";
+          const sub = v.registration && v.make_model ? v.make_model : "Tap to add rego, model & odometer";
           return (
             <View key={v.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10,
               borderTopWidth: 1, borderTopColor: colors.border }}>
@@ -269,8 +270,8 @@ export default function Settings() {
                   <Ionicons name="car-sport" size={20} color={colors.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <AppText variant="bodySemi">{v.name || v.make_model || "Vehicle"}</AppText>
-                  <AppText variant="caption" color={colors.dim}>{sub || "Tap to add rego, model & odometer"}</AppText>
+                  <AppText variant="bodySemi">{label}</AppText>
+                  <AppText variant="caption" color={colors.dim}>{sub}</AppText>
                 </View>
               </Pressable>
               {active ? (

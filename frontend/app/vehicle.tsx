@@ -21,7 +21,6 @@ export default function VehicleSetup() {
   const editing = !!params.id;
   const current: VehicleT = vehicles.find((x) => x.id === params.id) || {};
 
-  const [name, setName] = useState(current.name || "");
   const [registration, setRegistration] = useState(current.registration || "");
   const [makeModel, setMakeModel] = useState(current.make_model || "");
   const [year, setYear] = useState(current.year ? String(current.year) : "");
@@ -48,7 +47,7 @@ export default function VehicleSetup() {
     }
     setSaving(true);
     const payload: Partial<VehicleT> = {
-      name: name.trim() || makeModel.trim() || "My Vehicle",
+      name: registration.trim() || makeModel.trim() || "Vehicle",
       registration: registration.trim() || null,
       make_model: makeModel.trim() || null,
       year: year ? parseInt(year, 10) : null,
@@ -104,9 +103,6 @@ export default function VehicleSetup() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Card style={{ marginBottom: 16 }}>
-            <Field label="Nickname">
-              <Input testID="veh-name" value={name} onChangeText={setName} placeholder="Daily driver" />
-            </Field>
             <Field label="Registration">
               <Input testID="veh-rego" value={registration} onChangeText={setRegistration} placeholder="ABC-123" autoCapitalize="characters" />
             </Field>
