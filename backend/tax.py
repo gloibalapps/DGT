@@ -626,6 +626,99 @@ def performance(profile: dict, trips, incomes, expenses, ref: date, shifts=None)
     }
 
 
+_WD_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_WD_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def insights(profile: dict, incomes, expenses, shifts, ref: date,
+             weeks_back: int = 8, weekday_weeks: int = 12) -> Dict[str, Any]:
+    """Driving insights: weekly hours-vs-earnings recap and best-day-to-drive.
+
+    Hours come from manually logged online shifts. Earnings insights work off
+    income regardless of whether hours are logged.
+    """
+    shifts = shifts or []
+    symbol = "$"
+    monday = ref - timedelta(days=ref.weekday())
+
+    # ---- Weekly recap (oldest -> newest) --------------------------------
+    weekly = []
+    for i in range(weeks_back - 1, -1, -1):
+        ws = monday - timedelta(weeks=i)
+        we = ws + timedelta(days=7)
+
+        def in_w(row, s=ws, e=we):
+            d = parse_date(row["date"])
+            return s <= d < e
+
+        inc = sum(x["amount"] for x in incomes if in_w(x))
+        exp = sum(x["amount"] for x in expenses if in_w(x))
+        online_h = sum((s.get("hours") or 0) for s in shifts if in_w(s))
+        weekly.append({
+            "label": ws.strftime("%d/%m"),
+            "start": ws.isoformat(),
+            "income": round(inc, 2),
+            "expenses": round(exp, 2),
+            "profit": round(inc - exp, 2),
+            "hours": round(online_h, 2),
+            "per_hour": round(inc / online_h, 2) if online_h > 0 else None,
+        })
+
+    # ---- Best day to drive (last `weekday_weeks` weeks) -----------------
+    wd_start = monday - timedelta(weeks=weekday_weeks - 1)
+    wd_end = monday + timedelta(days=7)
+
+    def in_win(row):
+        d = parse_date(row["date"])
+        return wd_start <= d < wd_end
+
+    by = [{"weekday": k, "short": _WD_SHORT[k], "name": _WD_LONG[k],
+           "income": 0.0, "hours": 0.0, "sessions": 0, "per_hour": None}
+          for k in range(7)]
+    for x in incomes:
+        if in_win(x):
+            by[parse_date(x["date"]).weekday()]["income"] += x["amount"]
+    total_hours = 0.0
+    for s in shifts:
+        if in_win(s):
+            k = parse_date(s["date"]).weekday()
+            h = s.get("hours") or 0
+            by[k]["hours"] += h
+            by[k]["sessions"] += 1
+            total_hours += h
+    for d in by:
+        d["income"] = round(d["income"], 2)
+        d["hours"] = round(d["hours"], 2)
+        d["per_hour"] = round(d["income"] / d["hours"], 2) if d["hours"] > 0 else None
+
+    total_income = round(sum(d["income"] for d in by), 2)
+
+    best_earning_day = None
+    earners = [d for d in by if d["income"] > 0]
+    if earners:
+        b = max(earners, key=lambda d: d["income"])
+        best_earning_day = {"short": b["short"], "name": b["name"], "income": b["income"]}
+
+    best_hourly_day = None
+    hourly = [d for d in by if d["per_hour"] is not None]
+    if hourly:
+        b = max(hourly, key=lambda d: d["per_hour"])
+        best_hourly_day = {"short": b["short"], "name": b["name"], "per_hour": b["per_hour"]}
+
+    return {
+        "symbol": symbol,
+        "weeks_back": weeks_back,
+        "weekday_weeks": weekday_weeks,
+        "weekly": weekly,
+        "by_weekday": by,
+        "best_earning_day": best_earning_day,
+        "best_hourly_day": best_hourly_day,
+        "has_income": total_income > 0,
+        "has_hours": total_hours > 0,
+        "avg_per_hour": round(total_income / total_hours, 2) if total_hours > 0 else None,
+    }
+
+
 
 def tax_jar(profile: dict, report: dict, ref: date) -> Dict[str, Any]:
     """Recommended running 'set aside for taxes' balance for the tax year to date.

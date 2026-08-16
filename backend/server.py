@@ -570,6 +570,14 @@ async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Qu
     return taxlib.performance(profile, trips, income, expenses, ref, shifts=shifts)
 
 
+@api_router.get("/insights")
+async def insights(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
+    shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
+    ref = taxlib.parse_date(ref_date) if ref_date else date.today()
+    return taxlib.insights(profile, income, expenses, shifts, ref)
+
+
 @api_router.get("/tax-mileage")
 async def tax_mileage(profile_id: str = Query(...), ref_date: Optional[str] = Query(None),
                       vehicle_id: Optional[str] = Query(None)):

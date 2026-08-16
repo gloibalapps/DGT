@@ -361,6 +361,21 @@ export default function Money_() {
         )}
       </Card>
 
+      {/* Driving insights */}
+      <Pressable testID="money-insights" onPress={() => router.push("/insights" as any)} style={{ marginBottom: 14 }}>
+        <Card style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="analytics-outline" size={20} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodySemi">Driving insights</AppText>
+            <AppText variant="caption" color={colors.dim}>Weekly hours vs earnings & your best days to drive</AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+        </Card>
+      </Pressable>
+
       {/* Business km (period) + recurring owed */}
       <View style={{ flexDirection: "row", gap: 12, marginBottom: 14 }}>
         <Card style={{ flex: 1 }}>

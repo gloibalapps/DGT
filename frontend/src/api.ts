@@ -219,6 +219,10 @@ export const api = {
     const pid = await getProfileId();
     return req(`/performance?profile_id=${pid}&ref_date=${refDate}`);
   },
+  async insights(refDate: string) {
+    const pid = await getProfileId();
+    return req(`/insights?profile_id=${pid}&ref_date=${refDate}`);
+  },
   async taxMileage(refDate: string, vehicleId?: string) {
     const pid = await getProfileId();
     const vq = vehicleId ? `&vehicle_id=${vehicleId}` : "";
