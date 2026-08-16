@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
-import { View, RefreshControl } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { View, RefreshControl, Pressable } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
 
@@ -31,6 +31,7 @@ export default function Reports() {
   const { colors } = useTheme();
   const { version } = useStore();
   const { show } = useToast();
+  const router = useRouter();
   const [period, setPeriod] = useState("quarter");
   const [rep, setRep] = useState<any>(null);
   const [tm, setTm] = useState<any>(null);
@@ -85,7 +86,7 @@ export default function Reports() {
           ) : null}
 
           {/* Net profit summary */}
-          <Card style={{ marginBottom: 14 }}>
+          <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
             <AppText variant="label" color={colors.dim} style={{ marginBottom: 4 }}>NET PROFIT</AppText>
             <Money value={rep.net_profit} symbol={rep.symbol} size={44} signed={false}
               color={rep.net_profit >= 0 ? colors.profit : colors.loss} />
@@ -137,7 +138,7 @@ export default function Reports() {
           ) : (
             <>
               {/* Vehicle deduction breakdown */}
-              <Card style={{ marginBottom: 14 }}>
+              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <AppText variant="h2">Vehicle deduction</AppText>
                   <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
@@ -160,7 +161,7 @@ export default function Reports() {
               </Card>
 
               {/* Full-claim work expenses */}
-              <Card style={{ marginBottom: 14 }}>
+              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
                 <AppText variant="h2" style={{ marginBottom: 4 }}>Other work expenses</AppText>
                 <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Claimed in full — not apportioned.</AppText>
                 {rep.full_claim.tolls !== 0 ? <Row label="Tolls" value={rep.full_claim.tolls} symbol={rep.symbol} /> : null}
@@ -235,6 +236,32 @@ export default function Reports() {
                 </View>
                 <AppText variant="caption" color={colors.dim} style={{ marginTop: 10, lineHeight: 16 }}>{mc.disclaimer}</AppText>
               </Card>
+            );
+          })() : null}
+
+          {/* ATO Logbook / IRS Mileage Log */}
+          {tm?.logbook ? (() => {
+            const lb = tm.logbook;
+            const isUS = rep.country === "US";
+            return (
+              <Pressable testID="reports-open-logbook" onPress={() => router.push("/logbook" as any)}>
+                <Card style={{ marginBottom: 14, borderColor: colors.accent, flexDirection: "row", alignItems: "center" }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                    <Ionicons name="book-outline" size={22} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="bodySemi">{isUS ? "IRS Mileage Log" : "ATO Logbook"}</AppText>
+                    {lb.available ? (
+                      <AppText variant="caption" color={colors.dim}>
+                        {lb.business_pct}% business · {lb.journey_count} trips{isUS ? "" : ` · ${lb.complete ? "12-week period ready" : "in progress"}`}
+                      </AppText>
+                    ) : (
+                      <AppText variant="caption" color={colors.dim}>{isUS ? "Log trips to build your IRS mileage log" : "Classify trips to build your 12-week logbook"}</AppText>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+                </Card>
+              </Pressable>
             );
           })() : null}
 

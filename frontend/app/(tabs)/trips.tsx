@@ -126,9 +126,6 @@ export default function Mileage() {
 
   const today = tm?.today;
   const unit = tm?.distance_unit || "km";
-  const isUS = tm?.country === "US";
-  const fy = tm?.financial_year;
-  const lb = tm?.logbook;
   const odo = tm?.odometer;
 
   return (
@@ -182,26 +179,6 @@ export default function Mileage() {
           </View>
         </View>
       </Card>
-
-      {/* ---- Logbook ---- */}
-      <Pressable testID="mileage-open-logbook" onPress={() => router.push("/logbook" as any)}>
-        <Card style={{ marginBottom: 14, flexDirection: "row", alignItems: "center" }}>
-          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-            <Ionicons name="book-outline" size={22} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">{isUS ? "IRS Mileage Log" : "ATO Logbook"}</AppText>
-            {lb?.available ? (
-              <AppText variant="caption" color={colors.dim}>
-                {lb.business_pct}% business · {lb.journey_count} trips{isUS ? "" : ` · ${lb.complete ? "12-week period ready" : "in progress"}`}
-              </AppText>
-            ) : (
-              <AppText variant="caption" color={colors.dim}>{isUS ? "Log trips to build your IRS mileage log" : "Classify trips to build your 12-week logbook"}</AppText>
-            )}
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
-        </Card>
-      </Pressable>
 
       {/* ---- Odometer reconciliation (read-only; manage the car in Settings) ---- */}
       {odo?.has_odometer ? (
