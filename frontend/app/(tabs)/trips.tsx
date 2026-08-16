@@ -34,6 +34,7 @@ export default function Mileage() {
   const [autoDrives, setAutoDrives] = useState<PendingDrive[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // GPS shift state
   const [tracking, setTracking] = useState(false);
@@ -254,9 +255,18 @@ export default function Mileage() {
         </View>
       )}
 
-      {/* ---- History ---- */}
+      {/* ---- History (tap to expand) ---- */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <AppText variant="h2">History</AppText>
+        <Pressable testID="mileage-history-toggle" onPress={() => setHistoryOpen((o) => !o)} hitSlop={8}
+          style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+          <AppText variant="h2">History</AppText>
+          {trips.length > 0 ? (
+            <AppText variant="caption" color={colors.dim} style={{ marginLeft: 8 }}>
+              {trips.length} trip{trips.length > 1 ? "s" : ""}
+            </AppText>
+          ) : null}
+          <Ionicons name={historyOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.dim} style={{ marginLeft: 6 }} />
+        </Pressable>
         {trips.length > 0 ? (
           <Pressable testID="mileage-export" onPress={exportReport} hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}>
             <Ionicons name="download-outline" size={16} color={colors.accent} style={{ marginRight: 4 }} />
@@ -264,26 +274,28 @@ export default function Mileage() {
           </Pressable>
         ) : null}
       </View>
-      {trips.length === 0 ? (
-        <EmptyState icon="car-sport-outline" title="No trips recorded" subtitle="Add a trip or start a GPS shift to build your logbook." />
-      ) : (
-        trips.map((t) => (
-          <Pressable key={t.id} testID={`trip-${t.id}`}
-            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip", id: t.id } })}>
-            <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
-              <View style={{ flex: 1 }}>
-                <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{t.distance_km} {unit}</AppText>
-                <AppText variant="caption" color={colors.dim}>
-                  {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
-                </AppText>
-              </View>
-              <Badge label={typeLabel(t.type, t.business_pct)} color={typeColor(t.type)} bg={colors.surfaceAlt} />
-              <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`trip-del-${t.id}`}
-                onPress={() => del(t.id)} />
-            </Card>
-          </Pressable>
-        ))
-      )}
+      {historyOpen ? (
+        trips.length === 0 ? (
+          <EmptyState icon="car-sport-outline" title="No trips recorded" subtitle="Add a trip or start a GPS shift to build your logbook." />
+        ) : (
+          trips.map((t) => (
+            <Pressable key={t.id} testID={`trip-${t.id}`}
+              onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip", id: t.id } })}>
+              <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{t.distance_km} {unit}</AppText>
+                  <AppText variant="caption" color={colors.dim}>
+                    {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
+                  </AppText>
+                </View>
+                <Badge label={typeLabel(t.type, t.business_pct)} color={typeColor(t.type)} bg={colors.surfaceAlt} />
+                <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`trip-del-${t.id}`}
+                  onPress={() => del(t.id)} />
+              </Card>
+            </Pressable>
+          ))
+        )
+      ) : null}
     </Screen>
   );
 }
