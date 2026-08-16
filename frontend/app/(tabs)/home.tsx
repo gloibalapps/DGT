@@ -10,7 +10,7 @@ import { displayDateShort } from "@/src/date";
 import { CATEGORIES, TAX_TREATMENTS } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, GradientCard, AppText, Money, Spinner,
-  PrimaryButton, SecondaryButton, IconButton, Badge, EmptyState, useToast,
+  PrimaryButton, SecondaryButton, IconButton, Badge, EmptyState, useToast, fmtMoney,
 } from "@/src/ui";
 
 const CAT_META: Record<string, { label: string; icon: any }> = Object.fromEntries(
@@ -20,22 +20,12 @@ const TREAT_LABEL: Record<string, string> = Object.fromEntries(
   TAX_TREATMENTS.map((t) => [t.key, t.label]),
 );
 
-type Period = "today" | "fy" | "all";
 interface Row { kind: "income" | "expense"; id: string; date: string; amount: number; title: string; subtitle: string; icon: any; treatment: string }
 
 function tripBizKm(t: any): number {
   if (t.type === "personal") return 0;
   if (t.type === "mixed") return (t.distance_km || 0) * (t.business_pct || 0) / 100;
   return t.distance_km || 0;
-}
-
-function fyRange(country: string, ref: Date) {
-  if (country === "US") {
-    const y = ref.getFullYear();
-    return { start: `${y}-01-01`, end: `${y}-12-31`, label: `FY ${y}` };
-  }
-  const y = ref.getMonth() >= 6 ? ref.getFullYear() : ref.getFullYear() - 1; // AU: Jul–Jun
-  return { start: `${y}-07-01`, end: `${y + 1}-06-30`, label: `FY ${String(y).slice(2)}–${String(y + 1).slice(2)}` };
 }
 
 function Bars({ weeks, symbol }: { weeks: any[]; symbol: string }) {
@@ -71,12 +61,6 @@ function Kpi({ label, value }: { label: string; value: string }) {
   );
 }
 
-const PERIODS: { key: Period; label: string }[] = [
-  { key: "today", label: "Today" },
-  { key: "fy", label: "This FY" },
-  { key: "all", label: "All-time" },
-];
-
 export default function Money_() {
   const { colors } = useTheme();
   const { profile, version, refresh } = useStore();
@@ -91,7 +75,6 @@ export default function Money_() {
   const [shifts, setShifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [period, setPeriod] = useState<Period>("today");
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -117,12 +100,9 @@ export default function Money_() {
   const unit = dash?.distance_unit || (country === "US" ? "mi" : "km");
 
   const range = useMemo(() => {
-    const now = new Date();
-    const today = now.toLocaleDateString("en-CA");
-    if (period === "today") return { start: today, end: today, label: "Today" };
-    if (period === "fy") return fyRange(country, now);
-    return { start: "0000-01-01", end: "9999-12-31", label: "All-time" };
-  }, [period, country]);
+    const today = new Date().toLocaleDateString("en-CA");
+    return { start: today, end: today, label: "Today" };
+  }, []);
 
   const inRange = useCallback((dateStr: string) => {
     const d = String(dateStr).slice(0, 10);
@@ -202,9 +182,10 @@ export default function Money_() {
   const firstName = (profile?.driver_name || "").trim().split(" ")[0];
 
   // Base font size for the hero net figure, scaled down for longer amounts so
-  // it looks right on web too (native also uses adjustsFontSizeToFit).
-  const netLen = `${symbol}${Math.round(Math.abs(summary.net)).toLocaleString()}`.length;
-  const netSize = netLen > 11 ? 32 : netLen > 9 ? 38 : netLen > 7 ? 44 : 48;
+  // it never overflows on web (native also uses adjustsFontSizeToFit). Uses the
+  // real formatted string (commas + 2 decimals) so the estimate is accurate.
+  const netLen = fmtMoney(summary.net, symbol).length;
+  const netSize = netLen > 13 ? 28 : netLen > 11 ? 34 : netLen > 9 ? 40 : 48;
 
   return (
     <Screen
@@ -226,41 +207,23 @@ export default function Money_() {
         </Pressable>
       )}
 
-      {/* Hero with period toggle */}
+      {/* Hero — today's net with income & expenses stacked below (Reports-style) */}
       <GradientCard style={{ marginBottom: 14 }}>
-        {/* Segmented period control */}
-        <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.16)", borderRadius: 999, padding: 3, marginBottom: 14 }}>
-          {PERIODS.map((p) => {
-            const active = p.key === period;
-            return (
-              <Pressable key={p.key} testID={`money-period-${p.key}`} onPress={() => setPeriod(p.key)}
-                style={{ flex: 1, paddingVertical: 7, borderRadius: 999, alignItems: "center",
-                  backgroundColor: active ? "#FFFFFF" : "transparent" }}>
-                <AppText variant="caption" style={{ fontWeight: "700" }}
-                  color={active ? colors.accent : colors.onGradient}>{p.label}</AppText>
-              </Pressable>
-            );
-          })}
+        <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS · TODAY</AppText>
+        <View style={{ marginTop: 6 }}>
+          <Money value={summary.net} symbol={symbol} size={netSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}
+            color={summary.net >= 0 ? "#FFFFFF" : "#FF7A7A"} />
         </View>
 
-        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS · {range.label.toUpperCase()}</AppText>
-            <View style={{ marginTop: 6 }}>
-              <Money value={summary.net} symbol={symbol} size={netSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}
-                color={summary.net >= 0 ? "#FFFFFF" : "#FF7A7A"} />
-            </View>
-          </View>
-          <View style={{ gap: 12, alignItems: "flex-end" }}>
-            <View style={{ alignItems: "flex-end" }}>
-              <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Income</AppText>
-              <Money value={summary.inc} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#2BD47D" />
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Expenses</AppText>
-              <Money value={summary.exp} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#FF7A7A" />
-            </View>
-          </View>
+        <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.18)", marginVertical: 12 }} />
+
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 }}>
+          <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Income</AppText>
+          <Money value={summary.inc} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#2BD47D" />
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 }}>
+          <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Expenses</AppText>
+          <Money value={summary.exp} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#FF7A7A" />
         </View>
       </GradientCard>
 
