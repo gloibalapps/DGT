@@ -711,6 +711,69 @@ async def scan_receipt(req: ScanRequest):
     }
 
 
+# ---------------------------------------------------------------------------
+# AI tax assistant — grounded ONLY in verified ATO/IRS knowledge base
+# ---------------------------------------------------------------------------
+class AskRequest(BaseModel):
+    question: str
+    country: Optional[str] = "AU"
+    history: Optional[List[dict]] = None  # [{role: "user"|"assistant", text: str}]
+
+
+@api_router.post("/ask")
+async def ask_assistant(req: AskRequest):
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from tax_kb import kb_for
+
+    country = (req.country or "AU").upper()
+    authority = "the ATO (Australian Taxation Office)" if country != "US" else "the IRS (Internal Revenue Service)"
+    kb = kb_for(country)
+
+    system = (
+        "You are the GigTax Assistant, a tax helper for gig-economy rideshare and "
+        f"delivery drivers in {'Australia' if country != 'US' else 'the United States'}. "
+        f"You answer questions using ONLY the VERIFIED KNOWLEDGE BASE below, which is based on {authority} guidance.\n\n"
+        "STRICT RULES:\n"
+        "1. Use ONLY the facts in the VERIFIED KNOWLEDGE BASE. Never use outside knowledge, never guess, never browse the web.\n"
+        "2. If the answer is not covered by the knowledge base, say clearly: \"That's not in my verified "
+        f"{authority} sources — please check with a registered tax professional.\" Do not attempt an answer from general knowledge.\n"
+        "3. When you state a rule or rate, mention the section it came from (e.g. \"cents-per-km method\") and the year for any rate, and note that rates are updated each year.\n"
+        "4. Focus on what IS and what is NOT claimable/deductible. Be concise, plain-English, and practical.\n"
+        "5. Never invent dollar figures for the driver's personal return. This is general guidance, not personal tax advice; remind them to confirm with a registered tax agent before lodging/filing.\n"
+        "6. Keep answers short (a few sentences or a short bullet list). Do not output JSON or markdown headers.\n\n"
+        "=== VERIFIED KNOWLEDGE BASE (your ONLY source of truth) ===\n"
+        f"{kb}\n"
+        "=== END KNOWLEDGE BASE ==="
+    )
+
+    # Light multi-turn context: prepend a short transcript of recent messages.
+    transcript = ""
+    for m in (req.history or [])[-6:]:
+        role = "Driver" if m.get("role") == "user" else "Assistant"
+        txt = str(m.get("text", "")).strip()
+        if txt:
+            transcript += f"{role}: {txt}\n"
+
+    user_text = req.question.strip()
+    if transcript:
+        user_text = (
+            "Conversation so far (for context only):\n" + transcript +
+            "\nNow answer the driver's latest question:\n" + req.question.strip()
+        )
+
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY,
+                   session_id=f"ask-{uuid.uuid4()}",
+                   system_message=system).with_model("anthropic", "claude-sonnet-4-6")
+    try:
+        resp = await chat.send_message(UserMessage(text=user_text))
+    except Exception as e:
+        logger.exception("ask assistant failed")
+        raise HTTPException(502, f"Assistant failed: {e}")
+
+    answer = resp if isinstance(resp, str) else str(resp)
+    return {"answer": answer.strip(), "country": country}
+
+
 @api_router.get("/")
 async def root():
     return {"message": "GigTax API", "market": "AU"}

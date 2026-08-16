@@ -239,6 +239,9 @@ export const api = {
     const pid = await getProfileId();
     return `${BASE}/api/export-mileage?profile_id=${pid}&ref_date=${refDate}`;
   },
+  async ask(question: string, country: string, history: { role: string; text: string }[] = []) {
+    return req(`/ask`, { method: "POST", body: JSON.stringify({ question, country, history }) }, 0);
+  },
 };
 
 export const todayISO = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local

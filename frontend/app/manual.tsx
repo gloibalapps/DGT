@@ -134,6 +134,16 @@ export default function Manual() {
     },
     taxSection,
     {
+      icon: "sparkles",
+      title: "Ask GigTax (AI tax help)",
+      lines: [
+        `The Ask tab answers your tax questions using only official ${isUS ? "IRS" : "ATO"} guidance — no web search, no guessing.`,
+        "Great for \u201Ccan I claim this?\u201D questions about cars, phone, tolls, fees and more.",
+        "If something isn't in its verified sources, it tells you and points you to a registered tax agent.",
+        "Answers are general guidance, not personal tax advice.",
+      ],
+    },
+    {
       icon: "shield-checkmark",
       title: "Tax setup",
       lines: [
