@@ -256,15 +256,41 @@ export function Input(props: TextInputProps) {
 }
 
 // Tappable date field that pops open a calendar — no manual typing.
+const CAL_MONTHS = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
 export function DateField({ value, onChange, placeholder = "Select date", testID, maxToday }:
   { value: string; onChange: (iso: string) => void; placeholder?: string; testID?: string; maxToday?: boolean }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
-  const display = value ? isoToAU(value) : "";
+  const [yearOpen, setYearOpen] = useState(false);
   const todayISO = new Date().toLocaleDateString("en-CA");
+  const [view, setView] = useState(value || todayISO);   // YYYY-MM-DD of the displayed month
+  const [calKey, setCalKey] = useState(0);                // bump to remount when jumping years
+  const display = value ? isoToAU(value) : "";
+
+  const openPicker = () => {
+    setView(value || todayISO);
+    setYearOpen(false);
+    setCalKey((k) => k + 1);
+    setOpen(true);
+  };
+
+  const nowYear = new Date().getFullYear();
+  const endYear = maxToday ? nowYear : nowYear + 1;
+  const years: number[] = [];
+  for (let y = endYear; y >= nowYear - 60; y--) years.push(y);
+
+  const pickYear = (y: number) => {
+    const mm = view.slice(5, 7) || "01";
+    setView(`${y}-${mm}-01`);
+    setCalKey((k) => k + 1);   // remount so the calendar jumps to the chosen year
+    setYearOpen(false);
+  };
+
   return (
     <>
-      <Pressable testID={testID} onPress={() => setOpen(true)}
+      <Pressable testID={testID} onPress={openPicker}
         style={{
           backgroundColor: colors.surfaceAlt, borderRadius: 12, paddingHorizontal: 14,
           paddingVertical: 15, borderWidth: 1, borderColor: colors.border,
@@ -280,35 +306,76 @@ export function DateField({ value, onChange, placeholder = "Select date", testID
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <Pressable onPress={() => {}} style={{ width: "100%", maxWidth: 380 }}>
             <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 12, borderWidth: 1, borderColor: colors.border }}>
-              <Calendar
-                current={value || todayISO}
-                maxDate={maxToday ? todayISO : undefined}
-                onDayPress={(d: any) => { onChange(d.dateString); setOpen(false); }}
-                markedDates={value ? { [value]: { selected: true, selectedColor: colors.accent } } : {}}
-                firstDay={1}
-                enableSwipeMonths
-                theme={{
-                  calendarBackground: colors.surface,
-                  textSectionTitleColor: colors.dim,
-                  dayTextColor: colors.text,
-                  todayTextColor: colors.accent,
-                  monthTextColor: colors.text,
-                  textMonthFontFamily: FONT.semibold,
-                  textDayFontFamily: FONT.regular,
-                  textDayHeaderFontFamily: FONT.medium,
-                  arrowColor: colors.accent,
-                  selectedDayBackgroundColor: colors.accent,
-                  selectedDayTextColor: colors.bg,
-                  textDisabledColor: colors.dim,
-                }}
-              />
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-                {value ? (
-                  <SecondaryButton testID="date-picker-clear" label="Clear" tone="danger" style={{ flex: 1 }}
-                    onPress={() => { onChange(""); setOpen(false); }} />
-                ) : null}
-                <SecondaryButton testID="date-picker-close" label="Close" style={{ flex: 1 }} onPress={() => setOpen(false)} />
-              </View>
+              {yearOpen ? (
+                <View>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 6, paddingVertical: 6, marginBottom: 4 }}>
+                    <AppText variant="bodySemi" style={{ fontSize: 16 }}>Select year</AppText>
+                    <Pressable testID="date-picker-year-back" onPress={() => setYearOpen(false)} hitSlop={8}>
+                      <Ionicons name="close" size={20} color={colors.dim} />
+                    </Pressable>
+                  </View>
+                  <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                      {years.map((y) => {
+                        const active = String(y) === view.slice(0, 4);
+                        return (
+                          <Pressable key={y} testID={`date-picker-year-${y}`} onPress={() => pickYear(y)}
+                            style={{ width: "33.33%", paddingVertical: 8, alignItems: "center" }}>
+                            <View style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999,
+                              backgroundColor: active ? colors.accent : "transparent" }}>
+                              <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{y}</AppText>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+              ) : (
+                <>
+                  <Calendar
+                    key={calKey}
+                    current={view}
+                    maxDate={maxToday ? todayISO : undefined}
+                    onDayPress={(d: any) => { onChange(d.dateString); setOpen(false); }}
+                    onMonthChange={(m: any) => setView(m.dateString)}
+                    markedDates={value ? { [value]: { selected: true, selectedColor: colors.accent } } : {}}
+                    firstDay={1}
+                    renderHeader={(d: any) => (
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 6 }}>
+                        <AppText variant="bodySemi" style={{ fontSize: 16 }}>{CAL_MONTHS[d.getMonth()]}</AppText>
+                        <Pressable testID="date-picker-year-open" onPress={() => setYearOpen(true)} hitSlop={8}
+                          style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceAlt,
+                            borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                          <AppText variant="bodySemi" color={colors.accent} style={{ fontSize: 16 }}>{d.getFullYear()}</AppText>
+                          <Ionicons name="chevron-down" size={14} color={colors.accent} style={{ marginLeft: 2 }} />
+                        </Pressable>
+                      </View>
+                    )}
+                    theme={{
+                      calendarBackground: colors.surface,
+                      textSectionTitleColor: colors.dim,
+                      dayTextColor: colors.text,
+                      todayTextColor: colors.accent,
+                      monthTextColor: colors.text,
+                      textMonthFontFamily: FONT.semibold,
+                      textDayFontFamily: FONT.regular,
+                      textDayHeaderFontFamily: FONT.medium,
+                      arrowColor: colors.accent,
+                      selectedDayBackgroundColor: colors.accent,
+                      selectedDayTextColor: colors.bg,
+                      textDisabledColor: colors.dim,
+                    }}
+                  />
+                  <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                    {value ? (
+                      <SecondaryButton testID="date-picker-clear" label="Clear" tone="danger" style={{ flex: 1 }}
+                        onPress={() => { onChange(""); setOpen(false); }} />
+                    ) : null}
+                    <SecondaryButton testID="date-picker-close" label="Close" style={{ flex: 1 }} onPress={() => setOpen(false)} />
+                  </View>
+                </>
+              )}
             </View>
           </Pressable>
         </Pressable>
