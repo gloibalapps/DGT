@@ -92,6 +92,9 @@ export default function Money_() {
 
   const country = profile?.country || "AU";
 
+  const openDetail = (s: string) =>
+    router.push({ pathname: "/money-detail" as any, params: { section: s, period } });
+
   const load = useCallback(async (p: Period) => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
@@ -199,10 +202,14 @@ export default function Money_() {
       )}
 
       {/* ============ LAYER 1 · MONEY NOW ============ */}
+      <Pressable testID="detail-money-now" onPress={() => openDetail("money-now")}>
       <GradientCard style={{ marginBottom: 14 }}>
-        <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.85 }}>
-          YOUR REAL EARNINGS · {periodLabel.toUpperCase()}
-        </AppText>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.85 }}>
+            YOUR REAL EARNINGS · {periodLabel.toUpperCase()}
+          </AppText>
+          <Ionicons name="chevron-forward" size={18} color={colors.onGradient} style={{ opacity: 0.8 }} />
+        </View>
         <View style={{ marginTop: 6 }}>
           <Money value={mn.take_home} symbol={symbol} size={takeSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}
             color={mn.take_home >= 0 ? "#FFFFFF" : "#FF7A7A"} />
@@ -229,6 +236,7 @@ export default function Money_() {
         <LineRow label="Work expenses" value={-mn.expenses} symbol={symbol} color="#FF7A7A" />
         <LineRow label="Estimated tax" value={-mn.estimated_tax} symbol={symbol} color="#FF7A7A" />
       </GradientCard>
+      </Pressable>
 
       {/* Quick actions */}
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
@@ -245,8 +253,12 @@ export default function Money_() {
       </View>
 
       {/* ============ LAYER 2 · PERFORMANCE ============ */}
+      <Pressable testID="detail-performance" onPress={() => openDetail("performance")}>
       <Card style={{ marginBottom: 14 }}>
-        <AppText variant="h2">Performance</AppText>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <AppText variant="h2">Performance</AppText>
+          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+        </View>
         <AppText variant="caption" color={colors.dim}>What your driving is really worth · {periodLabel.toLowerCase()}</AppText>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           <Stat label="real / hour" highlight value={perf.real_per_hour != null ? `${symbol}${perf.real_per_hour}` : "—"} />
@@ -271,13 +283,18 @@ export default function Money_() {
           </View>
         ) : null}
       </Card>
+      </Pressable>
 
       {/* Where your money went */}
       {data.where.length > 0 ? (() => {
         const maxAmt = Math.max(mn.take_home, ...data.where.map((w: any) => w.amount));
         return (
+          <Pressable testID="detail-where" onPress={() => openDetail("where")}>
           <Card style={{ marginBottom: 14 }}>
-            <AppText variant="h2">Where your money went</AppText>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <AppText variant="h2">Where your money went</AppText>
+              <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+            </View>
             <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
               You earned {fmtMoney(mn.gross, symbol)} {periodLabel.toLowerCase()}
             </AppText>
@@ -305,6 +322,7 @@ export default function Money_() {
               </View>
             </View>
           </Card>
+          </Pressable>
         );
       })() : null}
 
@@ -312,12 +330,16 @@ export default function Money_() {
       <AppText variant="label" color={colors.dim} style={{ marginBottom: 10, marginLeft: 2 }}>MONEY INTELLIGENCE</AppText>
 
       {/* Tax position */}
+      <Pressable testID="detail-tax" onPress={() => openDetail("tax")}>
       <Card style={{ marginBottom: 14, borderColor: tp.status === "behind" ? colors.loss : colors.profit }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <AppText variant="h2">Tax position</AppText>
-          <Pressable testID="tax-update-setaside" onPress={() => router.push("/tax-saved" as any)} hitSlop={8}>
-            <AppText variant="caption" color={colors.accent}>Update</AppText>
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Pressable testID="tax-update-setaside" onPress={() => router.push("/tax-saved" as any)} hitSlop={8}>
+              <AppText variant="caption" color={colors.accent}>Update</AppText>
+            </Pressable>
+            <Ionicons name="chevron-forward" size={18} color={colors.dim} style={{ marginLeft: 8 }} />
+          </View>
         </View>
         <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Year to date · {tp.tax_year_label}</AppText>
         <LineRowLight label="Estimated tax owed" value={tp.owed_ytd} symbol={symbol} />
@@ -336,10 +358,15 @@ export default function Money_() {
           Set aside about {tp.recommend_rate}% of your profit as you earn. Estimate only — not tax advice.
         </AppText>
       </Card>
+      </Pressable>
 
       {/* Deductions tracked */}
+      <Pressable testID="detail-deductions" onPress={() => openDetail("deductions")}>
       <Card style={{ marginBottom: 14 }}>
-        <AppText variant="h2">Deductions tracked</AppText>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <AppText variant="h2">Deductions tracked</AppText>
+          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+        </View>
         <AppText variant="caption" color={colors.dim}>Year to date · {ded.tax_year_label}</AppText>
         <Money value={ded.total} symbol={symbol} size={34} color={colors.accent} style={{ marginTop: 6 }} />
         {ded.breakdown.map((b: any) => (
@@ -351,10 +378,15 @@ export default function Money_() {
           </AppText>
         ) : null}
       </Card>
+      </Pressable>
 
       {/* Best/worst day + best platform */}
+      <Pressable testID="detail-bestworst" onPress={() => openDetail("bestworst")}>
       <Card style={{ marginBottom: 14 }}>
-        <AppText variant="h2">Best & worst</AppText>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <AppText variant="h2">Best & worst</AppText>
+          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
+        </View>
         <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>By real {symbol}/hour · {data.intel_label}</AppText>
         {data.best_day ? (
           <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
@@ -395,6 +427,7 @@ export default function Money_() {
           </View>
         ) : null}
       </Card>
+      </Pressable>
 
       {/* Driving insights link */}
       <Pressable testID="money-insights" onPress={() => router.push("/insights" as any)} style={{ marginBottom: 14 }}>
