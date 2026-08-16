@@ -149,7 +149,7 @@ export default function Manual() {
       lines: [
         "In Profile \u203A Automatic tracking you can let GigTax detect drives in the background — no start/stop needed.",
         "It logs each drive and asks you to tag it Business or Personal later.",
-        "This runs only on a fully installed build (not the web preview or Expo Go) and needs background-location permission.",
+        "Grant background-location permission when asked so it can log drives while you work.",
       ],
     },
     {
@@ -158,7 +158,7 @@ export default function Manual() {
       lines: [
         "GigTax Pro unlocks the full app with a 7-day free trial, then a monthly or yearly plan.",
         "Manage or start your subscription in Profile \u203A Subscription.",
-        "Purchases are handled by the App Store / Google Play and available once the app is installed from the store.",
+        "Purchases are handled securely through the App Store or Google Play.",
       ],
     },
     {

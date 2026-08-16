@@ -185,7 +185,7 @@ export default function Settings() {
           <View style={{ flex: 1, paddingRight: 12 }}>
             <AppText variant="bodyMed">Detect drives automatically</AppText>
             <AppText variant="caption" color={colors.dim}>
-              Off by default. When on, GigTax logs each drive in the background and asks you to tag it Business or Personal later — no start/stop needed. Requires a native build.
+              Off by default. When on, GigTax logs each drive in the background and asks you to tag it Business or Personal later — no start/stop needed.
             </AppText>
           </View>
           <View style={{
