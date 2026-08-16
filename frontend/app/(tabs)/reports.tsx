@@ -10,7 +10,7 @@ import { api } from "@/src/api";
 import { PERIODS, ATO_LINK } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Money, Spinner, ChipRow,
-  PrimaryButton, SecondaryButton, useToast,
+  PrimaryButton, SecondaryButton, useToast, fmtMoney,
 } from "@/src/ui";
 
 function Row({ label, value, symbol = "$", strong, color, sub }:
@@ -33,13 +33,16 @@ export default function Reports() {
   const { show } = useToast();
   const [period, setPeriod] = useState("quarter");
   const [rep, setRep] = useState<any>(null);
+  const [tm, setTm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
-      setRep(await api.report(period, today));
+      const [r, m] = await Promise.all([api.report(period, today), api.taxMileage(today)]);
+      setRep(r);
+      setTm(m);
     } catch {
       show("Couldn't load report", "error");
     } finally {
@@ -106,20 +109,6 @@ export default function Reports() {
                 <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
                 <Row label="Net profit (Line 31)" value={rep.schedule_c.net_profit} symbol={rep.symbol} strong
                   color={rep.schedule_c.net_profit >= 0 ? colors.profit : colors.loss} />
-              </Card>
-
-              {/* Which car method */}
-              <Card style={{ marginBottom: 14 }}>
-                <AppText variant="h2" style={{ marginBottom: 6 }}>Car expense method</AppText>
-                <Row label="Standard mileage (IRS rate)" value={rep.schedule_c.standard_mileage} symbol={rep.symbol} />
-                <Row label="Actual expenses" value={rep.schedule_c.actual_expenses} symbol={rep.symbol}
-                  sub={`Fuel + vehicle costs × ${rep.business_use_pct}%`} />
-                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12 }}>
-                  <Ionicons name="trophy" size={18} color={colors.warm} style={{ marginRight: 10 }} />
-                  <AppText variant="caption" color={colors.text} style={{ flex: 1 }}>
-                    Using <AppText variant="bodySemi" color={colors.profit}>{rep.schedule_c.car_method_label}</AppText> — the larger deduction.
-                  </AppText>
-                </View>
               </Card>
 
               {/* Self-employment tax */}
@@ -217,6 +206,38 @@ export default function Reports() {
             </>
           )}
 
+          {/* Which method is better? — FY-based vehicle-deduction comparison */}
+          {tm?.method_comparison ? (() => {
+            const mc = tm.method_comparison;
+            return (
+              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+                <AppText variant="label" color={colors.dim} style={{ marginBottom: 4 }}>
+                  WHICH METHOD IS BETTER? · FY {mc.fy_label}
+                </AppText>
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                  <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "logbook" ? colors.profit : colors.border }]}>
+                    <AppText variant="caption" color={colors.dim}>{mc.logbook.title}</AppText>
+                    <Money value={mc.logbook.deduction} symbol={mc.symbol || rep.symbol} size={22} />
+                    <AppText variant="caption" color={colors.dim}>{mc.logbook.business_pct}% of {fmtMoney(mc.logbook.eligible_expenses)}</AppText>
+                  </View>
+                  <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "cents_per_km" ? colors.profit : colors.border }]}>
+                    <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.title}</AppText>
+                    <Money value={mc.cents_per_km.deduction} symbol={mc.symbol || rep.symbol} size={22} />
+                    <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.detail}</AppText>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12 }}>
+                  <Ionicons name="trophy" size={20} color={colors.warm} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="bodySemi" color={colors.profit}>{mc.recommend_label}</AppText>
+                    <AppText variant="caption" color={colors.dim}>Potentially higher by {fmtMoney(mc.difference)}</AppText>
+                  </View>
+                </View>
+                <AppText variant="caption" color={colors.dim} style={{ marginTop: 10, lineHeight: 16 }}>{mc.disclaimer}</AppText>
+              </Card>
+            );
+          })() : null}
+
           <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
             {rep.country === "US" ? (
               <SecondaryButton testID="reports-ato" label="IRS Schedule C" icon="open-outline" style={{ flex: 1 }}
@@ -233,3 +254,7 @@ export default function Reports() {
     </Screen>
   );
 }
+
+const methodBox = {
+  flex: 1, borderRadius: 14, padding: 12, borderWidth: 1, gap: 2,
+} as const;

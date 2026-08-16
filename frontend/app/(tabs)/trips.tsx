@@ -128,7 +128,6 @@ export default function Mileage() {
   const unit = tm?.distance_unit || "km";
   const isUS = tm?.country === "US";
   const fy = tm?.financial_year;
-  const mc = tm?.method_comparison;
   const lb = tm?.logbook;
   const odo = tm?.odometer;
 
@@ -183,35 +182,6 @@ export default function Mileage() {
           </View>
         </View>
       </Card>
-
-      {/* ---- Method comparison (killer feature) ---- */}
-      {mc ? (
-        <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-          <AppText variant="label" color={colors.dim} style={{ marginBottom: 4 }}>
-            WHICH METHOD IS BETTER? · FY {mc.fy_label}
-          </AppText>
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-            <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "logbook" ? colors.profit : colors.border }]}>
-              <AppText variant="caption" color={colors.dim}>{mc.logbook.title}</AppText>
-              <Money value={mc.logbook.deduction} size={22} />
-              <AppText variant="caption" color={colors.dim}>{mc.logbook.business_pct}% of {fmtMoney(mc.logbook.eligible_expenses)}</AppText>
-            </View>
-            <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "cents_per_km" ? colors.profit : colors.border }]}>
-              <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.title}</AppText>
-              <Money value={mc.cents_per_km.deduction} size={22} />
-              <AppText variant="caption" color={colors.dim}>{mc.cents_per_km.detail}</AppText>
-            </View>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12 }}>
-            <Ionicons name="trophy" size={20} color={colors.warm} style={{ marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi" color={colors.profit}>{mc.recommend_label}</AppText>
-              <AppText variant="caption" color={colors.dim}>Potentially higher by {fmtMoney(mc.difference)}</AppText>
-            </View>
-          </View>
-          <AppText variant="caption" color={colors.dim} style={{ marginTop: 10, lineHeight: 16 }}>{mc.disclaimer}</AppText>
-        </Card>
-      ) : null}
 
       {/* ---- Logbook ---- */}
       <Pressable testID="mileage-open-logbook" onPress={() => router.push("/logbook" as any)}>
@@ -340,7 +310,3 @@ export default function Mileage() {
     </Screen>
   );
 }
-
-const methodBox = {
-  flex: 1, borderRadius: 14, padding: 12, borderWidth: 1, gap: 2,
-} as const;
