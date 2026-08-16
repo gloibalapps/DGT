@@ -1,0 +1,23 @@
+{
+  "summary": "Frontend-only regression test for Ask tab header removal. VERIFIED: The Ask tab (/ask) no longer renders any top header — no 'Ask GigTax' title, no subtitle, no country flag. First visible element is the verified-ATO-guidance disclaimer, followed by the 'Ask about what you can claim' block with 4 AU suggestion chips and 'TRY ASKING' label. Ask functionality still works: typing 'Can I claim fuel?' into ask-input and tapping ask-send returned a proper Claude-grounded ATO assistant reply within ~4s; tapping a suggestion chip also triggered a reply. Regression on other 4 tabs (Money, Mileage, Reports, Profile) confirmed — each still shows its own ScreenHeader with the AU flag and title (label appears twice in DOM: once in ScreenHeader, once in bottom tab bar). No console errors, no red screen.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_13.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ask.tsx (159 lines) is clean — ScreenHeader import removed, no orphan flag/title markup, insets.top padding retained so content isn't under the status bar.",
+    "Ask tab correctly preserves KeyboardAvoidingView, safe-area top padding, disclaimer, empty-state suggestions, message bubbles, loading indicator and sticky input bar."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "seed_data_creation": "None. Onboarding completed with AU / Both / Uber / Own outright / Start driving to reach main tabs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "App has 5-step onboarding gate before tabs: (1) Continue on AU default, (2) select 'Both' + Continue, (3) select 'Uber' + Continue, (4) select 'Own outright' + Continue, (5) tap 'Start driving'. Tabs: Money / Mileage / Reports / Ask / Profile. Ask tab testIDs: ask-input, ask-send, ask-suggestion-<first10chars>. Ask backend /api/ask returns Claude-grounded reply in ~3-5s.",
+  "rca_of_issue": "N/A — bug already fixed. Verified via UI: previously the Ask tab wrapped its content in a <View> containing a ScreenHeader with title 'Ask GigTax' and a country flag that was misaligned relative to other tabs. Fix removed the wrapping <View> + <ScreenHeader> block and dropped the ScreenHeader import. Screen now starts directly with the disclaimer card, matching expected design. Other tabs untouched and still show their normal ScreenHeader."
+}

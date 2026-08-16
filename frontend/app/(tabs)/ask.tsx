@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
-import { AppText, ScreenHeader } from "@/src/ui";
+import { AppText } from "@/src/ui";
 
 interface Msg { role: "user" | "assistant"; text: string }
 
@@ -64,10 +64,6 @@ export default function Ask() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
-        <ScreenHeader subtitle={`Grounded in ${authority} guidance`} title="Ask GigTax" />
-      </View>
-
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={insets.top + 8}>
         <ScrollView ref={scrollRef} style={{ flex: 1 }}
