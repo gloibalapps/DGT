@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only verification of Money tab (/home) hero card bug fix. All acceptance criteria pass: (1) Income value renders in GREEN #2BD47D (rgb 43,212,125) and Expenses in RED #FF7A7A (rgb 255,122,122) — confirmed via computed styles. (2) NET EARNINGS with a large amount ($20,100.00 added via ledger-add-income while All-time was selected) stays on a SINGLE LINE at fontSize 48 and does NOT overflow outside the hero GradientCard (measured: rect right 237px vs card right 359px, height 58px = one 48px line). (3) Period toggle (Today / This FY / All-time) still updates the hero — verified all three states show the added value under All-time and $0.00 under Today. (4) Test income entry deleted via ledger-history-toggle + ledger-del-* to leave data clean (final hero shows $0.00 income/expenses/net). Note: on the React Native Web preview, adjustsFontSizeToFit does not shrink the font (native-only behavior) — instead numberOfLines=1 causes the tail of the number to be truncated with ellipsis, visually showing '$20,100....' inside the card. This matches the fallback explicitly acknowledged in the review request and no overflow occurs.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Money hero (/home)",
+        "issues": [
+          "On web preview, adjustsFontSizeToFit is a no-op (native-only). Large amounts render truncated with ellipsis (e.g. '$20,100....') rather than shrinking. Contained inside the card and single-line, so meets the fallback bar stated in the request. If a nicer web fallback is desired, main agent could (a) reduce the base fontSize for the net figure to something like 32–36, or (b) use a JS-based fit-to-width shim on web only."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "OPTIONAL polish (not blocking): improve web fallback for the hero net figure so large numbers aren't visually truncated with '....' on Expo Web (adjustsFontSizeToFit doesn't work on RN Web). Options: lower base size, use a Text with onLayout to auto-fit, or wrap in a View with a maxWidth and a shrink logic."
+  ],
+  "critical_code_review_comments": [
+    "home.tsx hero looks good: Income color hardcoded #2BD47D, Expenses #FF7A7A, Net uses white or #FF7A7A when negative — matches spec.",
+    "Money component in src/ui.tsx correctly forwards numberOfLines / adjustsFontSizeToFit / minimumFontScale to the underlying Text."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (skipped per request)", "frontend": "100%" },
+  "seed_data_creation": "Added a single income entry of 20100 during the test and deleted it before finishing. No residual data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "App requires 5-step onboarding on first load (no auth): country-AU -> worktype-delivery -> platform-Uber Eats -> ownership-own -> onboarding-next (recurring skipped). testIDs used: money-period-today|fy|all, ledger-add-income, entry-amount, entry-save, ledger-history-toggle, ledger-del-<id>. Hero color constants are hardcoded in /app/frontend/app/(tabs)/home.tsx (#2BD47D income, #FF7A7A expenses/negative-net).",
+  "rca_of_issue": "N/A — this run confirms the previously reported bug (net overflow + light-blue income/expenses) is fixed."
+}

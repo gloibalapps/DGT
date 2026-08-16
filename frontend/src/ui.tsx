@@ -57,17 +57,22 @@ export function fmtMoney(v: number, symbol = "$"): string {
   return `${neg ? "-" : ""}${symbol}${s}`;
 }
 
-export function Money({ value, symbol = "$", size = 30, color, signed = false, style }:
-  { value: number; symbol?: string; size?: number; color?: string; signed?: boolean; style?: any }) {
+export function Money({ value, symbol = "$", size = 30, color, signed = false, style, numberOfLines, adjustsFontSizeToFit, minimumFontScale }:
+  { value: number; symbol?: string; size?: number; color?: string; signed?: boolean; style?: any;
+    numberOfLines?: number; adjustsFontSizeToFit?: boolean; minimumFontScale?: number }) {
   const { colors } = useTheme();
   let c = color || colors.text;
   if (signed) c = value > 0 ? colors.profit : value < 0 ? colors.loss : colors.dim;
   const txt = signed && value > 0 ? `+${fmtMoney(value, symbol)}` : fmtMoney(value, symbol);
   return (
-    <Text style={[{
-      fontFamily: FONT.display, fontSize: size, color: c,
-      fontVariant: ["tabular-nums"], letterSpacing: 0.3,
-    }, style]}>
+    <Text
+      numberOfLines={numberOfLines}
+      adjustsFontSizeToFit={adjustsFontSizeToFit}
+      minimumFontScale={minimumFontScale}
+      style={[{
+        fontFamily: FONT.display, fontSize: size, color: c,
+        fontVariant: ["tabular-nums"], letterSpacing: 0.3,
+      }, style]}>
       {txt}
     </Text>
   );

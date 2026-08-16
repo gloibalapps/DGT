@@ -182,6 +182,11 @@ export default function Money_() {
   })();
   const firstName = (profile?.driver_name || "").trim().split(" ")[0];
 
+  // Base font size for the hero net figure, scaled down for longer amounts so
+  // it looks right on web too (native also uses adjustsFontSizeToFit).
+  const netLen = `${symbol}${Math.round(Math.abs(summary.net)).toLocaleString()}`.length;
+  const netSize = netLen > 11 ? 32 : netLen > 9 ? 38 : netLen > 7 ? 44 : 48;
+
   return (
     <Screen
       header={<ScreenHeader subtitle={firstName ? `${greeting}, ${firstName}` : greeting} title="Money" />}
@@ -220,20 +225,21 @@ export default function Money_() {
         </View>
 
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
             <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS · {range.label.toUpperCase()}</AppText>
             <View style={{ marginTop: 6 }}>
-              <Money value={summary.net} symbol={symbol} size={52} color={summary.net >= 0 ? "#FFFFFF" : colors.loss} />
+              <Money value={summary.net} symbol={symbol} size={netSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}
+                color={summary.net >= 0 ? "#FFFFFF" : "#FF7A7A"} />
             </View>
           </View>
-          <View style={{ marginLeft: 16, gap: 12, alignItems: "flex-end" }}>
+          <View style={{ gap: 12, alignItems: "flex-end" }}>
             <View style={{ alignItems: "flex-end" }}>
               <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Income</AppText>
-              <Money value={summary.inc} symbol={symbol} size={20} color="#CFE8FF" />
+              <Money value={summary.inc} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#2BD47D" />
             </View>
             <View style={{ alignItems: "flex-end" }}>
               <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Expenses</AppText>
-              <Money value={summary.exp} symbol={symbol} size={20} color="#CFE8FF" />
+              <Money value={summary.exp} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#FF7A7A" />
             </View>
           </View>
         </View>
