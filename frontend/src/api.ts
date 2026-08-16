@@ -31,12 +31,12 @@ export async function getProfileId(): Promise<string> {
   return _pid;
 }
 
-async function req(path: string, opts: RequestInit = {}, retries = 2): Promise<any> {
+async function req(path: string, opts: RequestInit = {}, retries = 2, timeoutMs = 15000): Promise<any> {
   const method = (opts.method || "GET").toUpperCase();
   // Only GET/PUT/DELETE are safe to auto-retry; POST is not idempotent.
   const canRetry = method !== "POST";
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${BASE}/api${path}`, {
       ...opts,
@@ -240,7 +240,7 @@ export const api = {
     return `${BASE}/api/export-mileage?profile_id=${pid}&ref_date=${refDate}`;
   },
   async ask(question: string, country: string, history: { role: string; text: string }[] = []) {
-    return req(`/ask`, { method: "POST", body: JSON.stringify({ question, country, history }) }, 0);
+    return req(`/ask`, { method: "POST", body: JSON.stringify({ question, country, history }) }, 0, 45000);
   },
 };
 

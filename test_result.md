@@ -124,3 +124,21 @@
 - Backend: taxlib.tax_jar(profile, year_report, ref) computes a running "set aside for taxes" for the tax year to date, attached to GET /api/dashboard as `tax_jar`. US = self-employment tax (precise) + estimated federal income tax (2025 single brackets after standard deduction, half-SE deductible). AU = estimated income tax (2024-25 resident brackets + 2% Medicare levy) + GST to remit (if registered). Returns set_aside, rate_pct, net_profit, tax_year_label, components[], note. Helpers: us_federal_income_tax, au_income_tax, _bracket_tax.
 - Frontend: Home shows a "SET ASIDE FOR TAXES" jar card (home-tax-jar) with the amount, % of net profit, component breakdown and disclaimer; taps through to Reports. Also fixed Home "business today" tile to use data.distance_unit (mi/km).
 - Verified via curl: US net $38,550 -> $7,707.62 (SE $5,446.94 + fed $2,260.68, 20%); AU net $50,000 -> $6,788 income tax (13.6%). 53/53 pytest still pass.
+
+## Final pre-ship check — AI Assistant + User Guide consistency (added by main agent)
+- Google login REMOVED — app opens directly (local profile, no auth). No credentials needed.
+- NEW: AI Tax Assistant "Ask" tab. Backend POST /api/ask {question, country, history} -> Claude Sonnet 4.6 (Emergent LLM key), grounded ONLY in backend/tax_kb.py (ATO for AU, IRS for US). Must: answer claimable/not-claimable Qs from KB, refuse out-of-scope ("not in my verified sources — registered tax agent"), no web search. Frontend app/(tabs)/ask.tsx chat UI (suggestions, disclaimer, send).
+- Bottom tabs now: Home, Mileage, Ledger, Reports, Ask, Profile (Settings renamed to Profile, person icon).
+- User Guide manual (Profile > Help > User guide, route /manual) updated to reflect ALL tabs/features: Ask tab, no-login wording, Home layout (hero + Performance + km/owed at bottom), collapsible History on Mileage & Ledger, ATO/IRS logbook + "which method is better" now in Reports, tax setup country-aware (AU GST/ABN·TFN; US EIN/SSN + estimated-tax freq).
+- Recent UI: Mileage tab GPS/Add-trip controls at top above TODAY counter; History collapsible (tap header). Ledger History collapsible. Reports cards all have accent border; logbook card moved from Mileage to Reports. Home hero income/expenses on right.
+
+### What to test now (both):
+Backend (priority):
+1. POST /api/ask country=AU: claimable question returns grounded ATO answer; out-of-scope question returns refusal; no crash.
+2. POST /api/ask country=US: standard mileage / Schedule C question returns grounded IRS answer.
+3. Existing endpoints still OK: GET /api/dashboard, /api/tax-mileage, /api/report (AU & US), /api/vehicles.
+Frontend:
+4. All 6 tabs load without error (Home, Mileage, Ledger, Reports, Ask, Profile).
+5. Ask tab: type a question -> assistant replies; a suggestion chip works.
+6. Profile > Help > User guide opens /manual; sections expand; mentions the Ask tab.
+7. Mileage & Ledger: tapping History header expands the list.

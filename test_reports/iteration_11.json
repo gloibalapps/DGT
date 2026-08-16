@@ -1,0 +1,42 @@
+{
+  "summary": "Final pre-ship check for the AI Tax Assistant (Ask) + all 6 tabs + user guide passed end-to-end. Backend: 68/68 pytest pass across the full suite (61 existing + 7 new in /app/backend/tests/test_ask_assistant.py covering /api/ask AU-grounded, AU-out-of-scope refusal, US-grounded, plus regression on /api/dashboard, /api/tax-mileage, /api/reports?period=quarter and /api/vehicles). POST /api/ask AU fuel/cents-per-km returns a substantive ATO-grounded answer (Claude Sonnet 4.6 via Emergent LLM key) that includes cents-per-km context; POST /api/ask AU out-of-scope ('capital of France + Netflix') correctly refuses with 'verified sources / registered tax professional' language and does NOT leak 'Paris'; POST /api/ask US standard-mileage-rate + tolls returns an IRS-grounded answer mentioning both 'mileage' and 'toll'. Regression endpoints all 200 with expected shape (income_today/expense_today/net_today for dashboard; financial_year/logbook/method_comparison/odometer for tax-mileage; period_label/total_income/total_deductions/net_profit for reports; vehicles list auto-created for a fresh profile with no _id leak). FRONTEND (Expo web, 390x844, viewport mobile): all 6 bottom tabs (Home, Mileage, Ledger, Reports, Ask, Profile) load without red-screen. Ask tab: ask-input accepts text and ask-send returns a grounded ATO answer visible in the reply bubble ('No, you cannot claim fuel separately if you are using the cents-per-kilometre method... 88 cents per km for 2024–25... confirm with a registered tax agent'); a suggestion chip also triggers a valid reply. Ask disclaimer renders 'Answers use only verified ATO guidance — no web search'. Mileage (/trips): mileage-history-toggle expands history section. Ledger (/expenses): ledger-history-toggle expands history section. Profile (/settings): 'User guide' row with testID='set-manual' navigates to /manual; the 'Ask GigTax (AI tax help)' accordion is present and expands to show the 4-line description (only official ATO/IRS guidance, no web search, refers to registered tax agent). No red-screen; only pre-existing non-blocking 'props.pointerEvents is deprecated' console warning (carried from prior iterations).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web", "issue": "Non-blocking console warning carried from prior iterations: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not introduced by the Ask assistant."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ask_assistant.py",
+    "/app/test_reports/pytest/pytest_ask_assistant.xml",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_11.json"
+  ],
+  "action_items": [
+    "None — feature is ship-ready. Optional (not blocking): consider bumping the client fetch timeout from 15s to 20-25s in /app/frontend/src/api.ts specifically for /ask, as Claude Sonnet responses occasionally take 8-10s and network wobble could push past 15s."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py::ask_assistant correctly grounds Claude Sonnet 4.6 to tax_kb.kb_for(country) with a strict system prompt: 'Use ONLY the facts... If not covered, say That's not in my verified {authority} sources — please check with a registered tax professional.' Confirmed out-of-scope refusal at runtime.",
+    "backend/server.py trims request.question and appends short transcript (last 6 messages) — good multi-turn hygiene without blowing token budget.",
+    "backend/tax_kb.py exposes AU_KB and US_KB; kb_for defaults to AU when country is not 'US'. Untouched per instructions.",
+    "frontend/app/(tabs)/ask.tsx uses testID='ask-input' and 'ask-send'; suggestion chips have testID prefix 'ask-suggestion-'; disables send when empty/loading; KeyboardAvoidingView + safe-area handled. Country resolved from profile store (isUS ? 'US' : 'AU') and passed to api.ask.",
+    "frontend/app/(tabs)/_layout.tsx renders all 6 tabs with tabBarButtonTestID='tab-{home,trips,expenses,reports,ask,settings}'. Confirmed all visible and tappable in the web preview.",
+    "frontend/app/manual.tsx accordion renders both AU and US variants of 'Reports & your tax figures' and includes the dedicated 'Ask GigTax (AI tax help)' section with country-aware wording ('official ATO/IRS guidance'). Expand/collapse via openIdx state works.",
+    "No MongoDB _id leak on any tested endpoint (verified in TestRegression.test_vehicles_auto_created and existing suites)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ask_assistant.py (new — 7 pytest cases: 3 /api/ask + 4 regression)"
+  ],
+  "success_rate": {
+    "backend": "100% (68/68 pytest — 61 existing + 7 new ask+regression)",
+    "frontend": "100% (all 6 tabs load, Ask input+send + suggestion chip both trigger a grounded reply, mileage-history-toggle and ledger-history-toggle expand, set-manual → /manual with Ask GigTax section expandable)"
+  },
+  "seed_data_creation": "Ephemeral profile_id='smoketest' created via PUT /api/profile with onboarded=true for the browser flow; test_ask_assistant.py uses the same profile_id for regression GETs (no writes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AI Ask contract: POST /api/ask {question:str, country:'AU'|'US', history?:[{role,text}]} → 200 {answer:str, country:str}. Answer is Claude Sonnet 4.6 grounded ONLY in tax_kb.kb_for(country). Out-of-scope questions MUST refuse with 'verified sources / registered tax professional'. Frontend testIDs used: tab-home, tab-trips, tab-expenses, tab-reports, tab-ask, tab-settings, ask-input, ask-send, ask-suggestion-<first10chars>, mileage-history-toggle, ledger-history-toggle, set-manual, manual-close. To reach /home in a fresh browser session: set localStorage 'gigtax.profile_id' = JSON.stringify('<pid>'), then PUT /api/profile with onboarded:true (the store reads onboarded from backend, not localStorage), then navigate to /home. LLM responses take ~5-10s — always sleep >=9s after ask-send before asserting reply text.",
+  "rca_of_issue": "N/A — no defects reproduced."
+}

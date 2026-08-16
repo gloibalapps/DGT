@@ -54,6 +54,7 @@ export default function Manual() {
           "Pick a period at the top — Week, Month, Quarter or Year (calendar quarters for 1040-ES).",
           "Schedule C card estimates your gross receipts, car & truck expense, other expenses and net profit (Line 31).",
           "\u201CWhich method is better?\u201D compares the IRS standard mileage rate against your actual car costs and recommends the larger deduction.",
+          "Your IRS Mileage Log lives here too — tap it to review the trips behind your business-use %.",
           "\u201CSet aside for taxes\u201D estimates self-employment tax (~15.3%) plus estimated federal and state income tax to save.",
           "Tap Export CSV to download every line for your records or your accountant.",
         ],
@@ -65,6 +66,7 @@ export default function Manual() {
           "Pick a period at the top — Week, Month, BAS Quarter or Financial Year (1 Jul\u201330 Jun).",
           "Net profit = total income minus your vehicle deduction and other work expenses.",
           "\u201CWhich method is better?\u201D shows your logbook deduction vs cents-per-km so you claim the bigger one.",
+          "Your ATO Logbook lives here too — tap it to review the trips behind your business-use %.",
           "If you're GST-registered, the BAS/GST card gives you G1, 1A, 1B and Net GST to copy onto your BAS.",
           "\u201CSet aside for taxes\u201D estimates income tax (incl. Medicare levy) plus any GST to remit.",
           "Tap Export CSV to download every line for your records or your tax agent.",
@@ -78,8 +80,8 @@ export default function Manual() {
       lines: [
         "GigTax turns your driving into the income, mileage and tax figures you actually need to lodge.",
         "Built for rideshare and delivery drivers (Uber, DoorDash, Uber Eats, Menulog, Amazon Flex and more).",
-        "Everything you log is saved to your device and (when signed in) synced to the cloud.",
-        "The bottom tabs are your main areas: Home, Mileage, Ledger, Reports and Profile.",
+        "Everything you log is saved securely so your income, mileage and tax figures are always up to date.",
+        "The bottom tabs are your main areas: Home, Mileage, Ledger, Reports, Ask and Profile.",
       ],
     },
     {
@@ -96,10 +98,9 @@ export default function Manual() {
       icon: "home",
       title: "Your Home dashboard",
       lines: [
-        "See your net earnings today, plus income and expenses at a glance.",
-        "Business kilometres/miles driven today are shown as you log trips.",
-        "If you set a recurring vehicle payment, you'll see what's owed this quarter.",
-        "The Performance chart shows your last 4 weeks of profit, $/km and $/hr.",
+        "The top card shows your net earnings today, with income and expenses beside it.",
+        "The Performance chart (last 4 weeks of profit, $/km and $/hr) sits just below.",
+        "At the bottom you'll see business km driven today and any recurring vehicle payment owed this quarter.",
       ],
     },
     {
@@ -109,17 +110,17 @@ export default function Manual() {
         "Use the quick-add on Home, or the Ledger tab, to add income or an expense.",
         "Tag each expense with a category (fuel, tolls, vehicle, phone, other) and the vehicle it belongs to.",
         "Scan a receipt with your camera and GigTax reads the amount and merchant for you.",
-        "Every entry can be edited or deleted later — just tap it.",
+        "Tap the History header on Ledger to expand your past entries; tap any entry to edit or delete it.",
       ],
     },
     {
       icon: "navigate",
       title: "Tracking your mileage",
       lines: [
-        "The Mileage tab is your logbook. Start a GPS shift and GigTax records the drive, then asks you to tag it Business or Personal.",
-        "You can also add a trip manually with distance and purpose.",
+        "On the Mileage tab, use GPS shift or Add trip at the top to record drives, then tag each Business or Private.",
         "Your business-use % is calculated from your tagged trips — a real logbook, not a guess.",
-        "Add your odometer readings (start & end of the tax year) for an audit-proof total; GigTax reconciles them against your GPS.",
+        "Tap the History header to expand your recorded trips; the odometer check flags GPS-vs-odometer gaps.",
+        "Your full logbook summary and the \u201Cwhich method is better\u201D comparison appear in the Reports tab.",
       ],
     },
     {
@@ -149,7 +150,7 @@ export default function Manual() {
       lines: [
         "Open Profile \u203A Tax setup to add your legal name and registration details.",
         isUS
-          ? "This keeps your Schedule C and estimated-tax figures accurate."
+          ? "Set your Tax ID (EIN/SSN) on file and estimated-tax frequency (Form 1040-ES) to keep your Schedule C accurate."
           : "Mark whether you're GST-registered so your BAS/GST summary shows correctly. Passenger drivers must register from their first dollar; delivery-only above $75,000 turnover.",
       ],
     },
