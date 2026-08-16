@@ -12,7 +12,7 @@ import {
 
 function Bars({ weeks, symbol }: { weeks: any[]; symbol: string }) {
   const { colors } = useTheme();
-  const H = 92;
+  const H = 60;
   const max = Math.max(1, ...weeks.map((w) => Math.max(Math.abs(w.profit), w.expenses)));
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: H + 34, marginTop: 8 }}>
@@ -120,34 +120,9 @@ export default function Home() {
         </View>
       </GradientCard>
 
-      {/* Secondary row */}
-      <View style={{ flexDirection: "row", gap: 12, marginBottom: 14 }}>
-        <Card style={{ flex: 1 }}>
-          <Ionicons name="navigate" size={20} color={colors.accent} />
-          <AppText variant="displaySemi" style={{ fontSize: 28, marginTop: 6, fontVariant: ["tabular-nums"] }}>
-            {data.business_distance_today}
-          </AppText>
-          <AppText variant="caption" color={colors.dim}>{data.distance_unit || "km"} business today</AppText>
-        </Card>
-        <Card style={{ flex: 1 }}>
-          <Ionicons name="repeat" size={20} color={data.recurring.enabled ? colors.warm : colors.dim} />
-          {data.recurring.enabled ? (
-            <>
-              <Money value={data.recurring.owed_this_quarter} symbol={data.symbol} size={22} style={{ marginTop: 6 }} />
-              <AppText variant="caption" color={colors.dim}>owed this quarter</AppText>
-            </>
-          ) : (
-            <>
-              <AppText variant="bodySemi" style={{ marginTop: 6 }}>Not set</AppText>
-              <AppText variant="caption" color={colors.dim}>recurring payment</AppText>
-            </>
-          )}
-        </Card>
-      </View>
-
       {/* Performance — last 4 weeks */}
       {perf && (
-        <Card style={{ marginBottom: 8 }}>
+        <Card style={{ marginBottom: 14 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <AppText variant="h2">Performance</AppText>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -177,6 +152,31 @@ export default function Home() {
           )}
         </Card>
       )}
+
+      {/* Miles today + recurring owed */}
+      <View style={{ flexDirection: "row", gap: 12, marginBottom: 8 }}>
+        <Card style={{ flex: 1 }}>
+          <Ionicons name="navigate" size={20} color={colors.accent} />
+          <AppText variant="displaySemi" style={{ fontSize: 28, marginTop: 6, fontVariant: ["tabular-nums"] }}>
+            {data.business_distance_today}
+          </AppText>
+          <AppText variant="caption" color={colors.dim}>{data.distance_unit || "km"} business today</AppText>
+        </Card>
+        <Card style={{ flex: 1 }}>
+          <Ionicons name="repeat" size={20} color={data.recurring.enabled ? colors.warm : colors.dim} />
+          {data.recurring.enabled ? (
+            <>
+              <Money value={data.recurring.owed_this_quarter} symbol={data.symbol} size={22} style={{ marginTop: 6 }} />
+              <AppText variant="caption" color={colors.dim}>owed this quarter</AppText>
+            </>
+          ) : (
+            <>
+              <AppText variant="bodySemi" style={{ marginTop: 6 }}>Not set</AppText>
+              <AppText variant="caption" color={colors.dim}>recurring payment</AppText>
+            </>
+          )}
+        </Card>
+      </View>
     </Screen>
   );
 }
