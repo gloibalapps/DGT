@@ -35,6 +35,7 @@ export default function Ledger() {
   const [income, setIncome] = useState<IncomeT[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -147,35 +148,47 @@ export default function Ledger() {
       <SecondaryButton testID="expense-scan" label="Scan receipt" icon="camera-outline" style={{ marginBottom: 18 }}
         onPress={() => router.push("/scan-receipt" as any)} />
 
-      <AppText variant="h2" style={{ marginBottom: 10 }}>History</AppText>
-      {rows.length === 0 ? (
-        <EmptyState icon="swap-vertical-outline" title="Nothing logged yet" subtitle="Add income or an expense, or scan a receipt to get started." />
-      ) : (
-        rows.map((row) => (
-          <Pressable key={`${row.kind}-${row.id}`} testID={`ledger-${row.id}`}
-            onPress={() => router.push({ pathname: "/entry" as any, params: { type: row.kind, id: row.id } })}>
-            <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
-              <View style={{
-                width: 38, height: 38, borderRadius: 999, backgroundColor: colors.surfaceAlt,
-                alignItems: "center", justifyContent: "center", marginRight: 12,
-              }}>
-                <Ionicons name={row.icon} size={18} color={row.kind === "income" ? colors.profit : colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText variant="bodyMed">{row.title}</AppText>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
-                  <AppText variant="caption" color={colors.dim}>{row.subtitle} · {displayDateShort(row.date)}</AppText>
-                  <Badge label={TREAT_LABEL[row.treatment] || row.treatment}
-                    color={row.treatment === "inclusive" ? colors.accent : colors.dim} />
+      {/* History (tap to expand) */}
+      <Pressable testID="ledger-history-toggle" onPress={() => setHistoryOpen((o) => !o)} hitSlop={8}
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+        <AppText variant="h2">History</AppText>
+        {rows.length > 0 ? (
+          <AppText variant="caption" color={colors.dim} style={{ marginLeft: 8 }}>
+            {rows.length} {rows.length > 1 ? "entries" : "entry"}
+          </AppText>
+        ) : null}
+        <Ionicons name={historyOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.dim} style={{ marginLeft: 6 }} />
+      </Pressable>
+      {historyOpen ? (
+        rows.length === 0 ? (
+          <EmptyState icon="swap-vertical-outline" title="Nothing logged yet" subtitle="Add income or an expense, or scan a receipt to get started." />
+        ) : (
+          rows.map((row) => (
+            <Pressable key={`${row.kind}-${row.id}`} testID={`ledger-${row.id}`}
+              onPress={() => router.push({ pathname: "/entry" as any, params: { type: row.kind, id: row.id } })}>
+              <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
+                <View style={{
+                  width: 38, height: 38, borderRadius: 999, backgroundColor: colors.surfaceAlt,
+                  alignItems: "center", justifyContent: "center", marginRight: 12,
+                }}>
+                  <Ionicons name={row.icon} size={18} color={row.kind === "income" ? colors.profit : colors.accent} />
                 </View>
-              </View>
-              <Money value={row.amount} symbol="$" size={18} signed style={{ marginRight: 6 }} />
-              <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`ledger-del-${row.id}`}
-                onPress={() => del(row)} />
-            </Card>
-          </Pressable>
-        ))
-      )}
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyMed">{row.title}</AppText>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
+                    <AppText variant="caption" color={colors.dim}>{row.subtitle} · {displayDateShort(row.date)}</AppText>
+                    <Badge label={TREAT_LABEL[row.treatment] || row.treatment}
+                      color={row.treatment === "inclusive" ? colors.accent : colors.dim} />
+                  </View>
+                </View>
+                <Money value={row.amount} symbol="$" size={18} signed style={{ marginRight: 6 }} />
+                <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`ledger-del-${row.id}`}
+                  onPress={() => del(row)} />
+              </Card>
+            </Pressable>
+          ))
+        )
+      ) : null}
     </Screen>
   );
 }
