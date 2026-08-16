@@ -204,6 +204,7 @@ class Profile(BaseModel):
     reporting_frequency: Optional[str] = None
     business_use_fallback: float = 100.0
     weekly_goal: Optional[float] = None
+    tax_set_aside: Optional[float] = None
     vehicle_method: Optional[str] = None  # US/UK only
     vehicle_first_business_year: Optional[str] = None
     theme: Literal["dark", "light"] = "dark"
@@ -577,6 +578,16 @@ async def insights(profile_id: str = Query(...), ref_date: Optional[str] = Query
     shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     return taxlib.insights(profile, income, expenses, shifts, ref)
+
+
+@api_router.get("/money")
+async def money(profile_id: str = Query(...), period: str = Query("week"),
+                ref_date: Optional[str] = Query(None)):
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
+    shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
+    ref = taxlib.parse_date(ref_date) if ref_date else date.today()
+    return taxlib.money_overview(profile, trips, income, expenses, shifts, ref,
+                                 period=period, vehicles=vehicles)
 
 
 @api_router.get("/tax-mileage")

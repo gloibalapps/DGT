@@ -114,6 +114,7 @@ export interface ProfileT {
   reporting_frequency?: string | null;
   business_use_fallback: number;
   weekly_goal?: number | null;
+  tax_set_aside?: number | null;
   vehicle?: VehicleT | null;
   theme: "dark" | "light";
   onboarded: boolean;
@@ -223,6 +224,10 @@ export const api = {
   async insights(refDate: string) {
     const pid = await getProfileId();
     return req(`/insights?profile_id=${pid}&ref_date=${refDate}`);
+  },
+  async money(period: string, refDate: string) {
+    const pid = await getProfileId();
+    return req(`/money?profile_id=${pid}&period=${period}&ref_date=${refDate}`);
   },
   async taxMileage(refDate: string, vehicleId?: string) {
     const pid = await getProfileId();

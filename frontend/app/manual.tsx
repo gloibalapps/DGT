@@ -98,11 +98,11 @@ export default function Manual() {
       icon: "wallet",
       title: "Your Money dashboard",
       lines: [
-        "The Money tab is your home base — income, expenses and net earnings in one place.",
-        "Use the toggle on the top card to switch between Today, This financial year, and All-time.",
-        "Add income or an expense, or scan a receipt, right below the summary.",
-        "Tap Log hours in the Online hours card to record how long you were online each shift — GigTax then shows your true $/hour, counting waiting time, not just driving.",
-        "The Performance chart (last 4 weeks of profit, $/km and $/hr), your business km and any recurring payment owed this quarter sit underneath.",
+        "The Money tab answers one question: how much of what you earn is really yours?",
+        "Switch the period tabs at the top between Today, Week, Month and This FY — every card updates.",
+        "MONEY NOW: your real take-home (after expenses and estimated tax), a Gross/Expenses/Tax breakdown, and your Keep Rate — how many cents you keep from every dollar.",
+        "PERFORMANCE: real $/hour, gross $/hour, $ and cost and profit per km/mile, and km driven.",
+        "MONEY INTELLIGENCE: your tax position (ahead or behind, tap Update to log what you've set aside), deductions tracked, and your best/worst day and best platform.",
       ],
     },
     {

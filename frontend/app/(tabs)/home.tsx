@@ -20,43 +20,58 @@ const TREAT_LABEL: Record<string, string> = Object.fromEntries(
   TAX_TREATMENTS.map((t) => [t.key, t.label]),
 );
 
+type Period = "today" | "week" | "month" | "year";
+const PERIODS: { key: Period; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "week", label: "Week" },
+  { key: "month", label: "Month" },
+  { key: "year", label: "This FY" },
+];
+
 interface Row { kind: "income" | "expense"; id: string; date: string; amount: number; title: string; subtitle: string; icon: any; treatment: string }
 
-function tripBizKm(t: any): number {
-  if (t.type === "personal") return 0;
-  if (t.type === "mixed") return (t.distance_km || 0) * (t.business_pct || 0) / 100;
-  return t.distance_km || 0;
+function periodRange(period: Period, country: string) {
+  const now = new Date();
+  const iso = (d: Date) => d.toLocaleDateString("en-CA");
+  if (period === "today") { const t = iso(now); return { start: t, end: t }; }
+  if (period === "week") {
+    const diff = (now.getDay() + 6) % 7;
+    const mon = new Date(now); mon.setDate(now.getDate() - diff);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { start: iso(mon), end: iso(sun) };
+  }
+  if (period === "month") {
+    const s = new Date(now.getFullYear(), now.getMonth(), 1);
+    const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { start: iso(s), end: iso(e) };
+  }
+  if (country === "US") return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-31` };
+  const y = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  return { start: `${y}-07-01`, end: `${y + 1}-06-30` };
 }
 
-function Bars({ weeks, symbol }: { weeks: any[]; symbol: string }) {
+/** Small stat tile used across Performance. */
+function Stat({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
   const { colors } = useTheme();
-  const H = 60;
-  const max = Math.max(1, ...weeks.map((w) => Math.max(Math.abs(w.profit), w.expenses)));
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: H + 34, marginTop: 8 }}>
-      {weeks.map((w, i) => {
-        const ph = Math.max(2, (Math.abs(w.profit) / max) * H);
-        const eh = Math.max(2, (w.expenses / max) * H);
-        return (
-          <View key={i} style={{ flex: 1, alignItems: "center" }}>
-            <View style={{ height: H, flexDirection: "row", alignItems: "flex-end", gap: 4 }}>
-              <View style={{ width: 12, height: ph, borderRadius: 3, backgroundColor: w.profit >= 0 ? colors.profit : colors.loss }} />
-              <View style={{ width: 12, height: eh, borderRadius: 3, backgroundColor: colors.loss, opacity: 0.55 }} />
-            </View>
-            <AppText variant="caption" color={colors.dim} style={{ marginTop: 6 }}>{w.label}</AppText>
-          </View>
-        );
-      })}
+    <View style={{ flexBasis: "31%", flexGrow: 1, backgroundColor: highlight ? colors.accent + "22" : colors.surfaceAlt,
+      borderRadius: 12, padding: 12, borderWidth: highlight ? 1 : 0, borderColor: colors.accent }}>
+      <AppText style={{ fontFamily: FONT.display, fontSize: 20, color: highlight ? colors.accent : colors.text, fontVariant: ["tabular-nums"] }}
+        numberOfLines={1} adjustsFontSizeToFit>{value}</AppText>
+      <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>{label}</AppText>
+      {sub ? <AppText variant="caption" color={colors.dim} style={{ fontSize: 10 }}>{sub}</AppText> : null}
     </View>
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+/** Money Now / Reports-style label + value row. */
+function LineRow({ label, value, symbol, color, strong }:
+  { label: string; value: number; symbol: string; color?: string; strong?: boolean }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 12, alignItems: "center" }}>
-      <AppText style={{ fontFamily: FONT.display, fontSize: 22, color: colors.text, fontVariant: ["tabular-nums"] }}>{value}</AppText>
-      <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>{label}</AppText>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 4 }}>
+      <AppText variant={strong ? "bodySemi" : "bodyMed"} color={strong ? colors.text : colors.dim}>{label}</AppText>
+      <Money value={value} symbol={symbol} size={strong ? 18 : 16} color={color} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} />
     </View>
   );
 }
@@ -67,24 +82,23 @@ export default function Money_() {
   const { show } = useToast();
   const router = useRouter();
 
-  const [dash, setDash] = useState<any>(null);
-  const [perf, setPerf] = useState<any>(null);
+  const [data, setData] = useState<any>(null);
   const [income, setIncome] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [trips, setTrips] = useState<any[]>([]);
-  const [shifts, setShifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [period, setPeriod] = useState<Period>("week");
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const country = profile?.country || "AU";
+
+  const load = useCallback(async (p: Period) => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
-      const [d, p, inc, ex, tr, sh] = await Promise.all([
-        api.dashboard(today), api.performance(today),
-        api.listIncome(), api.listExpenses(), api.listTrips(), api.listShifts(),
+      const [m, inc, ex] = await Promise.all([
+        api.money(p, today), api.listIncome(), api.listExpenses(),
       ]);
-      setDash(d); setPerf(p); setIncome(inc); setExpenses(ex); setTrips(tr); setShifts(sh);
+      setData(m); setIncome(inc); setExpenses(ex);
     } catch {
       show("Couldn't load your money summary", "error");
     } finally {
@@ -93,61 +107,16 @@ export default function Money_() {
     }
   }, [show]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load, version]));
+  useFocusEffect(useCallback(() => { load(period); }, [load, period, version]));
 
-  const country = profile?.country || "AU";
-  const symbol = dash?.symbol || "$";
-  const unit = dash?.distance_unit || (country === "US" ? "mi" : "km");
-
-  const range = useMemo(() => {
-    const today = new Date().toLocaleDateString("en-CA");
-    return { start: today, end: today, label: "Today" };
-  }, []);
+  const symbol = data?.symbol || "$";
+  const unit = data?.distance_unit || (country === "US" ? "mi" : "km");
+  const range = useMemo(() => periodRange(period, country), [period, country]);
 
   const inRange = useCallback((dateStr: string) => {
     const d = String(dateStr).slice(0, 10);
     return d >= range.start && d <= range.end;
   }, [range]);
-
-  const summary = useMemo(() => {
-    const incF = income.filter((i) => inRange(i.date));
-    const expF = expenses.filter((e) => inRange(e.date));
-    const trF = trips.filter((t) => inRange(t.date));
-    const shF = shifts.filter((s) => inRange(s.date));
-    const inc = incF.reduce((s, i) => s + (i.amount || 0), 0);
-    const exp = expF.reduce((s, e) => s + (e.amount || 0), 0);
-    const bizKm = trF.reduce((s, t) => s + tripBizKm(t), 0);
-    const hrs = shF.reduce((s, x) => s + (x.hours || 0), 0);
-    const cat: Record<string, number> = {};
-    for (const e of expF) cat[e.category] = (cat[e.category] || 0) + (e.amount || 0);
-    return {
-      inc: Math.round(inc * 100) / 100,
-      exp: Math.round(exp * 100) / 100,
-      net: Math.round((inc - exp) * 100) / 100,
-      bizKm: Math.round(bizKm * 10) / 10,
-      hours: Math.round(hrs * 10) / 10,
-      cat,
-    };
-  }, [income, expenses, trips, shifts, inRange]);
-
-  const shiftRows = useMemo(
-    () => shifts.filter((s) => inRange(s.date)).sort((a, b) => (a.date < b.date ? 1 : -1)),
-    [shifts, inRange],
-  );
-
-  // This week's income (Mon–Sun) — powers the weekly-goal progress on the hero.
-  const weekIncome = useMemo(() => {
-    const now = new Date();
-    const diffToMon = (now.getDay() + 6) % 7; // 0=Sun..6=Sat -> days since Monday
-    const mon = new Date(now); mon.setDate(now.getDate() - diffToMon);
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    const monISO = mon.toLocaleDateString("en-CA");
-    const sunISO = sun.toLocaleDateString("en-CA");
-    const total = income
-      .filter((i) => { const d = String(i.date).slice(0, 10); return d >= monISO && d <= sunISO; })
-      .reduce((s, i) => s + (i.amount || 0), 0);
-    return Math.round(total * 100) / 100;
-  }, [income]);
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = [];
@@ -171,23 +140,13 @@ export default function Money_() {
       if (row.kind === "income") await api.deleteIncome(row.id);
       else await api.deleteExpense(row.id);
       show("Deleted", "success");
-      load(); refresh();
+      load(period); refresh();
     } catch {
       show("Couldn't delete — try again", "error");
     }
   };
 
-  const delShift = async (id: string) => {
-    try {
-      await api.deleteShift(id);
-      show("Deleted", "success");
-      load(); refresh();
-    } catch {
-      show("Couldn't delete — try again", "error");
-    }
-  };
-
-  if (loading) return <Screen><Spinner /></Screen>;
+  if (loading || !data) return <Screen><Spinner /></Screen>;
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -195,185 +154,249 @@ export default function Money_() {
   })();
   const firstName = (profile?.driver_name || "").trim().split(" ")[0];
 
-  // Base font size for the hero net figure, scaled down for longer amounts so
-  // it never overflows on web (native also uses adjustsFontSizeToFit). Uses the
-  // real formatted string (commas + 2 decimals) so the estimate is accurate.
-  const netLen = fmtMoney(summary.net, symbol).length;
-  const netSize = netLen > 13 ? 28 : netLen > 11 ? 34 : netLen > 9 ? 40 : 48;
+  const mn = data.money_now;
+  const perf = data.performance;
+  const tp = data.tax_position;
+  const ded = data.deductions;
+  const periodLabel = PERIODS.find((p) => p.key === period)?.label || "";
+
+  const takeStr = fmtMoney(mn.take_home, symbol);
+  const takeSize = takeStr.length > 13 ? 30 : takeStr.length > 11 ? 36 : takeStr.length > 9 ? 42 : 48;
+  const kept = mn.keep_rate;
 
   return (
     <Screen
       header={<ScreenHeader subtitle={firstName ? `${greeting}, ${firstName}` : greeting} title="Money" />}
       scroll
       refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent}
-        onRefresh={() => { setRefreshing(true); load(); }} />}
+        onRefresh={() => { setRefreshing(true); load(period); }} />}
     >
-      {!dash?.tax_setup_complete && (
+      {/* Period tabs */}
+      <View style={{ flexDirection: "row", backgroundColor: colors.surfaceAlt, borderRadius: 999, padding: 3, marginBottom: 14 }}>
+        {PERIODS.map((p) => {
+          const active = p.key === period;
+          return (
+            <Pressable key={p.key} testID={`money-period-${p.key}`} onPress={() => setPeriod(p.key)}
+              style={{ flex: 1, paddingVertical: 8, borderRadius: 999, alignItems: "center",
+                backgroundColor: active ? colors.accent : "transparent" }}>
+              <AppText variant="caption" style={{ fontWeight: "700" }} color={active ? colors.bg : colors.dim}>{p.label}</AppText>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {!profile?.legal_name && (
         <Pressable testID="home-tax-nudge" onPress={() => router.push("/tax-setup" as any)} style={{ marginBottom: 14 }}>
           <Card style={{ flexDirection: "row", alignItems: "center", borderColor: colors.warm }}>
             <Ionicons name="alert-circle" size={22} color={colors.warm} style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
               <AppText variant="bodySemi">Finish your tax setup</AppText>
-              <AppText variant="caption" color={colors.dim}>Add your registration details so your reports lodge cleanly.</AppText>
+              <AppText variant="caption" color={colors.dim}>Add your registration details so your tax estimates are accurate.</AppText>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.dim} />
           </Card>
         </Pressable>
       )}
 
-      {/* Hero — today's net with income & expenses stacked below (Reports-style) */}
+      {/* ============ LAYER 1 · MONEY NOW ============ */}
       <GradientCard style={{ marginBottom: 14 }}>
-        <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS · TODAY</AppText>
+        <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.85 }}>
+          YOUR REAL EARNINGS · {periodLabel.toUpperCase()}
+        </AppText>
         <View style={{ marginTop: 6 }}>
-          <Money value={summary.net} symbol={symbol} size={netSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}
-            color={summary.net >= 0 ? "#FFFFFF" : "#FF7A7A"} />
+          <Money value={mn.take_home} symbol={symbol} size={takeSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}
+            color={mn.take_home >= 0 ? "#FFFFFF" : "#FF7A7A"} />
         </View>
+        <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.75, marginTop: 2 }}>
+          After work expenses • after estimated tax
+        </AppText>
+
+        {kept != null ? (
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12,
+            backgroundColor: "rgba(255,255,255,0.16)", borderRadius: 12, padding: 12 }}>
+            <View style={{ alignItems: "center", marginRight: 14 }}>
+              <AppText style={{ fontFamily: FONT.display, fontSize: 30, color: "#2BD47D" }}>{kept}%</AppText>
+              <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.8 }}>KEEP RATE</AppText>
+            </View>
+            <AppText variant="bodyMed" color={colors.onGradient} style={{ flex: 1, opacity: 0.95 }}>
+              You keep about {symbol}{Math.round(kept)} of every {symbol}100 you earn.
+            </AppText>
+          </View>
+        ) : null}
 
         <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.18)", marginVertical: 12 }} />
-
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 }}>
-          <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Income</AppText>
-          <Money value={summary.inc} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#2BD47D" />
-        </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 }}>
-          <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Expenses</AppText>
-          <Money value={summary.exp} symbol={symbol} size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} color="#FF7A7A" />
-        </View>
-
-        {/* Weekly goal progress */}
-        <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.18)", marginTop: 12, marginBottom: 12 }} />
-        {(() => {
-          const goal = profile?.weekly_goal;
-          if (!goal || goal <= 0) {
-            return (
-              <Pressable testID="money-set-goal" onPress={() => router.push("/weekly-goal" as any)}
-                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Ionicons name="flag-outline" size={16} color={colors.onGradient} style={{ marginRight: 8, opacity: 0.9 }} />
-                  <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Set a weekly goal</AppText>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.onGradient} style={{ opacity: 0.8 }} />
-              </Pressable>
-            );
-          }
-          const pct = Math.round((weekIncome / goal) * 100);
-          const done = pct >= 100;
-          return (
-            <Pressable testID="money-week-goal" onPress={() => router.push("/weekly-goal" as any)}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <AppText variant="bodyMed" color={colors.onGradient} style={{ opacity: 0.9 }}>Weekly goal</AppText>
-                <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-                  <AppText variant="bodySemi" color="#FFFFFF">{fmtMoney(weekIncome, symbol)}</AppText>
-                  <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.8 }}> / {fmtMoney(goal, symbol)}</AppText>
-                  <AppText variant="bodySemi" color={done ? "#2BD47D" : "#FFFFFF"} style={{ marginLeft: 6 }}>({pct}%)</AppText>
-                </View>
-              </View>
-              <View style={{ height: 8, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.22)", marginTop: 8, overflow: "hidden" }}>
-                <View style={{ height: 8, borderRadius: 999, width: `${Math.max(2, Math.min(100, pct))}%`, backgroundColor: "#2BD47D" }} />
-              </View>
-            </Pressable>
-          );
-        })()}
+        <LineRow label="Gross earnings" value={mn.gross} symbol={symbol} color="#FFFFFF" />
+        <LineRow label="Work expenses" value={-mn.expenses} symbol={symbol} color="#FF7A7A" />
+        <LineRow label="Estimated tax" value={-mn.estimated_tax} symbol={symbol} color="#FF7A7A" />
       </GradientCard>
 
-      {/* Quick add */}
+      {/* Quick actions */}
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
         <PrimaryButton testID="ledger-add-income" label="Add income" icon="add" style={{ flex: 1 }}
           onPress={() => router.push({ pathname: "/entry" as any, params: { type: "income" } })} />
         <PrimaryButton testID="expense-add" label="Add expense" icon="remove" style={{ flex: 1 }}
           onPress={() => router.push({ pathname: "/entry" as any, params: { type: "expense" } })} />
       </View>
-      <SecondaryButton testID="expense-scan" label="Scan receipt" icon="camera-outline" style={{ marginBottom: 14 }}
-        onPress={() => router.push("/scan-receipt" as any)} />
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
+        <SecondaryButton testID="expense-scan" label="Scan receipt" icon="camera-outline" style={{ flex: 1 }}
+          onPress={() => router.push("/scan-receipt" as any)} />
+        <SecondaryButton testID="hours-add" label="Log hours" icon="time-outline" style={{ flex: 1 }}
+          onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift" } })} />
+      </View>
 
-      {/* Category breakdown for the period */}
-      {CATEGORIES.some((c) => (summary.cat[c.key] || 0) > 0) ? (
-        <Card style={{ marginBottom: 14 }}>
-          <AppText variant="label" color={colors.dim} style={{ marginBottom: 12 }}>EXPENSES BY CATEGORY · {range.label.toUpperCase()}</AppText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {CATEGORIES.filter((c) => (summary.cat[c.key] || 0) > 0).map((c) => (
-              <View key={c.key} style={{ flexBasis: "48%", flexGrow: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12,
-                padding: 12, flexDirection: "row", alignItems: "center" }}>
-                <Ionicons name={c.icon as any} size={18} color={colors.accent} style={{ marginRight: 8 }} />
-                <View style={{ flex: 1 }}>
-                  <AppText variant="caption" color={colors.dim}>{c.label}</AppText>
-                  <Money value={Math.round((summary.cat[c.key] || 0) * 100) / 100} symbol={symbol} size={16} />
-                </View>
-              </View>
-            ))}
-          </View>
-        </Card>
-      ) : null}
-
-      {/* Performance — last 4 weeks */}
-      {perf && (
-        <Card style={{ marginBottom: 14 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <AppText variant="h2">Performance</AppText>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: colors.profit, marginRight: 4 }} />
-                <AppText variant="caption" color={colors.dim}>Profit</AppText>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: colors.loss, opacity: 0.55, marginRight: 4 }} />
-                <AppText variant="caption" color={colors.dim}>Expenses</AppText>
-              </View>
-            </View>
-          </View>
-          <AppText variant="caption" color={colors.dim}>Last 4 weeks</AppText>
-          <Bars weeks={perf.weeks} symbol={perf.symbol} />
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-            <Kpi label={`${symbol}/${unit}`} value={perf.per_km != null ? `${perf.symbol}${perf.per_km}` : "—"} />
-            <Kpi label="hours" value={perf.total_hours ? String(perf.total_hours) : "—"} />
-            <Kpi label={`${symbol}/hr`} value={perf.per_hour != null ? `${perf.symbol}${perf.per_hour}` : "—"} />
-          </View>
-        </Card>
-      )}
-
-      {/* Online hours (this period) */}
+      {/* ============ LAYER 2 · PERFORMANCE ============ */}
       <Card style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: summary.hours > 0 ? 12 : 8 }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="time-outline" size={18} color={colors.accent} style={{ marginRight: 8 }} />
-            <AppText variant="h2">Online hours</AppText>
-          </View>
-          <Pressable testID="hours-add" hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}
-            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift" } })}>
-            <Ionicons name="add-circle" size={18} color={colors.accent} />
-            <AppText variant="bodySemi" color={colors.accent} style={{ marginLeft: 4 }}>Log hours</AppText>
-          </Pressable>
+        <AppText variant="h2">Performance</AppText>
+        <AppText variant="caption" color={colors.dim}>What your driving is really worth · {periodLabel.toLowerCase()}</AppText>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+          <Stat label="real / hour" highlight value={perf.real_per_hour != null ? `${symbol}${perf.real_per_hour}` : "—"} />
+          <Stat label="gross / hour" value={perf.gross_per_hour != null ? `${symbol}${perf.gross_per_hour}` : "—"} />
+          <Stat label={`${unit} driven`} value={perf.km ? String(perf.km) : "—"} />
+          <Stat label={`earned / ${unit}`} value={perf.per_km != null ? `${symbol}${perf.per_km}` : "—"} />
+          <Stat label={`cost / ${unit}`} value={perf.cost_per_km != null ? `${symbol}${perf.cost_per_km}` : "—"} />
+          <Stat label={`profit / ${unit}`} value={perf.profit_per_km != null ? `${symbol}${perf.profit_per_km}` : "—"} />
         </View>
-        {summary.hours > 0 ? (
-          <>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-              <Kpi label={`hours · ${range.label.toLowerCase()}`} value={String(summary.hours)} />
-              <Kpi label={`${symbol}/hr online`} value={`${symbol}${Math.round((summary.inc / summary.hours) * 100) / 100}`} />
-            </View>
-            {shiftRows.map((s) => (
-              <Pressable key={s.id} testID={`shift-${s.id}`}
-                onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift", id: s.id } })}
-                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10,
-                  borderTopWidth: 1, borderTopColor: colors.border }}>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodyMed">{s.hours} hrs</AppText>
-                  <AppText variant="caption" color={colors.dim}>
-                    {displayDateShort(String(s.date).slice(0, 10))}{s.platform ? ` · ${s.platform}` : ""}
-                  </AppText>
-                </View>
-                <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`shift-del-${s.id}`}
-                  onPress={() => delShift(s.id)} />
-              </Pressable>
-            ))}
-          </>
-        ) : (
-          <AppText variant="caption" color={colors.dim}>
-            Log the hours you were online each shift to see your true earnings-per-hour — counting waiting time, not just driving.
+        {perf.hours === 0 ? (
+          <AppText variant="caption" color={colors.dim} style={{ marginTop: 10 }}>
+            Tap “Log hours” above to record your online time and unlock your real {symbol}/hour.
           </AppText>
-        )}
+        ) : null}
+        {data.trend_pct != null ? (
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12 }}>
+            <Ionicons name={data.trend_pct >= 0 ? "trending-up" : "trending-down"} size={16}
+              color={data.trend_pct >= 0 ? colors.profit : colors.loss} style={{ marginRight: 6 }} />
+            <AppText variant="caption" color={colors.dim}>
+              Real earnings {Math.abs(data.trend_pct)}% {data.trend_pct >= 0 ? "higher" : "lower"} than last {period === "year" ? "FY" : period}
+            </AppText>
+          </View>
+        ) : null}
       </Card>
 
-      {/* Driving insights */}
+      {/* Where your money went */}
+      {data.where.length > 0 ? (() => {
+        const maxAmt = Math.max(mn.take_home, ...data.where.map((w: any) => w.amount));
+        return (
+          <Card style={{ marginBottom: 14 }}>
+            <AppText variant="h2">Where your money went</AppText>
+            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+              You earned {fmtMoney(mn.gross, symbol)} {periodLabel.toLowerCase()}
+            </AppText>
+            {data.where.map((w: any) => (
+              <View key={w.label} style={{ marginBottom: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <AppText variant="bodyMed" color={colors.dim}>{w.label}</AppText>
+                  <Money value={w.amount} symbol={symbol} size={15} color={colors.loss} />
+                </View>
+                <View style={{ height: 6, borderRadius: 999, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
+                  <View style={{ height: 6, borderRadius: 999, backgroundColor: colors.loss, opacity: 0.7,
+                    width: `${Math.max(2, (w.amount / maxAmt) * 100)}%` }} />
+                </View>
+              </View>
+            ))}
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+            <View style={{ marginBottom: 4 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <AppText variant="bodySemi" color={colors.profit}>Money you kept</AppText>
+                <Money value={mn.take_home} symbol={symbol} size={18} color={colors.profit} />
+              </View>
+              <View style={{ height: 8, borderRadius: 999, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
+                <View style={{ height: 8, borderRadius: 999, backgroundColor: colors.profit,
+                  width: `${Math.max(2, (Math.max(0, mn.take_home) / maxAmt) * 100)}%` }} />
+              </View>
+            </View>
+          </Card>
+        );
+      })() : null}
+
+      {/* ============ LAYER 3 · MONEY INTELLIGENCE ============ */}
+      <AppText variant="label" color={colors.dim} style={{ marginBottom: 10, marginLeft: 2 }}>MONEY INTELLIGENCE</AppText>
+
+      {/* Tax position */}
+      <Card style={{ marginBottom: 14, borderColor: tp.status === "behind" ? colors.loss : colors.profit }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <AppText variant="h2">Tax position</AppText>
+          <Pressable testID="tax-update-setaside" onPress={() => router.push("/tax-saved" as any)} hitSlop={8}>
+            <AppText variant="caption" color={colors.accent}>Update</AppText>
+          </Pressable>
+        </View>
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Year to date · {tp.tax_year_label}</AppText>
+        <LineRowLight label="Estimated tax owed" value={tp.owed_ytd} symbol={symbol} />
+        <LineRowLight label="You've set aside" value={tp.set_aside} symbol={symbol} />
+        <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, marginRight: 8,
+              backgroundColor: tp.status === "behind" ? colors.loss : colors.profit }} />
+            <AppText variant="bodySemi" color={tp.status === "behind" ? colors.loss : colors.profit}>
+              {tp.status === "behind" ? "Behind" : "Ahead"} by {fmtMoney(Math.abs(tp.position), symbol)}
+            </AppText>
+          </View>
+        </View>
+        <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 16 }}>
+          Set aside about {tp.recommend_rate}% of your profit as you earn. Estimate only — not tax advice.
+        </AppText>
+      </Card>
+
+      {/* Deductions tracked */}
+      <Card style={{ marginBottom: 14 }}>
+        <AppText variant="h2">Deductions tracked</AppText>
+        <AppText variant="caption" color={colors.dim}>Year to date · {ded.tax_year_label}</AppText>
+        <Money value={ded.total} symbol={symbol} size={34} color={colors.accent} style={{ marginTop: 6 }} />
+        {ded.breakdown.map((b: any) => (
+          <LineRowLight key={b.label} label={b.label} value={b.amount} symbol={symbol} />
+        ))}
+        {ded.estimated_tax_impact > 0 ? (
+          <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 16 }}>
+            Estimated tax impact ≈ {fmtMoney(ded.estimated_tax_impact, symbol)} — an estimate of tax these deductions may save, not a guarantee.
+          </AppText>
+        ) : null}
+      </Card>
+
+      {/* Best/worst day + best platform */}
+      <Card style={{ marginBottom: 14 }}>
+        <AppText variant="h2">Best & worst</AppText>
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>By real {symbol}/hour · {data.intel_label}</AppText>
+        {data.best_day ? (
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.profit, marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">Best day · {displayDateShort(data.best_day.date)}</AppText>
+              <AppText variant="caption" color={colors.dim}>
+                {fmtMoney(data.best_day.income, symbol)} · {data.best_day.hours}h · {data.best_day.km}{unit}
+              </AppText>
+            </View>
+            <AppText variant="bodySemi" color={colors.profit}>{symbol}{data.best_day.real_per_hour}/hr</AppText>
+          </View>
+        ) : (
+          <AppText variant="caption" color={colors.dim}>Log income and online hours to see your best days.</AppText>
+        )}
+        {data.worst_day ? (
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.loss, marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">Worst day · {displayDateShort(data.worst_day.date)}</AppText>
+              <AppText variant="caption" color={colors.dim}>
+                {fmtMoney(data.worst_day.income, symbol)} · {data.worst_day.hours}h · {data.worst_day.km}{unit}
+              </AppText>
+            </View>
+            <AppText variant="bodySemi" color={colors.loss}>{symbol}{data.worst_day.real_per_hour}/hr</AppText>
+          </View>
+        ) : null}
+        {data.best_platform ? (
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Ionicons name="trophy" size={16} color={colors.warm} style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">Best platform · {data.best_platform.name}</AppText>
+              <AppText variant="caption" color={colors.dim}>Your top earner {data.intel_label}</AppText>
+            </View>
+            <AppText variant="bodySemi" color={colors.profit}>
+              {data.platform_metric === "per_hour" ? `${symbol}${data.best_platform.per_hour}/hr` : fmtMoney(data.best_platform.income, symbol)}
+            </AppText>
+          </View>
+        ) : null}
+      </Card>
+
+      {/* Driving insights link */}
       <Pressable testID="money-insights" onPress={() => router.push("/insights" as any)} style={{ marginBottom: 14 }}>
         <Card style={{ flexDirection: "row", alignItems: "center" }}>
           <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
@@ -388,38 +411,13 @@ export default function Money_() {
         </Card>
       </Pressable>
 
-      {/* Business km (period) + recurring owed */}
-      <View style={{ flexDirection: "row", gap: 12, marginBottom: 14 }}>
-        <Card style={{ flex: 1 }}>
-          <Ionicons name="navigate" size={20} color={colors.accent} />
-          <AppText variant="displaySemi" style={{ fontSize: 28, marginTop: 6, fontVariant: ["tabular-nums"] }}>
-            {summary.bizKm}
-          </AppText>
-          <AppText variant="caption" color={colors.dim}>{unit} business · {range.label.toLowerCase()}</AppText>
-        </Card>
-        <Card style={{ flex: 1 }}>
-          <Ionicons name="repeat" size={20} color={dash?.recurring?.enabled ? colors.warm : colors.dim} />
-          {dash?.recurring?.enabled ? (
-            <>
-              <Money value={dash.recurring.owed_this_quarter} symbol={symbol} size={22} style={{ marginTop: 6 }} />
-              <AppText variant="caption" color={colors.dim}>owed this quarter</AppText>
-            </>
-          ) : (
-            <>
-              <AppText variant="bodySemi" style={{ marginTop: 6 }}>Not set</AppText>
-              <AppText variant="caption" color={colors.dim}>recurring payment</AppText>
-            </>
-          )}
-        </Card>
-      </View>
-
-      {/* History (tap to expand) — filtered to the selected period */}
+      {/* History (collapsible) */}
       <Pressable testID="ledger-history-toggle" onPress={() => setHistoryOpen((o) => !o)} hitSlop={8}
         style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
         <AppText variant="h2">History</AppText>
         {rows.length > 0 ? (
           <AppText variant="caption" color={colors.dim} style={{ marginLeft: 8 }}>
-            {rows.length} {rows.length > 1 ? "entries" : "entry"} · {range.label.toLowerCase()}
+            {rows.length} {rows.length > 1 ? "entries" : "entry"} · {periodLabel.toLowerCase()}
           </AppText>
         ) : null}
         <Ionicons name={historyOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.dim} style={{ marginLeft: 6 }} />
@@ -427,7 +425,7 @@ export default function Money_() {
       {historyOpen ? (
         rows.length === 0 ? (
           <EmptyState icon="swap-vertical-outline" title="Nothing here yet"
-            subtitle={`No income or expenses for ${range.label.toLowerCase()}. Add one above or change the period.`} />
+            subtitle={`No income or expenses for ${periodLabel.toLowerCase()}. Add one above or change the period.`} />
         ) : (
           rows.map((row) => (
             <Pressable key={`${row.kind}-${row.id}`} testID={`ledger-${row.id}`}
@@ -454,5 +452,15 @@ export default function Money_() {
         )
       ) : null}
     </Screen>
+  );
+}
+
+function LineRowLight({ label, value, symbol }: { label: string; value: number; symbol: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5 }}>
+      <AppText variant="bodyMed" color={colors.dim}>{label}</AppText>
+      <Money value={value} symbol={symbol} size={16} />
+    </View>
   );
 }

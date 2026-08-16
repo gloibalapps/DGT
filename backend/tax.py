@@ -844,6 +844,229 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
     }
 
 
+# ---------------------------------------------------------------------------
+# Money overview — the redesigned Money page (Money Now / Performance /
+# Intelligence). Combines earnings, expenses, mileage, hours and an estimated
+# tax position so a driver sees what their work is really worth after costs.
+# ---------------------------------------------------------------------------
+_PERIOD_WORD = {"today": "today", "week": "this week", "month": "this month", "year": "this FY"}
+
+
+def _period_bounds(period: str, ref: date, country: str):
+    if period == "today":
+        return ref, ref + timedelta(days=1)
+    return period_range(period, ref, country)
+
+
+def _prev_bounds(period: str, ref: date, country: str):
+    if period == "today":
+        return ref - timedelta(days=1), ref
+    start, _ = _period_bounds(period, ref, country)
+    return _period_bounds(period, start - timedelta(days=1), country)
+
+
+def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
+                   period: str = "week", vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
+    country = profile.get("country", "AU")
+    sym = "$"
+    unit = "mi" if country == "US" else "km"
+    shifts = shifts or []
+
+    start, end = _period_bounds(period, ref, country)
+
+    def in_range(row, s, e):
+        d = parse_date(row["date"])
+        return s <= d < e
+
+    # ---- YTD tax engine → effective tax rate applied to period profit --------
+    year_report = compute_report(profile, trips, incomes, expenses, "year", ref, vehicles)
+    jar = tax_jar(profile, year_report, ref)
+    ytd_net = year_report["net_profit"]
+    ytd_tax = jar["set_aside"]
+    eff_rate = (ytd_tax / ytd_net) if ytd_net > 0 else 0.0
+    eff_rate = min(max(eff_rate, 0.0), 0.6)  # sanity clamp
+
+    def core(s, e):
+        gross = sum(i["amount"] for i in incomes if in_range(i, s, e))
+        exp = sum(x["amount"] for x in expenses if in_range(x, s, e))
+        profit = gross - exp
+        tax = max(0.0, profit) * eff_rate
+        return round(gross, 2), round(exp, 2), round(profit, 2), round(tax, 2), round(profit - tax, 2)
+
+    gross, expenses_total, profit_before_tax, estimated_tax, money_after_tax = core(start, end)
+    keep_rate = round(money_after_tax / gross * 100, 1) if gross > 0 else None
+
+    biz_km = round(sum(trip_business_km(t) for t in trips if in_range(t, start, end)), 2)
+    hours = round(sum((s.get("hours") or 0) for s in shifts if in_range(s, start, end)), 2)
+
+    money_now = {
+        "take_home": money_after_tax,
+        "gross": gross,
+        "expenses": expenses_total,
+        "estimated_tax": estimated_tax,
+        "profit_before_tax": profit_before_tax,
+        "keep_rate": keep_rate,
+        "effective_tax_rate": round(eff_rate * 100, 1),
+    }
+
+    performance = {
+        "hours": hours,
+        "km": biz_km,
+        "gross_per_hour": round(gross / hours, 2) if hours > 0 else None,
+        "real_per_hour": round(money_after_tax / hours, 2) if hours > 0 else None,
+        "per_km": round(gross / biz_km, 2) if biz_km > 0 else None,
+        "cost_per_km": round(expenses_total / biz_km, 2) if biz_km > 0 else None,
+        "profit_per_km": round(profit_before_tax / biz_km, 2) if biz_km > 0 else None,
+    }
+
+    # ---- Where your money went (period) -------------------------------------
+    cat = {c: 0.0 for c in ["fuel", "tolls", "vehicle", "phone", "other"]}
+    for e in expenses:
+        if in_range(e, start, end):
+            c = e.get("category", "other")
+            cat[c] = cat.get(c, 0.0) + e["amount"]
+    where = [
+        {"label": "Fuel / charging", "amount": round(cat["fuel"], 2)},
+        {"label": "Vehicle costs", "amount": round(cat["vehicle"], 2)},
+        {"label": "Tolls", "amount": round(cat["tolls"], 2)},
+        {"label": "Phone", "amount": round(cat["phone"], 2)},
+        {"label": "Other expenses", "amount": round(cat["other"], 2)},
+        {"label": "Estimated tax", "amount": estimated_tax},
+    ]
+    where = [w for w in where if w["amount"] > 0]
+
+    # ---- Intelligence window (today -> last 30 days for meaningful stats) ----
+    if period == "today":
+        w_start, w_end = ref - timedelta(days=29), ref + timedelta(days=1)
+        intel_label = "last 30 days"
+    else:
+        w_start, w_end = start, end
+        intel_label = _PERIOD_WORD.get(period, "this period")
+
+    # best / worst day by real $/hr (needs hours & income)
+    days: Dict[str, dict] = {}
+
+    def day_bucket(iso):
+        return days.setdefault(iso, {"date": iso, "income": 0.0, "expenses": 0.0, "hours": 0.0, "km": 0.0})
+    for i in incomes:
+        if in_range(i, w_start, w_end):
+            day_bucket(str(i["date"])[:10])["income"] += i["amount"]
+    for x in expenses:
+        if in_range(x, w_start, w_end):
+            day_bucket(str(x["date"])[:10])["expenses"] += x["amount"]
+    for s in shifts:
+        if in_range(s, w_start, w_end):
+            day_bucket(str(s["date"])[:10])["hours"] += (s.get("hours") or 0)
+    for t in trips:
+        if in_range(t, w_start, w_end):
+            day_bucket(str(t["date"])[:10])["km"] += trip_business_km(t)
+
+    def day_stat(d):
+        prof = d["income"] - d["expenses"]
+        after = prof - max(0.0, prof) * eff_rate
+        return {
+            "date": d["date"],
+            "income": round(d["income"], 2),
+            "expenses": round(d["expenses"], 2),
+            "hours": round(d["hours"], 2),
+            "km": round(d["km"], 2),
+            "profit_before_tax": round(prof, 2),
+            "real_per_hour": round(after / d["hours"], 2) if d["hours"] > 0 else None,
+            "per_km": round(d["income"] / d["km"], 2) if d["km"] > 0 else None,
+        }
+    rated = [day_stat(d) for d in days.values() if d["hours"] > 0 and d["income"] > 0]
+    best_day = max(rated, key=lambda d: d["real_per_hour"]) if rated else None
+    worst_day = min(rated, key=lambda d: d["real_per_hour"]) if len(rated) > 1 else None
+
+    # best platform by $/hr (fallback: gross)
+    plat: Dict[str, dict] = {}
+    for i in incomes:
+        if in_range(i, w_start, w_end):
+            name = i.get("platform") or "Other"
+            plat.setdefault(name, {"income": 0.0, "hours": 0.0})["income"] += i["amount"]
+    for s in shifts:
+        if in_range(s, w_start, w_end):
+            name = s.get("platform") or "Other"
+            plat.setdefault(name, {"income": 0.0, "hours": 0.0})["hours"] += (s.get("hours") or 0)
+    platforms = []
+    for name, v in plat.items():
+        platforms.append({
+            "name": name,
+            "income": round(v["income"], 2),
+            "hours": round(v["hours"], 2),
+            "per_hour": round(v["income"] / v["hours"], 2) if v["hours"] > 0 else None,
+        })
+    with_hr = [p for p in platforms if p["per_hour"] is not None]
+    if with_hr:
+        best_platform = max(with_hr, key=lambda p: p["per_hour"])
+        platform_metric = "per_hour"
+    elif platforms:
+        best_platform = max(platforms, key=lambda p: p["income"])
+        platform_metric = "income"
+    else:
+        best_platform, platform_metric = None, "income"
+
+    # deductions tracked (YTD, from the tax engine)
+    ded_total = year_report["total_deductions"]
+    vehded = year_report.get("vehicle_deduction", {})
+    fullc = year_report.get("full_claim", {})
+    deductions = {
+        "total": ded_total,
+        "breakdown": [
+            {"label": "Vehicle & mileage", "amount": round(vehded.get("total", 0), 2)},
+            {"label": "Phone", "amount": round(fullc.get("phone", 0), 2)},
+            {"label": "Tolls", "amount": round(fullc.get("tolls", 0), 2)},
+            {"label": "Other", "amount": round(fullc.get("other", 0), 2)},
+        ],
+        "estimated_tax_impact": round(ded_total * eff_rate, 2),
+        "tax_year_label": jar.get("tax_year_label"),
+    }
+    deductions["breakdown"] = [b for b in deductions["breakdown"] if b["amount"] > 0]
+
+    # tax position (YTD owed vs what the driver has actually set aside)
+    set_aside = float(profile.get("tax_set_aside") or 0.0)
+    position = round(set_aside - ytd_tax, 2)
+    tax_position = {
+        "owed_ytd": round(ytd_tax, 2),
+        "set_aside": round(set_aside, 2),
+        "position": position,             # +ve ahead, -ve behind
+        "status": "ahead" if position >= 0 else "behind",
+        "recommend_rate": jar.get("rate_pct", 0.0),  # % of profit to set aside
+        "tax_year_label": jar.get("tax_year_label"),
+    }
+
+    # trend — real earnings vs previous equivalent period
+    ps, pe = _prev_bounds(period, ref, country)
+    _, _, _, _, prev_after = core(ps, pe)
+    trend_pct = None
+    if abs(prev_after) > 0.01:
+        trend_pct = round((money_after_tax - prev_after) / abs(prev_after) * 100, 1)
+
+    return {
+        "period": period,
+        "period_label": (start.strftime("%d/%m/%Y") if period == "today"
+                         else fmt_period_label(period, start, end, country)),
+        "period_start": start.isoformat(),
+        "symbol": sym,
+        "distance_unit": unit,
+        "country": country,
+        "money_now": money_now,
+        "performance": performance,
+        "where": where,
+        "intel_label": intel_label,
+        "best_day": best_day,
+        "worst_day": worst_day,
+        "best_platform": best_platform,
+        "platform_metric": platform_metric,
+        "platforms": sorted(platforms, key=lambda p: p["income"], reverse=True),
+        "deductions": deductions,
+        "tax_position": tax_position,
+        "trend_pct": trend_pct,
+        "prev_take_home": round(prev_after, 2),
+    }
+
+
+
 
 # ---------------------------------------------------------------------------
 # Tax Mileage engine — ATO logbook, method comparison, odometer reconciliation
