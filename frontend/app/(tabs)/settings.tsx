@@ -13,11 +13,11 @@ import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
 import {
-  WORK_TYPES, OWNERSHIP, platformsForWorkType, FREQUENCIES, AU_STATES, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
+  WORK_TYPES, platformsForWorkType, AU_STATES, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
-  PrimaryButton, useToast, DateField,
+  PrimaryButton, useToast,
 } from "@/src/ui";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -32,7 +32,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function Settings() {
   const { colors, mode, toggle } = useTheme();
-  const { profile, updateProfile, version } = useStore();
+  const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle } = useStore();
   const { user, signOut } = useAuth();
   const { isActive: subActive } = useSubscription();
   const { show } = useToast();
@@ -41,23 +41,10 @@ export default function Settings() {
   const [bizPct, setBizPct] = useState<number | null>(null);
   const [autoOn, setAutoOn] = useState(false);
   const [name, setName] = useState("");
-  const [ownership, setOwnership] = useState("own");
-  const [recEnabled, setRecEnabled] = useState(false);
-  const [recAmount, setRecAmount] = useState("");
-  const [recFreq, setRecFreq] = useState("weekly");
-  const [recAnchorType, setRecAnchorType] = useState<"acquisition" | "gigstart">("gigstart");
-  const [recAnchorDate, setRecAnchorDate] = useState("");
 
   useEffect(() => {
     if (!profile) return;
     setName(profile.driver_name || "");
-    setOwnership(profile.vehicle_ownership);
-    const r = profile.recurring_payment;
-    setRecEnabled(!!r);
-    setRecAmount(r ? String(r.amount) : "");
-    setRecFreq(r?.frequency || "weekly");
-    setRecAnchorType(r?.anchor_type || "gigstart");
-    setRecAnchorDate(r?.anchor_date || "");
   }, [profile]);
 
   const loadPct = useCallback(async () => {
@@ -89,18 +76,6 @@ export default function Settings() {
   };
 
   if (!profile) return <Screen><Spinner /></Screen>;
-
-  const ownMeta = OWNERSHIP.find((o) => o.key === ownership);
-
-  const saveVehicle = async () => {
-    const rec = recEnabled && recAmount && recAnchorDate
-      ? { amount: parseFloat(recAmount), frequency: recFreq as any, anchor_type: recAnchorType, anchor_date: recAnchorDate }
-      : null;
-    if (recEnabled && !rec) { show("Enter the amount and pick a start date", "error"); return; }
-    const p = await updateProfile({ vehicle_ownership: ownership as any, recurring_payment: rec as any });
-    if (!p) { show("Couldn't save — try again", "error"); return; }
-    show("Vehicle details saved", "success");
-  };
 
   const taxComplete = !!profile.legal_name && (profile.registration_status === "registered" || profile.registration_status === "not_registered");
 
@@ -276,56 +251,41 @@ export default function Settings() {
         </View>
       </Section>
 
-      {/* Vehicle ownership + recurring payment — SAME card */}
-      <Section title="Vehicle & recurring payment">
-        {OWNERSHIP.map((o) => {
-          const active = o.key === ownership;
+      {/* Vehicles — manage all cars here */}
+      <Section title="Vehicles">
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
+          Add each car you drive for. Trips, expenses, odometer and recurring payments are tracked per vehicle.
+        </AppText>
+        {vehicles.map((v) => {
+          const active = v.id === activeVehicleId;
+          const sub = [v.make_model, v.registration].filter(Boolean).join(" · ");
           return (
-            <Pressable key={o.key} testID={`set-ownership-${o.key}`} onPress={() => setOwnership(o.key)}
-              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 7 }}>
-              <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={20}
-                color={active ? colors.accent : colors.dim} style={{ marginRight: 10 }} />
-              <AppText variant="bodyMed" style={{ flex: 1 }}>{o.label}</AppText>
-            </Pressable>
+            <View key={v.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10,
+              borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Pressable testID={`set-vehicle-${v.id}`} onPress={() => router.push(`/vehicle?id=${v.id}` as any)}
+                style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+                  alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                  <Ionicons name="car-sport" size={20} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodySemi">{v.name || v.make_model || "Vehicle"}</AppText>
+                  <AppText variant="caption" color={colors.dim}>{sub || "Tap to add rego, model & odometer"}</AppText>
+                </View>
+              </Pressable>
+              {active ? (
+                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
+                  <AppText variant="caption" color={colors.bg} style={{ fontWeight: "700" }}>ACTIVE</AppText>
+                </View>
+              ) : (
+                <Pressable testID={`set-vehicle-activate-${v.id}`} onPress={() => v.id && setActiveVehicle(v.id)} hitSlop={8}>
+                  <AppText variant="caption" color={colors.accent}>Set active</AppText>
+                </Pressable>
+              )}
+            </View>
           );
         })}
-        {ownMeta ? (
-          <AppText variant="caption" color={ownMeta.key === "rental" ? colors.warm : colors.dim}
-            style={{ marginTop: 6, marginBottom: 10 }}>{ownMeta.note}</AppText>
-        ) : null}
-
-        <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
-
-        <Pressable testID="set-recurring-toggle" onPress={() => setRecEnabled(!recEnabled)}
-          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: recEnabled ? 12 : 0 }}>
-          <AppText variant="bodyMed">Recurring vehicle payment</AppText>
-          <View style={{
-            width: 48, height: 28, borderRadius: 999, padding: 3,
-            backgroundColor: recEnabled ? colors.accent : colors.surfaceAlt,
-            alignItems: recEnabled ? "flex-end" : "flex-start",
-          }}>
-            <View style={{ width: 22, height: 22, borderRadius: 999, backgroundColor: "#fff" }} />
-          </View>
-        </Pressable>
-
-        {recEnabled && (
-          <View>
-            <Field label="Amount per cycle">
-              <Input testID="set-rec-amount" value={recAmount} onChangeText={setRecAmount} keyboardType="decimal-pad" placeholder="250" />
-            </Field>
-            <Field label="Frequency">
-              <ChipRow options={FREQUENCIES.map((f) => ({ key: f.key, label: f.label }))} value={recFreq} onChange={setRecFreq} testIDPrefix="set-freq" />
-            </Field>
-            <Field label="Count from">
-              <ChipRow options={[{ key: "gigstart", label: "Gig-work start" }, { key: "acquisition", label: "Vehicle acquisition" }]}
-                value={recAnchorType} onChange={(k) => setRecAnchorType(k as any)} testIDPrefix="set-anchor" />
-            </Field>
-            <Field label="Payment start date">
-              <DateField testID="set-rec-anchor" value={recAnchorDate} onChange={setRecAnchorDate} maxToday />
-            </Field>
-          </View>
-        )}
-        <PrimaryButton testID="set-vehicle-save" label="Save vehicle details" onPress={saveVehicle} style={{ marginTop: 6 }} />
+        <PrimaryButton testID="set-add-vehicle" label="Add vehicle" icon="add" onPress={() => router.push("/vehicle" as any)} style={{ marginTop: 12 }} />
       </Section>
 
       {/* Deduction method */}

@@ -131,7 +131,6 @@ export default function Mileage() {
   const mc = tm?.method_comparison;
   const lb = tm?.logbook;
   const odo = tm?.odometer;
-  const hasVehicle = tm?.vehicle && Object.keys(tm.vehicle).length > 0 && (tm.vehicle.make_model || tm.vehicle.registration);
 
   return (
     <Screen
@@ -145,10 +144,6 @@ export default function Mileage() {
         <View style={{ marginBottom: 14 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <AppText variant="label" color={colors.dim}>YOUR VEHICLES</AppText>
-            <Pressable testID="mileage-add-vehicle" onPress={() => router.push("/vehicle" as any)} hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="add-circle-outline" size={16} color={colors.accent} style={{ marginRight: 4 }} />
-              <AppText variant="caption" color={colors.accent}>Add car</AppText>
-            </Pressable>
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {vehicles.map((v) => {
@@ -238,22 +233,17 @@ export default function Mileage() {
         </Card>
       </Pressable>
 
-      {/* ---- Odometer ---- */}
-      <Pressable testID="mileage-open-vehicle" onPress={() => router.push((activeVehicleId ? `/vehicle?id=${activeVehicleId}` : "/vehicle") as any)}>
+      {/* ---- Odometer reconciliation (read-only; manage the car in Settings) ---- */}
+      {odo?.has_odometer ? (
         <Card style={{ marginBottom: 14, borderColor: odo?.warning ? colors.warm : colors.border }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
               <Ionicons name="speedometer-outline" size={22} color={colors.accent} />
             </View>
             <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi">{hasVehicle ? (tm.vehicle.make_model || "My Vehicle") : "Set up your vehicle"}</AppText>
-              {odo?.has_odometer ? (
-                <AppText variant="caption" color={colors.dim}>Odometer {odo.odometer_km} {unit} · GPS {odo.gps_km} {unit}</AppText>
-              ) : (
-                <AppText variant="caption" color={colors.dim}>{hasVehicle ? "Add odometer readings for audit protection" : "Add rego, model & odometer"}</AppText>
-              )}
+              <AppText variant="bodySemi">Odometer check</AppText>
+              <AppText variant="caption" color={colors.dim}>Odometer {odo.odometer_km} {unit} · GPS {odo.gps_km} {unit}</AppText>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
           </View>
           {odo?.warning ? (
             <View style={{ flexDirection: "row", marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: 10, padding: 10 }}>
@@ -262,7 +252,7 @@ export default function Mileage() {
             </View>
           ) : null}
         </Card>
-      </Pressable>
+      ) : null}
 
       {/* ---- Auto-detected drives ---- */}
       {autoDrives.length > 0 && (
