@@ -99,19 +99,23 @@ export default function Home() {
 
       {/* Hero */}
       <GradientCard style={{ marginBottom: 14 }}>
-        <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS TODAY</AppText>
-        <View style={{ marginTop: 6 }}>
-          <Money value={data.net_today} symbol={data.symbol} size={52}
-            color={data.net_today >= 0 ? "#FFFFFF" : "#FFD5D5"} />
-        </View>
-        <View style={{ flexDirection: "row", marginTop: 14, gap: 24 }}>
-          <View>
-            <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Income</AppText>
-            <Money value={data.income_today} symbol={data.symbol} size={20} color="#CFE8FF" />
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <View style={{ flex: 1 }}>
+            <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS TODAY</AppText>
+            <View style={{ marginTop: 6 }}>
+              <Money value={data.net_today} symbol={data.symbol} size={52}
+                color={data.net_today >= 0 ? "#FFFFFF" : "#FFD5D5"} />
+            </View>
           </View>
-          <View>
-            <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Expenses</AppText>
-            <Money value={data.expense_today} symbol={data.symbol} size={20} color="#CFE8FF" />
+          <View style={{ marginLeft: 16, gap: 12, alignItems: "flex-end" }}>
+            <View style={{ alignItems: "flex-end" }}>
+              <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Income</AppText>
+              <Money value={data.income_today} symbol={data.symbol} size={20} color="#CFE8FF" />
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <AppText variant="caption" color={colors.onGradient} style={{ opacity: 0.7 }}>Expenses</AppText>
+              <Money value={data.expense_today} symbol={data.symbol} size={20} color="#CFE8FF" />
+            </View>
           </View>
         </View>
       </GradientCard>
