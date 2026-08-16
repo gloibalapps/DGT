@@ -23,6 +23,7 @@ export default function TaxSetup() {
   const { profile, updateProfile } = useStore();
   const { show } = useToast();
   const router = useRouter();
+  const isUS = profile?.country === "US";
 
   const [legalName, setLegalName] = useState(profile?.legal_name || "");
   const [method, setMethod] = useState(profile?.accounting_method || "cash");
@@ -58,7 +59,8 @@ export default function TaxSetup() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Field label="Legal / business name">
-            <Input testID="tax-legalname" value={legalName} onChangeText={setLegalName} placeholder="Your name or ABN entity" />
+            <Input testID="tax-legalname" value={legalName} onChangeText={setLegalName}
+              placeholder={isUS ? "Your name or business name" : "Your name or ABN entity"} />
           </Field>
 
           <Field label="Accounting method" hint="Most gig drivers use cash.">
@@ -66,24 +68,29 @@ export default function TaxSetup() {
               value={method} onChange={(m) => setMethod(m as any)} testIDPrefix="tax-method" />
           </Field>
 
-          <Field label="GST registration status">
-            <ChipRow options={REG_OPTIONS} value={regStatus} onChange={(s) => setRegStatus(s as any)} testIDPrefix="tax-reg" />
-          </Field>
+          {!isUS && (
+            <>
+              <Field label="GST registration status">
+                <ChipRow options={REG_OPTIONS} value={regStatus} onChange={(s) => setRegStatus(s as any)} testIDPrefix="tax-reg" />
+              </Field>
 
-          {regStatus === "registered" && (
-            <Field label="Registration date">
-              <DateField testID="tax-regdate" value={regDate} onChange={setRegDate} maxToday />
-            </Field>
+              {regStatus === "registered" && (
+                <Field label="Registration date">
+                  <DateField testID="tax-regdate" value={regDate} onChange={setRegDate} maxToday />
+                </Field>
+              )}
+            </>
           )}
 
-          <Field label="Reporting frequency">
+          <Field label={isUS ? "Estimated tax frequency" : "Reporting frequency"}
+            hint={isUS ? "Estimated taxes (Form 1040-ES) are usually paid quarterly." : undefined}>
             <ChipRow options={FREQ} value={freq} onChange={setFreq} testIDPrefix="tax-freq" />
           </Field>
 
           <Pressable testID="tax-taxid" onPress={() => setTaxId(!taxId)}>
             <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <View style={{ flex: 1, paddingRight: 12 }}>
-                <AppText variant="bodyMed">Tax ID (ABN/TFN) on file</AppText>
+                <AppText variant="bodyMed">{isUS ? "Tax ID (EIN/SSN) on file" : "Tax ID (ABN/TFN) on file"}</AppText>
                 <AppText variant="caption" color={colors.dim}>We store only the fact you have one — never the number.</AppText>
               </View>
               <View style={{
