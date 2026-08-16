@@ -104,7 +104,7 @@ export default function Home() {
             <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.8 }}>NET EARNINGS TODAY</AppText>
             <View style={{ marginTop: 6 }}>
               <Money value={data.net_today} symbol={data.symbol} size={52}
-                color={data.net_today >= 0 ? "#FFFFFF" : "#FFD5D5"} />
+                color={data.net_today >= 0 ? "#FFFFFF" : colors.loss} />
             </View>
           </View>
           <View style={{ marginLeft: 16, gap: 12, alignItems: "flex-end" }}>
