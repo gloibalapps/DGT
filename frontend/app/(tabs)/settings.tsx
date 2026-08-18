@@ -69,9 +69,11 @@ export default function Settings() {
       show("Auto detection on — drives log themselves", "success");
     } else if (res.reason === "unsupported") {
       show("Auto tracking needs a native build — not Expo Go or web preview", "error");
+    } else if (res.canAskAgain === false) {
+      show("Open Settings → Location and choose “Allow all the time” to detect drives in the background", "error");
+      Linking.openSettings();
     } else {
-      show("Background location permission is required", "error");
-      if (res.canAskAgain === false) Linking.openSettings();
+      show("Background location is required — please allow it to detect drives", "error");
     }
   };
 
