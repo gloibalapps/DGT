@@ -110,7 +110,8 @@ export default function Entry() {
         if (editing) await api.updateShift(params.id!, payload); else await api.addShift(payload);
       } else {
         const km = parseFloat(distance);
-        if (!km) { show("Enter a distance", "error"); setSaving(false); return; }
+        if (!km || km <= 0) { show("Enter a distance", "error"); setSaving(false); return; }
+        if (km > 2000) { show("That distance looks too high — please check (max 2000 km per trip)", "error"); setSaving(false); return; }
         const mins = parseFloat(minutes);
         const payload: any = { date: iso, distance_km: km, type: tripType, purpose, note };
         if (activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;

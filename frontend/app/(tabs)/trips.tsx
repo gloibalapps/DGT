@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useState } from "react";
-import { View, Pressable, Linking, RefreshControl } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { View, Pressable, Linking, RefreshControl, Animated, Easing } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -44,6 +44,23 @@ export default function Mileage() {
   const subRef = useRef<Location.LocationSubscription | null>(null);
   const lastRef = useRef<any>(null);
   const startTimeRef = useRef<number>(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  const activeVehicle = vehicles.find((v) => v.id === activeVehicleId);
+
+  // Live-updating elapsed timer while a GPS drive is being tracked.
+  useEffect(() => {
+    if (!tracking) { setElapsedSec(0); return; }
+    const id = setInterval(() => setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [tracking]);
+
+  const startedAtStr = () => new Date(startTimeRef.current).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const fmtElapsed = (s: number) => {
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    return h > 0 ? `${h}h ${m % 60}m` : `${m} min`;
+  };
 
   const load = useCallback(async () => {
     try {
@@ -174,11 +191,19 @@ export default function Mileage() {
       ) : tracking ? (
         <Card style={{ marginBottom: 14, borderColor: colors.profit, alignItems: "center" }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.loss, marginRight: 8 }} />
-            <AppText variant="label" color={colors.dim}>TRACKING SHIFT</AppText>
+            <PulsingDot color={colors.profit} />
+            <AppText variant="label" color={colors.profit}>GPS TRACKING ACTIVE</AppText>
           </View>
           <Money value={Math.round(dist * 100) / 100} symbol="" size={46} />
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>{unit} this drive</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 2 }}>{unit} this drive</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: activeVehicle ? 2 : 12 }}>
+            Started {startedAtStr()} · {fmtElapsed(elapsedSec)}
+          </AppText>
+          {activeVehicle ? (
+            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+              {activeVehicle.registration || activeVehicle.make_model || "Vehicle"} · Business
+            </AppText>
+          ) : null}
           <SecondaryButton testID="gps-stop" label="End drive" icon="stop-circle-outline" tone="danger"
             onPress={stopShift} style={{ alignSelf: "stretch" }} />
         </Card>
@@ -197,9 +222,9 @@ export default function Mileage() {
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <View>
             <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
-              {today.total_km} {unit}
+              {Math.round((today.total_km + (tracking ? dist : 0)) * 100) / 100} {unit}
             </AppText>
-            <AppText variant="caption" color={colors.dim}>Total driven</AppText>
+            <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <AppText variant="bodySemi" color={colors.profit}>{today.business_km} {unit} business</AppText>
@@ -298,4 +323,17 @@ export default function Mileage() {
       ) : null}
     </Screen>
   );
+}
+
+function PulsingDot({ color }: { color: string }) {
+  const a = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 0.25, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [a]);
+  return <Animated.View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, marginRight: 8, opacity: a }} />;
 }
