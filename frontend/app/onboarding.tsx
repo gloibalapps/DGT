@@ -10,7 +10,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast, DateField } from "@/src/ui";
-import { COUNTRIES, AU_STATES, US_STATES, WORK_TYPES, platformsForWorkType, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
+import { COUNTRIES, US_STATES, WORK_TYPES, platformsForWorkType, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -139,13 +139,6 @@ export default function Onboarding() {
                   </Pressable>
                 );
               })}
-              {country === "AU" && (
-                <View style={{ marginTop: 14 }}>
-                  <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>State / Territory</AppText>
-                  <ChipRow options={AU_STATES.map((s) => ({ key: s, label: s }))} value={region}
-                    onChange={setRegion} testIDPrefix="state" />
-                </View>
-              )}
               {country === "US" && (
                 <View style={{ marginTop: 14 }}>
                   <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>State</AppText>

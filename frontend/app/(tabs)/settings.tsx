@@ -13,7 +13,7 @@ import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
 import {
-  WORK_TYPES, platformsForWorkType, AU_STATES, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
+  WORK_TYPES, platformsForWorkType, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
@@ -235,13 +235,6 @@ export default function Settings() {
             </Pressable>
           );
         })}
-        {profile.country === "AU" ? (
-          <View style={{ marginTop: 8 }}>
-            <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>STATE / TERRITORY</AppText>
-            <ChipRow options={AU_STATES.map((s) => ({ key: s, label: s }))} value={profile.region || "NSW"}
-              onChange={(r) => updateProfile({ region: r })} testIDPrefix="set-state" />
-          </View>
-        ) : null}
         {profile.country === "US" ? (
           <View style={{ marginTop: 8 }}>
             <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>STATE</AppText>
