@@ -4,7 +4,7 @@ import { storage } from "@/src/utils/storage";
 import { useAuth } from "@/src/auth";
 
 // Standard RevenueCat identifiers — must match the dashboard config.
-const ENTITLEMENT = "pro_access";
+const ENTITLEMENT = "drivers_gig_tax_unlimited";
 const CACHE_KEY = "gigtax.sub_active";
 
 // Load the native SDK lazily so the web / Expo Go bundles don't break.
@@ -21,6 +21,16 @@ if (Platform.OS !== "web" && (IOS_KEY || ANDROID_KEY)) {
   try { Purchases = require("react-native-purchases").default; } catch { Purchases = null; }
 }
 
+// The native Paywall / Customer Center UI lives in a separate module. Load it
+// lazily (native only) so the web / Expo Go bundles never touch native code.
+function loadRCUI(): any {
+  if (Platform.OS === "web" || !Purchases) return null;
+  try {
+    const mod = require("react-native-purchases-ui");
+    return mod?.default ? mod : { default: mod };
+  } catch { return null; }
+}
+
 export interface Plan {
   id: string;
   title: string;        // "Monthly" | "Yearly"
@@ -32,17 +42,20 @@ export interface Plan {
 
 interface SubCtx {
   loading: boolean;
-  isActive: boolean;    // has the pro_access entitlement (real, from the store)
+  isActive: boolean;    // has the entitlement (real, from the store)
   managed: boolean;     // RevenueCat is actually running (real gate is enforced)
   plans: Plan[];
   buy: (pkg: any) => Promise<boolean>;
   restore: () => Promise<boolean>;
   refresh: () => Promise<void>;
+  presentPaywall: () => Promise<boolean>;        // native RevenueCat remote paywall
+  presentCustomerCenter: () => Promise<void>;    // native RevenueCat Customer Center
 }
 
 const Ctx = createContext<SubCtx>({
   loading: true, isActive: false, managed: false, plans: [],
   buy: async () => false, restore: async () => false, refresh: async () => {},
+  presentPaywall: async () => false, presentCustomerCenter: async () => {},
 });
 
 function mapPackage(p: any): Plan {
@@ -137,8 +150,34 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     catch (e) { console.log("[sub] restore failed", e); return false; }
   }, [apply]);
 
+  // Present RevenueCat's remote-configured native paywall (Offering must be set
+  // up in the dashboard). Returns true if the user purchased or restored.
+  const presentPaywall = useCallback(async () => {
+    if (!Purchases) return false;
+    const RCUI = loadRCUI();
+    if (!RCUI) return false;
+    try {
+      const result = await RCUI.default.presentPaywall();
+      const R = RCUI.PAYWALL_RESULT || {};
+      const ok = result === R.PURCHASED || result === R.RESTORED;
+      if (ok) await apply(await Purchases.getCustomerInfo());
+      return ok;
+    } catch (e) { console.log("[sub] presentPaywall failed", e); return false; }
+  }, [apply]);
+
+  // Present RevenueCat's Customer Center (manage / cancel / restore / refund).
+  const presentCustomerCenter = useCallback(async () => {
+    if (!Purchases) return;
+    const RCUI = loadRCUI();
+    if (!RCUI) return;
+    try {
+      await RCUI.default.presentCustomerCenter();
+      await apply(await Purchases.getCustomerInfo());
+    } catch (e) { console.log("[sub] customerCenter failed", e); }
+  }, [apply]);
+
   return (
-    <Ctx.Provider value={{ loading, isActive, managed, plans, buy, restore, refresh }}>
+    <Ctx.Provider value={{ loading, isActive, managed, plans, buy, restore, refresh, presentPaywall, presentCustomerCenter }}>
       {children}
     </Ctx.Provider>
   );

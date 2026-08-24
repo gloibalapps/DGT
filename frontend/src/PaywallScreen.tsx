@@ -32,7 +32,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
   const { colors } = useTheme();
   const { signOut } = useAuth();
   const toast = useToast();
-  const { plans, isActive, managed, buy, restore } = useSubscription();
+  const { plans, isActive, managed, restore, presentPaywall } = useSubscription();
 
   const list = useMemo<Plan[]>(() => {
     const src = plans.length ? [...plans] : FALLBACK_PLANS;
@@ -58,15 +58,17 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
   }, [list]);
 
   async function onSubscribe() {
-    if (!selected) return;
-    if (!managed || !selected.pkg) {
-      toast.show("Subscriptions activate once the app is published to the App Store / Google Play.");
+    // In a real native build, show RevenueCat's remote-configured paywall so
+    // pricing, trials and layout are managed from the dashboard.
+    if (managed) {
+      setBusy(true);
+      const ok = await presentPaywall();
+      setBusy(false);
+      if (!ok) toast.show("Purchase didn't complete. Please try again.");
       return;
     }
-    setBusy(true);
-    const ok = await buy(selected.pkg);
-    setBusy(false);
-    if (!ok) toast.show("Purchase didn't complete. Please try again.");
+    // Preview / Expo Go / web — RevenueCat isn't running.
+    toast.show("Subscriptions activate once the app is published to the App Store / Google Play.");
   }
 
   async function onRestore() {

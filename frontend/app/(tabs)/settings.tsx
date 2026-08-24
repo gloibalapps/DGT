@@ -34,7 +34,7 @@ export default function Settings() {
   const { colors, mode, toggle } = useTheme();
   const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle } = useStore();
   const { user, signOut } = useAuth();
-  const { isActive: subActive } = useSubscription();
+  const { isActive: subActive, managed: subManaged, presentCustomerCenter } = useSubscription();
   const { show } = useToast();
   const router = useRouter();
 
@@ -134,6 +134,23 @@ export default function Settings() {
             <Ionicons name="chevron-forward" size={20} color={colors.dim} />
           )}
         </Pressable>
+
+        {/* Customer Center — manage / cancel / restore (native build only) */}
+        {subActive && subManaged ? (
+          <Pressable testID="set-manage-subscription" onPress={() => void presentCustomerCenter()}
+            style={{ flexDirection: "row", alignItems: "center", marginTop: 14,
+              borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+              alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+              <Ionicons name="settings-outline" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">Manage subscription</AppText>
+              <AppText variant="caption" color={colors.dim}>Change plan, restore or cancel</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+          </Pressable>
+        ) : null}
       </Section>
 
       {/* Help & user guide */}
