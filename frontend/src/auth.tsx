@@ -10,7 +10,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = "gigtax.session_token";
 const USER_KEY = "gigtax.user";
-const AUTH_BASE = "https://auth.emergentagent.com";
+const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export interface AuthUser { user_id: string; email: string; name?: string | null; picture?: string | null; }
 
@@ -27,12 +27,12 @@ const Ctx = createContext<AuthCtx>({
   signIn: async () => {}, signOut: async () => {},
 });
 
-function parseSessionId(url: string): string | null {
+function parseToken(url: string): string | null {
   if (!url) return null;
   const frag = url.split("#")[1] || "";
   const q = url.split("?")[1]?.split("#")[0] || "";
   for (const part of [frag, q]) {
-    const m = new URLSearchParams(part).get("session_id");
+    const m = new URLSearchParams(part).get("session_token");
     if (m) return m;
   }
   return null;
@@ -52,13 +52,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
-  const completeWithSessionId = useCallback(async (sessionId: string) => {
+  const completeWithToken = useCallback(async (token: string) => {
     // Guard: a re-mount, hot deep link and the auth-session result can all
-    // surface the same session_id — only exchange it once.
-    if (!sessionId || sentIds.current.has(sessionId)) return;
-    sentIds.current.add(sessionId);
-    const res = await api.authSession(sessionId);
-    await applySession(res.session_token, res.user);
+    // surface the same token — only apply it once.
+    if (!token || sentIds.current.has(token)) return;
+    sentIds.current.add(token);
+    setAuthToken(token);
+    const me = await api.authMe();
+    await applySession(token, me.user);
     // one-time: move this device's local data onto the account
     try {
       const localPid = await getLocalProfileId();
@@ -103,55 +104,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (Platform.OS === "web") return;
     let active = true;
     const tryUrl = (url?: string | null) => {
-      const sid = url ? parseSessionId(url) : null;
-      if (!sid || !active) return;
+      const tok = url ? parseToken(url) : null;
+      if (!tok || !active) return;
       setSigningIn(true);
-      completeWithSessionId(sid)
+      completeWithToken(tok)
         .catch((e) => console.log("auth complete failed", e))
         .finally(() => { if (active) setSigningIn(false); });
     };
     Linking.getInitialURL().then(tryUrl);
     const sub = Linking.addEventListener("url", ({ url }) => tryUrl(url));
     return () => { active = false; sub.remove(); };
-  }, [completeWithSessionId]);
+  }, [completeWithToken]);
 
-  // Web: handle redirect back with #session_id
+  // Web: handle redirect back with #session_token
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const url = window.location.href;
-    const sid = parseSessionId(url);
-    if (sid) {
+    const tok = parseToken(url);
+    if (tok) {
       setSigningIn(true);
-      completeWithSessionId(sid)
+      completeWithToken(tok)
         .catch((e) => console.log("auth complete failed", e))
         .finally(() => {
           setSigningIn(false);
           try { window.history.replaceState({}, "", window.location.pathname); } catch { /* noop */ }
         });
     }
-  }, [completeWithSessionId]);
+  }, [completeWithToken]);
 
   const signIn = useCallback(async () => {
     setSigningIn(true);
     try {
       if (Platform.OS === "web") {
         const redirect = window.location.origin + "/";
-        window.location.href = `${AUTH_BASE}/?redirect=${encodeURIComponent(redirect)}`;
+        window.location.href = `${BACKEND}/api/auth/google/start?app_redirect=${encodeURIComponent(redirect)}`;
         return; // browser navigates away
       }
       const redirect = Linking.createURL("/");
-      const authUrl = `${AUTH_BASE}/?redirect=${encodeURIComponent(redirect)}`;
+      const authUrl = `${BACKEND}/api/auth/google/start?app_redirect=${encodeURIComponent(redirect)}`;
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
       if (result.type === "success" && result.url) {
-        const sid = parseSessionId(result.url);
-        if (sid) await completeWithSessionId(sid);
+        const tok = parseToken(result.url);
+        if (tok) await completeWithToken(tok);
       }
     } catch (e) {
       console.log("signIn error", e);
     } finally {
       setSigningIn(false);
     }
-  }, [completeWithSessionId]);
+  }, [completeWithToken]);
 
   const signOut = useCallback(async () => {
     try { await api.authLogout(); } catch { /* noop */ }

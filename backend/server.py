@@ -8,8 +8,8 @@ from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional, Literal, Annotated
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Request
+from fastapi.responses import StreamingResponse, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -52,6 +52,7 @@ async def _startup_indexes():
         await db.user_sessions.create_index("session_token", unique=True)
         await db.user_sessions.create_index("user_id")
         await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
+        await db.oauth_states.create_index("created_at", expireAfterSeconds=600)
     except Exception as e:  # pragma: no cover
         logger.warning("index setup: %s", e)
 
@@ -145,6 +146,99 @@ async def auth_claim(payload: dict = Body(...), authorization: Optional[str] = H
         res = await coll.update_many({"profile_id": src}, {"$set": {"profile_id": uid}})
         moved += res.modified_count
     return {"claimed": moved > 0, "moved": moved}
+
+
+# ---------------------------------------------------------------------------
+# Own-branded Google OAuth (drivergigtax.com) — backend-mediated code flow.
+# The Google consent shows the developer's own app name, not Emergent.
+# ---------------------------------------------------------------------------
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+
+def _public_base(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto", "https")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    return f"{proto}://{host}"
+
+
+async def _login_google_user(email: str, name, picture) -> str:
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one({"user_id": user_id}, {"$set": {"name": name, "picture": picture}})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({
+            "user_id": user_id, "email": email, "name": name,
+            "picture": picture, "created_at": now_iso(),
+        })
+    session_token = uuid.uuid4().hex
+    await db.user_sessions.insert_one({
+        "session_token": session_token, "user_id": user_id,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+    })
+    return session_token
+
+
+@api_router.get("/auth/google/start")
+async def google_start(request: Request, app_redirect: str = Query(...)):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google login not configured")
+    from urllib.parse import urlencode
+    state = uuid.uuid4().hex
+    await db.oauth_states.insert_one({
+        "state": state, "app_redirect": app_redirect,
+        "created_at": datetime.now(timezone.utc),
+    })
+    redirect_uri = f"{_public_base(request)}/api/auth/google/callback"
+    params = urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "prompt": "select_account",
+    })
+    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{params}")
+
+
+@api_router.get("/auth/google/callback")
+async def google_callback(request: Request, code: Optional[str] = Query(None),
+                          state: Optional[str] = Query(None), error: Optional[str] = Query(None)):
+    st = await db.oauth_states.find_one({"state": state}) if state else None
+    app_redirect = (st or {}).get("app_redirect") or ""
+    if state:
+        await db.oauth_states.delete_one({"state": state})
+
+    def bounce(fragment: str) -> RedirectResponse:
+        return RedirectResponse(f"{app_redirect}#{fragment}")
+
+    if error or not code or not st:
+        return bounce("auth_error=1")
+    redirect_uri = f"{_public_base(request)}/api/auth/google/callback"
+    async with httpx.AsyncClient(timeout=15) as hc:
+        tok = await hc.post(GOOGLE_TOKEN_URL, data={
+            "code": code, "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET, "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        })
+        if tok.status_code != 200:
+            return bounce("auth_error=token")
+        access_token = tok.json().get("access_token")
+        ui = await hc.get(GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
+        if ui.status_code != 200:
+            return bounce("auth_error=userinfo")
+        info = ui.json()
+    email = info.get("email")
+    if not email:
+        return bounce("auth_error=noemail")
+    session_token = await _login_google_user(email, info.get("name"), info.get("picture"))
+    return bounce(f"session_token={session_token}")
 
 
 
