@@ -9,7 +9,7 @@ from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional, Literal, Annotated
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Request
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -222,8 +222,28 @@ async def google_callback(request: Request, code: Optional[str] = Query(None),
     if state:
         await db.oauth_states.delete_one({"state": state})
 
-    def bounce(fragment: str) -> RedirectResponse:
-        return RedirectResponse(f"{app_redirect}#{fragment}")
+    def bounce(fragment: str):
+        target = f"{app_redirect}#{fragment}"
+        # Web (http/https): a normal 302 to the same-origin app works fine.
+        if app_redirect.startswith("http://") or app_redirect.startswith("https://"):
+            return RedirectResponse(target)
+        # Native custom scheme (e.g. frontend://): Android Chrome Custom Tabs will
+        # NOT auto-follow a 302 from https to a custom scheme, so the app never
+        # receives the token. Serve an HTML page that triggers the deep link via
+        # JS immediately, with a manual "Return to app" fallback button.
+        import json as _json
+        t = _json.dumps(target)
+        html = f"""<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0;url={target}">
+<script>window.location.replace({t});setTimeout(function(){{window.location.href={t};}},400);</script>
+<style>body{{font-family:-apple-system,Roboto,Helvetica,sans-serif;background:#0A1420;color:#fff;
+display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;text-align:center;padding:24px}}
+a{{color:#0A1420;background:#4FC3F7;font-size:17px;font-weight:600;text-decoration:none;padding:14px 28px;
+border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size:15px}}</style>
+</head><body><div><p>Signing you in…</p>
+<a href="{target}">Return to Drivers Gig Tax</a></div></body></html>"""
+        return HTMLResponse(html)
 
     if error or not code or not st:
         return bounce("auth_error=1")
