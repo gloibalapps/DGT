@@ -49,10 +49,13 @@ function SubGate() {
   );
 }
 
+// TEMP: set to `true` to re-enable the Google login gate after testing.
+const AUTH_ENABLED = false;
+
 function AuthGate() {
   const { user, loading } = useAuth();
   if (loading) return null;  // splash stays until any stored session resolves
-  if (!user) return <LoginScreen />;  // Google sign-in gate
+  if (AUTH_ENABLED && !user) return <LoginScreen />;  // Google sign-in gate
   return (
     <SubscriptionProvider>
       <SubGate />
