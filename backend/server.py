@@ -29,6 +29,13 @@ EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 app = FastAPI(title="GigTax API")
 api_router = APIRouter(prefix="/api")
 
+
+@app.get("/health")
+async def health():
+    # Liveness/readiness probe for the K8s deployment. Kept dependency-free so a
+    # slow/unavailable DB never trips the health check.
+    return {"status": "ok"}
+
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("gigtax")
