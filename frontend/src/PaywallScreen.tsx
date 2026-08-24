@@ -19,8 +19,8 @@ const FEATURES = [
 
 // Shown only when RevenueCat isn't running (web preview / Expo Go / keys not set).
 const FALLBACK_PLANS: Plan[] = [
-  { id: "yearly", title: "Yearly", price: "A$79.99", period: "year", trial: true, pkg: null },
-  { id: "monthly", title: "Monthly", price: "A$7.99", period: "month", trial: true, pkg: null },
+  { id: "yearly", title: "Yearly", price: "$99.99", period: "year", trial: true, pkg: null },
+  { id: "monthly", title: "Monthly", price: "$19.99", period: "month", trial: true, pkg: null },
 ];
 
 function parsePrice(s: string): number | null {

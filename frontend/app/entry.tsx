@@ -19,6 +19,17 @@ import { receiptStash } from "@/src/scanStash";
 
 type Kind = "income" | "expense" | "trip" | "shift";
 
+const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+function validTime(t: string): boolean { return TIME_RE.test((t || "").trim()); }
+function toMin(t: string): number { const [h, m] = t.trim().split(":").map(Number); return h * 60 + m; }
+/** Hours between two "HH:MM" times, wrapping past midnight. null if invalid. */
+function hoursBetween(start: string, end: string): number | null {
+  if (!validTime(start) || !validTime(end)) return null;
+  let diff = toMin(end) - toMin(start);
+  if (diff <= 0) diff += 24 * 60; // overnight shift
+  return Math.round((diff / 60) * 100) / 100;
+}
+
 export default function Entry() {
   const { colors } = useTheme();
   const { profile, refresh, activeVehicleId } = useStore();
@@ -44,6 +55,8 @@ export default function Entry() {
   const [distance, setDistance] = useState("");
   const [minutes, setMinutes] = useState("");
   const [hours, setHours] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [tripType, setTripType] = useState<"business" | "personal" | "mixed">("business");
   const [purpose, setPurpose] = useState<string>("deliver");
   const [businessPct, setBusinessPct] = useState("50");
@@ -57,6 +70,13 @@ export default function Entry() {
       receiptStash.image = null;
     }
   }, [params.fromScan]);
+
+  // Auto-fill shift hours from start/end times (handles overnight shifts).
+  useEffect(() => {
+    if (kind !== "shift") return;
+    const h = hoursBetween(startTime, endTime);
+    if (h != null) setHours(String(h));
+  }, [kind, startTime, endTime]);
 
   useEffect(() => {
     if (!editing) return;
@@ -73,7 +93,7 @@ export default function Entry() {
         } else if (kind === "shift") {
           const list = await api.listShifts();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setHours(String(it.hours)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); }
+          if (it) { setHours(String(it.hours)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); setStartTime(it.start_time || ""); setEndTime(it.end_time || ""); }
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
@@ -106,6 +126,8 @@ export default function Entry() {
         const hrs = parseFloat(hours);
         if (!hrs || hrs <= 0) { show("Enter your online hours", "error"); setSaving(false); return; }
         const payload: any = { date: iso, hours: hrs, platform, note };
+        if (validTime(startTime)) payload.start_time = startTime;
+        if (validTime(endTime)) payload.end_time = endTime;
         if (activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (editing) await api.updateShift(params.id!, payload); else await api.addShift(payload);
       } else {
@@ -214,9 +236,23 @@ export default function Entry() {
                 </View>
               </>
             ) : kind === "shift" ? (
-              <Field label="Hours online" hint="Total hours you were online this shift — powers your $/hour metric.">
-                <Input testID="entry-hours" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="6.5" />
-              </Field>
+              <>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Field label="Start time" hint="Optional · 24h">
+                      <Input testID="entry-start" value={startTime} onChangeText={setStartTime} keyboardType="numbers-and-punctuation" placeholder="17:30" />
+                    </Field>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Field label="End time" hint="Optional · 24h">
+                      <Input testID="entry-end" value={endTime} onChangeText={setEndTime} keyboardType="numbers-and-punctuation" placeholder="22:15" />
+                    </Field>
+                  </View>
+                </View>
+                <Field label="Hours online" hint="Auto-filled from start/end, or type it in. Powers your $/hour.">
+                  <Input testID="entry-hours" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="6.5" />
+                </Field>
+              </>
             ) : (
               <Field label="Amount">
                 <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />

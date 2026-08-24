@@ -142,6 +142,7 @@ export interface ExpenseT {
 }
 export interface ShiftT {
   id: string; profile_id: string; date: string; hours: number;
+  start_time?: string | null; end_time?: string | null;
   platform?: string | null; vehicle_id?: string | null; note?: string | null;
 }
 

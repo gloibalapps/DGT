@@ -357,6 +357,8 @@ class Shift(BaseModel):
     profile_id: str
     date: str
     hours: float
+    start_time: Optional[str] = None  # "HH:MM"
+    end_time: Optional[str] = None    # "HH:MM"
     platform: Optional[str] = None
     vehicle_id: Optional[str] = None
     note: Optional[str] = None

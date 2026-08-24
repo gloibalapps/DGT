@@ -6,9 +6,25 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "@/src/theme";
 import { api, todayISO } from "@/src/api";
+import { displayDateShort } from "@/src/date";
 import {
   AppText, Card, IconButton, Spinner, EmptyState, Money, fmtMoney,
 } from "@/src/ui";
+
+function ShiftRow({ s, symbol, color, colors }: { s: any; symbol: string; color: string; colors: any }) {
+  const timeRange = s.start_time ? `${s.start_time}${s.end_time ? `–${s.end_time}` : ""}` : "";
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", borderLeftWidth: 3, borderLeftColor: color, paddingLeft: 10 }}>
+      <View style={{ flex: 1 }}>
+        <AppText variant="bodySemi">{displayDateShort(s.date)}{timeRange ? ` · ${timeRange}` : ""}</AppText>
+        <AppText variant="caption" color={colors.dim}>
+          {fmtMoney(s.income, symbol)} · {s.hours}h{s.platform ? ` · ${s.platform}` : ""}
+        </AppText>
+      </View>
+      <AppText variant="h2" color={color}>{symbol}{s.per_hour}/hr</AppText>
+    </View>
+  );
+}
 
 /** Vertical bars: weekly earnings, with the hours logged that week underneath. */
 function WeeklyBars({ weeks, symbol }: { weeks: any[]; symbol: string }) {
@@ -165,6 +181,56 @@ export default function Insights() {
               bestKey={data.has_hours ? (data.best_hourly_day?.short || null) : (data.best_earning_day?.short || null)}
             />
           </Card>
+
+          {/* Best time to drive (needs timed shifts) */}
+          {data.has_timed ? (
+            <Card style={{ marginBottom: 14 }}>
+              <AppText variant="h2">Best time to drive</AppText>
+              <AppText variant="caption" color={colors.dim}>Earnings per online hour by time of day</AppText>
+              <View style={{ gap: 8, marginTop: 12 }}>
+                {data.by_timeofday.map((s: any) => {
+                  const max = Math.max(1, ...data.by_timeofday.map((x: any) => x.per_hour || 0));
+                  const v = s.per_hour || 0;
+                  const best = data.best_timeofday && s.key === data.best_timeofday.key && v > 0;
+                  return (
+                    <View key={s.key} style={{ flexDirection: "row", alignItems: "center" }}>
+                      <View style={{ width: 76 }}>
+                        <AppText variant="caption" color={best ? colors.profit : colors.text}>{s.label}</AppText>
+                        <AppText variant="caption" color={colors.dim} style={{ fontSize: 10 }}>{s.sub}</AppText>
+                      </View>
+                      <View style={{ flex: 1, height: 20, backgroundColor: colors.surfaceAlt, borderRadius: 6, overflow: "hidden" }}>
+                        <View style={{ height: 20, width: `${Math.max(2, (v / max) * 100)}%` as any, borderRadius: 6,
+                          backgroundColor: best ? colors.profit : colors.accent, opacity: v > 0 ? 1 : 0.25 }} />
+                      </View>
+                      <AppText variant="caption" color={best ? colors.profit : colors.text}
+                        style={{ width: 62, textAlign: "right" }}>{v > 0 ? `${symbol}${v}/h` : "—"}</AppText>
+                    </View>
+                  );
+                })}
+              </View>
+            </Card>
+          ) : null}
+
+          {/* Best & worst shift (timed) */}
+          {data.best_shift ? (
+            <Card style={{ marginBottom: 14 }}>
+              <AppText variant="h2" style={{ marginBottom: 8 }}>Your best shift</AppText>
+              <ShiftRow s={data.best_shift} symbol={symbol} color={colors.profit} colors={colors} />
+              {data.worst_shift ? (
+                <>
+                  <AppText variant="h2" style={{ marginTop: 14, marginBottom: 8 }}>Toughest shift</AppText>
+                  <ShiftRow s={data.worst_shift} symbol={symbol} color={colors.loss} colors={colors} />
+                </>
+              ) : null}
+            </Card>
+          ) : data.has_hours ? (
+            <Card style={{ marginBottom: 14 }}>
+              <AppText variant="h2">Best shift</AppText>
+              <AppText variant="caption" color={colors.dim} style={{ marginTop: 4, lineHeight: 16 }}>
+                Add a start &amp; end time when you log hours to unlock your best shift and best time of day.
+              </AppText>
+            </Card>
+          ) : null}
 
           <AppText variant="caption" color={colors.dim} style={{ textAlign: "center", lineHeight: 16 }}>
             Insights are estimates based on what you’ve logged. The more income and online hours you record, the sharper they get.

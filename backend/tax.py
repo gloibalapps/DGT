@@ -705,6 +705,74 @@ def insights(profile: dict, incomes, expenses, shifts, ref: date,
         b = max(hourly, key=lambda d: d["per_hour"])
         best_hourly_day = {"short": b["short"], "name": b["name"], "per_hour": b["per_hour"]}
 
+    # ---- Time-of-day + best individual (timed) shift --------------------
+    # Income has no timestamp, so a shift's earnings are attributed by its day:
+    # a day's income is split across that day's shifts in proportion to hours.
+    day_income: Dict[str, float] = {}
+    day_hours: Dict[str, float] = {}
+    for x in incomes:
+        if in_win(x):
+            day_income[str(x["date"])[:10]] = day_income.get(str(x["date"])[:10], 0.0) + x["amount"]
+    for s in shifts:
+        if in_win(s):
+            day_hours[str(s["date"])[:10]] = day_hours.get(str(s["date"])[:10], 0.0) + (s.get("hours") or 0)
+
+    slots = [
+        {"key": "morning", "label": "Morning", "sub": "5am–11am", "income": 0.0, "hours": 0.0, "per_hour": None},
+        {"key": "midday", "label": "Midday", "sub": "11am–3pm", "income": 0.0, "hours": 0.0, "per_hour": None},
+        {"key": "evening", "label": "Evening", "sub": "3pm–9pm", "income": 0.0, "hours": 0.0, "per_hour": None},
+        {"key": "late", "label": "Late night", "sub": "9pm–5am", "income": 0.0, "hours": 0.0, "per_hour": None},
+    ]
+    slot_idx = {"morning": 0, "midday": 1, "evening": 2, "late": 3}
+
+    def _slot_key(hhmm: str):
+        try:
+            h = int(str(hhmm).split(":")[0])
+        except Exception:
+            return None
+        if 5 <= h < 11:
+            return "morning"
+        if 11 <= h < 15:
+            return "midday"
+        if 15 <= h < 21:
+            return "evening"
+        return "late"
+
+    timed_shifts = []
+    for s in shifts:
+        if not in_win(s):
+            continue
+        h = s.get("hours") or 0
+        st = s.get("start_time")
+        if h <= 0 or not st:
+            continue
+        d = str(s["date"])[:10]
+        dh = day_hours.get(d, 0.0)
+        earned = (day_income.get(d, 0.0) * (h / dh)) if dh > 0 else 0.0
+        per_hour = round(earned / h, 2) if h > 0 else None
+        sk = _slot_key(st)
+        if sk is not None:
+            slots[slot_idx[sk]]["income"] += earned
+            slots[slot_idx[sk]]["hours"] += h
+        timed_shifts.append({
+            "id": s.get("id"), "date": d, "start_time": st, "end_time": s.get("end_time"),
+            "hours": round(h, 2), "income": round(earned, 2), "per_hour": per_hour,
+            "platform": s.get("platform"),
+        })
+    for sl in slots:
+        sl["income"] = round(sl["income"], 2)
+        sl["hours"] = round(sl["hours"], 2)
+        sl["per_hour"] = round(sl["income"] / sl["hours"], 2) if sl["hours"] > 0 else None
+
+    by_timeofday = [sl for sl in slots]
+    rated_slots = [sl for sl in slots if sl["per_hour"] is not None]
+    best_timeofday = max(rated_slots, key=lambda s: s["per_hour"]) if rated_slots else None
+
+    rated_shifts = [t for t in timed_shifts if t["per_hour"] is not None]
+    best_shift = max(rated_shifts, key=lambda t: t["per_hour"]) if rated_shifts else None
+    worst_shift = min(rated_shifts, key=lambda t: t["per_hour"]) if len(rated_shifts) > 1 else None
+    has_timed = len(rated_shifts) > 0
+
     return {
         "symbol": symbol,
         "weeks_back": weeks_back,
@@ -716,6 +784,11 @@ def insights(profile: dict, incomes, expenses, shifts, ref: date,
         "has_income": total_income > 0,
         "has_hours": total_hours > 0,
         "avg_per_hour": round(total_income / total_hours, 2) if total_hours > 0 else None,
+        "by_timeofday": by_timeofday,
+        "best_timeofday": best_timeofday,
+        "best_shift": best_shift,
+        "worst_shift": worst_shift,
+        "has_timed": has_timed,
     }
 
 
