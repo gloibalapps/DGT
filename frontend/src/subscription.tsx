@@ -10,8 +10,11 @@ const CACHE_KEY = "gigtax.sub_active";
 // Load the native SDK lazily so the web / Expo Go bundles don't break.
 // Only require it when keys are configured (i.e. a real native build) — in
 // preview / Expo Go the keys are empty and we never touch the native module.
-const IOS_KEY = process.env.EXPO_PUBLIC_RC_IOS_KEY || "";
-const ANDROID_KEY = process.env.EXPO_PUBLIC_RC_ANDROID_KEY || "";
+// TEST_KEY is RevenueCat's Test Store key (test_...) usable on both platforms
+// for dev builds; real appl_/goog_ keys take precedence when present.
+const TEST_KEY = process.env.EXPO_PUBLIC_RC_TEST_KEY || "";
+const IOS_KEY = process.env.EXPO_PUBLIC_RC_IOS_KEY || TEST_KEY;
+const ANDROID_KEY = process.env.EXPO_PUBLIC_RC_ANDROID_KEY || TEST_KEY;
 
 let Purchases: any = null;
 if (Platform.OS !== "web" && (IOS_KEY || ANDROID_KEY)) {
