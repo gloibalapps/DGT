@@ -25,7 +25,7 @@
         "backgroundColor": "#0A1420"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.earningsauditapp.cxv7id",
+      "package": "com.driversgigtax.app",
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
