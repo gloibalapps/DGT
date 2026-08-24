@@ -153,9 +153,21 @@ export default function Mileage() {
 
   if (loading) return <Screen><Spinner /></Screen>;
 
-  const today = tm?.today;
-  const unit = tm?.distance_unit || "km";
-  const odo = tm?.odometer;
+  // Load failed (e.g. transient network/auth) — show a retry instead of crashing.
+  if (!tm || !tm.today) {
+    return (
+      <Screen header={<ScreenHeader subtitle="GPS → Logbook → Deduction" title="Tax Mileage" />}>
+        <EmptyState icon="cloud-offline-outline" title="Couldn't load mileage"
+          subtitle="Check your connection and try again." />
+        <PrimaryButton testID="mileage-retry" label="Retry" icon="refresh"
+          onPress={() => { setLoading(true); load(); }} style={{ marginTop: 12 }} />
+      </Screen>
+    );
+  }
+
+  const today = tm.today;
+  const unit = tm.distance_unit || "km";
+  const odo = tm.odometer;
 
   return (
     <Screen
