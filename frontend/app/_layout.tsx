@@ -19,12 +19,15 @@ import { syncAutotrack } from "@/src/autotrack";
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
+// TEMP: set to `true` to re-enable the RevenueCat subscription paywall gate after testing.
+const SUB_GATE_ENABLED = false;
+
 function SubGate() {
   const { loading, managed, isActive } = useSubscription();
   if (loading) return null;
   // The gate only enforces when RevenueCat is truly running (native build with
   // keys). In web preview / Expo Go it's bypassed so the app stays testable.
-  if (managed && !isActive) return <PaywallScreen gate />;
+  if (SUB_GATE_ENABLED && managed && !isActive) return <PaywallScreen gate />;
   return (
     <AppProvider>
       <View style={{ flex: 1 }}>
