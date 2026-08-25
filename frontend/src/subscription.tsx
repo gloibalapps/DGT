@@ -7,6 +7,12 @@ import { useAuth } from "@/src/auth";
 const ENTITLEMENT = "drivers_gig_tax_unlimited";
 const CACHE_KEY = "gigtax.sub_active";
 
+// TEMP: master switch to PAUSE RevenueCat entirely while testing the APK.
+// The Test Store key (test_...) makes the RevenueCat SDK force-close a RELEASE
+// build with a "Wrong API Key" dialog. While false, the SDK is never loaded or
+// configured. Set to `true` (and add a real appl_/goog_ key) to re-enable.
+const RC_ENABLED = false;
+
 // Load the native SDK lazily so the web / Expo Go bundles don't break.
 // Only require it when keys are configured (i.e. a real native build) — in
 // preview / Expo Go the keys are empty and we never touch the native module.
@@ -17,7 +23,7 @@ const IOS_KEY = process.env.EXPO_PUBLIC_RC_IOS_KEY || TEST_KEY;
 const ANDROID_KEY = process.env.EXPO_PUBLIC_RC_ANDROID_KEY || TEST_KEY;
 
 let Purchases: any = null;
-if (Platform.OS !== "web" && (IOS_KEY || ANDROID_KEY)) {
+if (RC_ENABLED && Platform.OS !== "web" && (IOS_KEY || ANDROID_KEY)) {
   try { Purchases = require("react-native-purchases").default; } catch { Purchases = null; }
 }
 
