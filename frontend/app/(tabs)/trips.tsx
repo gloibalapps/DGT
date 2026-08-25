@@ -88,25 +88,37 @@ export default function Mileage() {
       return;
     }
     setDist(0); setPath([]); lastRef.current = null; startTimeRef.current = Date.now(); setTracking(true);
-    subRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 20, timeInterval: 4000 },
-      (loc) => {
-        const c = loc.coords;
-        const point = { latitude: c.latitude, longitude: c.longitude };
-        if (lastRef.current) {
-          const d = haversine(lastRef.current, c);
-          if (d > 0.005) {
-            setDist((prev) => prev + d);
-            setPath((prev) => {
-              const next = [...prev, point];
-              return next.length > 800 ? next.slice(next.length - 800) : next;
-            });
-          }
-        } else {
-          setPath([point]);
+
+    // Seed an immediate first fix so tracking starts right away instead of
+    // waiting for the first watch callback (which can be slow on Android).
+    try {
+      const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      lastRef.current = first.coords;
+      setPath([{ latitude: first.coords.latitude, longitude: first.coords.longitude }]);
+    } catch { /* first fix may take a moment; the watcher below will catch up */ }
+
+    const onPoint = (loc: Location.LocationObject) => {
+      const c = loc.coords;
+      const point = { latitude: c.latitude, longitude: c.longitude };
+      if (lastRef.current) {
+        const d = haversine(lastRef.current, c);
+        if (d > 0.005) {
+          setDist((prev) => prev + d);
+          setPath((prev) => {
+            const next = [...prev, point];
+            return next.length > 800 ? next.slice(next.length - 800) : next;
+          });
+          lastRef.current = c;
         }
+      } else {
+        setPath([point]);
         lastRef.current = c;
-      },
+      }
+    };
+
+    subRef.current = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.High, distanceInterval: 10, timeInterval: 3000 },
+      onPoint,
     );
   };
 
