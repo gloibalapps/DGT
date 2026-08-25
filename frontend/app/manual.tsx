@@ -125,6 +125,21 @@ export default function Manual() {
         "Your full logbook summary and the \u201Cwhich method is better\u201D comparison appear in the Reports tab.",
       ],
     },
+    ...(isUS ? [] : [{
+      icon: "map" as any,
+      title: "Recording work kilometres (ATO)",
+      lines: [
+        "New to the logbook method? This is the ATO-recommended way to keep track — record work km by work SESSION, not just per paid job.",
+        "A work session starts when you go online in your rideshare/delivery app and are genuinely available to accept jobs, and ends when you go offline or stop working.",
+        "Claim as BUSINESS: driving to a pickup after accepting a job; pickup to drop-off; from one completed job to the next pickup; repositioning while online and waiting; and any driving while online and genuinely available for work.",
+        "Mark as PRIVATE: driving before you go online; driving home after going offline; personal errands, meal breaks or stops during a shift; and school runs, shopping or other non-work travel.",
+        "Home to first job: if you leave home BEFORE going online, that trip is usually private. If you go online from home and are genuinely available, driving after going online may be work-related.",
+        "Waiting between jobs: waiting itself creates no km, but if you're still online and drive to a busier area to improve your chance of a job, that repositioning may be work-related.",
+        "Best practice each session: note start date & time, start odometer, that you were online, jobs completed, any repositioning/waiting travel while online, end odometer, and any private trips taken during the shift.",
+        "The aim is to clearly separate business km from private km — this builds a stronger logbook and supports the business-use % used for your deductions.",
+        "Source: based on ATO guidance — Logbook method; Trips you can and can't claim; Motor vehicle expenses; Income & deductions for ride-sourcing; Sharing economy records. Always check the latest ATO guidance or speak with a registered tax agent for personal advice.",
+      ],
+    }]),
     {
       icon: "car-sport",
       title: "Managing your vehicles",
