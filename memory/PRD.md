@@ -60,5 +60,6 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - **Calendar date picker (DONE, tested iteration_6):** All manual date-typing removed.
 
 ## Notes
+- Recurring vehicle rental/lease now shows on the **Money tab** too (Jun 2026): `money_overview` adds the FULL prorated rental (daily rate × elapsed days) to period Expenses + take-home + a "Vehicle rental/lease" line in "Where your money went" (`money_now.recurring_rent`). Reports still shows the business-%-apportioned deductible portion. Backend-only change (77/77 pytest pass) — takes effect on redeploy, no new build needed.
 - GPS shift tracker uses **foreground** location — full background auto-tracking requires a native dev/prod build (cannot be validated in Expo Go/web preview).
 - Receipt images currently stored as base64 on the expense doc (cloud archival deferred to P1).

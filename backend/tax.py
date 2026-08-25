@@ -959,14 +959,27 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
     eff_rate = (ytd_tax / ytd_net) if ytd_net > 0 else 0.0
     eff_rate = min(max(eff_rate, 0.0), 0.6)  # sanity clamp
 
+    # ---- recurring vehicle rental / lease / loan (full cash amount) ----------
+    # The rental is stored as a vehicle setting, not a logged expense. On the
+    # Money tab we surface the FULL prorated cash amount so take-home reflects
+    # the real money leaving the driver's pocket each period.
+    veh_list = vehicles if vehicles else [{
+        "id": "__default__",
+        "recurring_payment": profile.get("recurring_payment"),
+    }]
+
+    def rent_for(s, e):
+        return round(sum(recurring_owed(v.get("recurring_payment"), s, e, ref) for v in veh_list), 2)
+
     def core(s, e):
         gross = sum(i["amount"] for i in incomes if in_range(i, s, e))
-        exp = sum(x["amount"] for x in expenses if in_range(x, s, e))
+        exp = sum(x["amount"] for x in expenses if in_range(x, s, e)) + rent_for(s, e)
         profit = gross - exp
         tax = max(0.0, profit) * eff_rate
         return round(gross, 2), round(exp, 2), round(profit, 2), round(tax, 2), round(profit - tax, 2)
 
     gross, expenses_total, profit_before_tax, estimated_tax, money_after_tax = core(start, end)
+    recurring_rent = rent_for(start, end)
     keep_rate = round(money_after_tax / gross * 100, 1) if gross > 0 else None
 
     biz_km = round(sum(trip_business_km(t) for t in trips if in_range(t, start, end)), 2)
@@ -976,6 +989,7 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
         "take_home": money_after_tax,
         "gross": gross,
         "expenses": expenses_total,
+        "recurring_rent": recurring_rent,
         "estimated_tax": estimated_tax,
         "profit_before_tax": profit_before_tax,
         "keep_rate": keep_rate,
@@ -1001,6 +1015,7 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
     where = [
         {"label": "Fuel / charging", "amount": round(cat["fuel"], 2)},
         {"label": "Vehicle costs", "amount": round(cat["vehicle"], 2)},
+        {"label": "Vehicle rental/lease", "amount": recurring_rent},
         {"label": "Tolls", "amount": round(cat["tolls"], 2)},
         {"label": "Phone", "amount": round(cat["phone"], 2)},
         {"label": "Other expenses", "amount": round(cat["other"], 2)},
