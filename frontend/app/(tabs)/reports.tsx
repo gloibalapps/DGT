@@ -140,8 +140,8 @@ export default function Reports() {
               {/* Vehicle deduction breakdown */}
               <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <AppText variant="h2">Vehicle deduction</AppText>
-                  <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                  <AppText variant="h2" style={{ flexShrink: 1, marginRight: 8 }}>Vehicle deduction</AppText>
+                  <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0 }}>
                     <AppText variant="caption" color={colors.accent}>
                       {rep.business_use_pct}% business{rep.business_use_is_fallback ? " (default)" : ""}
                     </AppText>
