@@ -125,6 +125,20 @@ export default function Manual() {
         "Your full logbook summary and the \u201Cwhich method is better\u201D comparison appear in the Reports tab.",
       ],
     },
+    {
+      icon: "speedometer" as any,
+      title: "GPS distance vs your odometer",
+      lines: [
+        "It is completely normal for the app's GPS distance to differ slightly from your car's odometer — usually by around 1-3%. This does NOT mean either one is broken or wrong.",
+        "Example: if the app shows 43.0 km and your odometer shows 42.5 km, that is a ~0.5 km (about 1.1%) difference — well within normal tolerance and considered an accurate match.",
+        "Why GPS can read a little higher: GPS measures your route by joining thousands of location points. Tiny GPS 'jitter' — common at low speed, traffic lights, tall buildings or car parks — can add small zig-zags that nudge the total up.",
+        "Why GPS can sometimes read a little lower: on sharp bends or in tunnels/underground, GPS may join points in slightly straighter lines or briefly lose signal, trimming a little distance.",
+        "Your odometer is not the 'true' number either: car odometers are deliberately calibrated to read about 1-2% HIGH (they are designed to never under-read), and tyre wear, tyre pressure and tyre size all change the reading.",
+        "Bottom line: a difference of up to a few percent between GPS and odometer is expected and acceptable. Both figures are 'accurate' within normal tolerance.",
+        "For your logbook: either figure is fine to use. The app's odometer check on the Mileage tab flags any GPS-vs-odometer gap so you can spot something unusual. If you prefer your logbook to match the odometer exactly, just edit the trip's distance to your odometer reading.",
+        "Tip: the tracker only counts real movement (over ~5 metres between points), so it ignores GPS noise while you are stopped — keeping GPS as close to your odometer as possible.",
+      ],
+    },
     ...(isUS ? [] : [{
       icon: "map" as any,
       title: "Recording work kilometres (ATO)",
