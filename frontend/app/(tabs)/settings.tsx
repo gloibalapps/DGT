@@ -158,7 +158,7 @@ export default function Settings() {
           <View style={{ flex: 1 }}>
             <AppText variant="bodySemi">{subActive ? "GigTax Pro" : "Upgrade to GigTax Pro"}</AppText>
             <AppText variant="caption" color={colors.dim}>
-              {subActive ? "Your subscription is active" : "14-day free trial · no card required"}
+              {subActive ? "Your subscription is active" : "14-day free trial · cancel anytime"}
             </AppText>
           </View>
           {subActive ? (

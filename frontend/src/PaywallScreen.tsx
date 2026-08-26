@@ -82,7 +82,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
   const cta = selected?.trial ? "Start 14-day free trial" : "Subscribe";
   const priceLine = selected
     ? (selected.trial
-        ? `14 days free — no card required. Then ${selected.price}/${selected.period}. Cancel anytime.`
+        ? `14-day free trial. You won't be charged until it ends — then ${selected.price}/${selected.period}. Cancel anytime.`
         : `${selected.price}/${selected.period}. Cancel anytime.`)
     : "";
 
@@ -150,7 +150,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
                         ) : null}
                       </View>
                       {p.trial ? (
-                        <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>14-day free trial · no card required</AppText>
+                        <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>14-day free trial · cancel anytime</AppText>
                       ) : null}
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
