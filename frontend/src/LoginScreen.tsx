@@ -1,5 +1,5 @@
 import React from "react";
-import { View, ActivityIndicator, Platform } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -16,12 +16,12 @@ export default function LoginScreen() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaView style={{ flex: 1, padding: 24, justifyContent: "space-between" }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <View style={{ width: 88, height: 88, borderRadius: 24, backgroundColor: colors.accent,
-            alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
-            <Ionicons name="car-sport" size={46} color={colors.bg} />
-          </View>
-          <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 44, color: colors.text }}>GigTax</AppText>
-          <AppText variant="body" color={colors.dim} style={{ textAlign: "center", marginTop: 8, lineHeight: 22, maxWidth: 300 }}>
+          <Image
+            source={require("@/assets/images/logo-dark.png")}
+            style={{ width: 260, height: 98, marginBottom: 18 }}
+            contentFit="contain"
+          />
+          <AppText variant="body" color={colors.dim} style={{ textAlign: "center", marginTop: 4, lineHeight: 22, maxWidth: 300 }}>
             Track income, mileage and expenses — and know exactly what to set aside for tax.
           </AppText>
           <View style={{ marginTop: 28, gap: 12, width: "100%", maxWidth: 340 }}>
