@@ -3,7 +3,6 @@ import { View, Pressable, Linking, RefreshControl, Animated, Easing } from "reac
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import Svg, { Polyline, Circle } from "react-native-svg";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
@@ -11,7 +10,7 @@ import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
 import { getPendingDrives, clearPendingDrive, PendingDrive } from "@/src/autotrack";
 import {
-  Screen, ScreenHeader, Card, AppText, Money, IconButton, Spinner,
+  Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
   EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney,
 } from "@/src/ui";
 
@@ -125,7 +124,7 @@ export default function Mileage() {
   const stopShift = async () => {
     try { subRef.current?.remove(); } catch { /* web */ }
     subRef.current = null; setTracking(false);
-    const km = Math.round(dist * 100) / 100;
+    const km = Math.round(dist * 10) / 10;
     if (km <= 0) { show("No distance recorded", "info"); return; }
     setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
     setPendingTag(km);
@@ -229,18 +228,15 @@ export default function Mileage() {
             <PulsingDot color={colors.profit} />
             <AppText variant="label" color={colors.profit}>GPS TRACKING ACTIVE</AppText>
           </View>
-          {path.length >= 2 ? (
-            <View style={{ alignSelf: "stretch", height: 120, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-              overflow: "hidden", marginBottom: 10 }}>
-              <RouteTrace path={path} color={colors.accent} end={colors.profit} />
-            </View>
-          ) : (
-            <View style={{ alignSelf: "stretch", height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+          {path.length < 1 ? (
+            <View style={{ alignSelf: "stretch", height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
               alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-              <AppText variant="caption" color={colors.dim}>Waiting for GPS… your route draws here as you drive</AppText>
+              <AppText variant="caption" color={colors.dim}>Acquiring GPS…</AppText>
             </View>
-          )}
-          <Money value={Math.round(dist * 100) / 100} symbol="" size={46} />
+          ) : null}
+          <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 46, color: colors.text, fontVariant: ["tabular-nums"], letterSpacing: 0.3 }}>
+            {dist.toFixed(1)}
+          </AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 2 }}>{unit} this drive</AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: activeVehicle ? 2 : 12 }}>
             Started {startedAtStr()} · {fmtElapsed(elapsedSec)}
@@ -268,7 +264,7 @@ export default function Mileage() {
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <View>
             <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
-              {Math.round((today.total_km + (tracking ? dist : 0)) * 100) / 100} {unit}
+              {(today.total_km + (tracking ? dist : 0)).toFixed(1)} {unit}
             </AppText>
             <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
           </View>
@@ -382,35 +378,4 @@ function PulsingDot({ color }: { color: string }) {
     return () => loop.stop();
   }, [a]);
   return <Animated.View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, marginRight: 8, opacity: a }} />;
-}
-
-/** Auto-scaling SVG polyline of the GPS points collected so far. Works on web,
- * Expo Go and native builds (no map SDK needed). */
-function RouteTrace({ path, color, end }: { path: { latitude: number; longitude: number }[]; color: string; end: string }) {
-  const lats = path.map((p) => p.latitude);
-  const lons = path.map((p) => p.longitude);
-  const minLa = Math.min(...lats), maxLa = Math.max(...lats);
-  const minLo = Math.min(...lons), maxLo = Math.max(...lons);
-  const midLa = (minLa + maxLa) / 2;
-  const lonK = Math.cos((midLa * Math.PI) / 180); // longitude compression at this latitude
-  const geoW = Math.max((maxLo - minLo) * lonK, 1e-6);
-  const geoH = Math.max(maxLa - minLa, 1e-6);
-  const pad = 8, boxW = 100 - 2 * pad, boxH = 60 - 2 * pad;
-  const scale = Math.min(boxW / geoW, boxH / geoH);
-  const offX = (100 - geoW * scale) / 2;
-  const offY = (60 - geoH * scale) / 2;
-  const project = (p: { latitude: number; longitude: number }) => ({
-    x: offX + (p.longitude - minLo) * lonK * scale,
-    y: offY + (maxLa - p.latitude) * scale, // flip: north is up
-  });
-  const pts = path.map((p) => { const q = project(p); return `${q.x.toFixed(2)},${q.y.toFixed(2)}`; }).join(" ");
-  const startPt = project(path[0]);
-  const endPt = project(path[path.length - 1]);
-  return (
-    <Svg width="100%" height="100%" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid meet">
-      <Polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      <Circle cx={startPt.x} cy={startPt.y} r={2.4} fill={color} opacity={0.5} />
-      <Circle cx={endPt.x} cy={endPt.y} r={3.2} fill={end} />
-    </Svg>
-  );
 }
