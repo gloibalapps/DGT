@@ -152,11 +152,12 @@ export default function Settings() {
         <Pressable testID="set-subscription" onPress={() => router.push("/paywall" as any)}
           style={{ flexDirection: "row", alignItems: "center" }}>
           <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-            <Ionicons name="rocket" size={20} color={colors.accent} />
+            alignItems: "center", justifyContent: "center", marginRight: 12, overflow: "hidden" }}>
+            <Image source={require("@/assets/images/logo-light.png")}
+              style={{ width: 40, height: 40 }} contentFit="cover" />
           </View>
           <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">{subActive ? "GigTax Pro" : "Upgrade to GigTax Pro"}</AppText>
+            <AppText variant="bodySemi">{subActive ? "GigTax Pro" : "Subscribe to GigTax"}</AppText>
             <AppText variant="caption" color={colors.dim}>
               {subActive ? "Your subscription is active" : "14-day free trial · cancel anytime"}
             </AppText>
@@ -206,7 +207,7 @@ export default function Settings() {
               </View>
             </View>
             <AppText variant="caption" color={colors.dim} style={{ marginTop: 10 }}>
-              Your scanned receipts and a CSV of income, expenses & trips are saved to a "GigTax Backups" folder in your Drive. Backs up automatically once a day when you open the app.
+              Your scanned receipts and a CSV of income, expenses & trips are saved to a “GigTax Backups” folder in your Drive. Backs up automatically once a day when you open the app.
             </AppText>
             <PrimaryButton testID="backup-now" label={backupBusy ? "Backing up…" : "Back up now"}
               icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 12 }} />
