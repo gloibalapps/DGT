@@ -15,6 +15,7 @@ import { SubscriptionProvider, useSubscription } from "@/src/subscription";
 import PaywallScreen from "@/src/PaywallScreen";
 import LoginScreen from "@/src/LoginScreen";
 import { syncAutotrack } from "@/src/autotrack";
+import { maybeAutoBackup } from "@/src/backup";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -82,6 +83,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     syncAutotrack();
+    maybeAutoBackup();
   }, []);
 
   if (!ready) return null;

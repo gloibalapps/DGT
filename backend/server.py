@@ -2,6 +2,8 @@ import os
 import io
 import csv
 import uuid
+import time
+import json
 import logging
 import httpx
 from pathlib import Path
@@ -193,25 +195,33 @@ async def _login_google_user(email: str, name, picture) -> str:
 
 
 @api_router.get("/auth/google/start")
-async def google_start(request: Request, app_redirect: str = Query(...)):
+async def google_start(request: Request, app_redirect: str = Query(...),
+                       backup: int = Query(0), profile_id: Optional[str] = Query(None)):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google login not configured")
     from urllib.parse import urlencode
     state = uuid.uuid4().hex
     await db.oauth_states.insert_one({
         "state": state, "app_redirect": app_redirect,
+        "backup": bool(backup), "profile_id": profile_id,
         "created_at": datetime.now(timezone.utc),
     })
     redirect_uri = f"{_public_base(request)}/api/auth/google/callback"
-    params = urlencode({
+    p = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
         "state": state,
         "prompt": "select_account",
-    })
-    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{params}")
+    }
+    if backup:
+        # Add Drive scope + request a refresh token for unattended backups.
+        p["scope"] = "openid email profile https://www.googleapis.com/auth/drive.file"
+        p["access_type"] = "offline"
+        p["include_granted_scopes"] = "true"
+        p["prompt"] = "consent"  # force refresh_token on re-consent
+    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(p)}")
 
 
 @api_router.get("/auth/google/callback")
@@ -256,7 +266,8 @@ border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size
         })
         if tok.status_code != 200:
             return bounce("auth_error=token")
-        access_token = tok.json().get("access_token")
+        tokjson = tok.json()
+        access_token = tokjson.get("access_token")
         ui = await hc.get(GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
         if ui.status_code != 200:
             return bounce("auth_error=userinfo")
@@ -264,12 +275,205 @@ border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size
     email = info.get("email")
     if not email:
         return bounce("auth_error=noemail")
+
+    # Drive-backup connect: persist the encrypted refresh/access token for this
+    # profile so the backend can upload backups on the user's behalf later.
+    if st.get("backup") and st.get("profile_id"):
+        await _save_drive_tokens(st["profile_id"], tokjson, email)
+        return bounce("drive_connected=1")
+
     session_token = await _login_google_user(email, info.get("name"), info.get("picture"))
     return bounce(f"session_token={session_token}")
 
 
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
+
+
+# ---------------------------------------------------------------------------
+# Google Drive backup (per-profile, user's own Drive)
+# ---------------------------------------------------------------------------
+from cryptography.fernet import Fernet as _Fernet
+_DRIVE_KEY = os.environ.get("DRIVE_ENCRYPTION_KEY", "")
+_fernet = _Fernet(_DRIVE_KEY.encode()) if _DRIVE_KEY else None
+DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
+DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
+
+
+def _enc(v: str) -> str: return _fernet.encrypt(v.encode()).decode()
+def _dec(v: str) -> str: return _fernet.decrypt(v.encode()).decode()
+
+
+async def _save_drive_tokens(profile_id: str, tokjson: dict, email: str):
+    if not _fernet:
+        return
+    upd = {
+        "profile_id": profile_id, "email": email,
+        "access_token": _enc(tokjson.get("access_token", "")),
+        "access_expires_at": time.time() + int(tokjson.get("expires_in", 3600)),
+        "scopes": (tokjson.get("scope") or "").split(),
+        "needs_reauth": False, "updated_at": now_iso(),
+    }
+    # Google only returns refresh_token on first consent — never overwrite with null.
+    if tokjson.get("refresh_token"):
+        upd["refresh_token"] = _enc(tokjson["refresh_token"])
+    await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": upd}, upsert=True)
+
+
+async def _drive_access_token(profile_id: str) -> str:
+    row = await db.drive_tokens.find_one({"profile_id": profile_id})
+    if not row or not row.get("refresh_token"):
+        raise HTTPException(409, "Google Drive not connected")
+    if row.get("access_expires_at", 0) > time.time() + 60:
+        return _dec(row["access_token"])
+    async with httpx.AsyncClient(timeout=20) as hc:
+        r = await hc.post(GOOGLE_TOKEN_URL, data={
+            "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
+            "refresh_token": _dec(row["refresh_token"]), "grant_type": "refresh_token",
+        })
+    if r.status_code != 200:
+        if r.status_code == 400 and r.json().get("error") == "invalid_grant":
+            await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": {"needs_reauth": True}})
+        raise HTTPException(502, "Could not refresh Google token")
+    new = r.json()
+    await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": {
+        "access_token": _enc(new["access_token"]),
+        "access_expires_at": time.time() + int(new.get("expires_in", 3600)),
+        "updated_at": now_iso(), "needs_reauth": False,
+    }})
+    return new["access_token"]
+
+
+async def _drive_folder(token: str, name: str, parent: Optional[str] = None) -> str:
+    parent_clause = f"'{parent}' in parents" if parent else "'root' in parents"
+    q = (f"name = '{name}' and mimeType = 'application/vnd.google-apps.folder' "
+         f"and {parent_clause} and trashed = false")
+    async with httpx.AsyncClient(timeout=20) as hc:
+        r = await hc.get(DRIVE_API_URL, params={"q": q, "spaces": "drive", "pageSize": 1, "fields": "files(id)"},
+                         headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        files = r.json().get("files", [])
+        if files:
+            return files[0]["id"]
+        meta = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
+        if parent:
+            meta["parents"] = [parent]
+        r2 = await hc.post(DRIVE_API_URL, params={"fields": "id"},
+                           headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                           json=meta)
+        r2.raise_for_status()
+        return r2.json()["id"]
+
+
+async def _drive_find(token: str, folder: str, name: str) -> Optional[str]:
+    safe = name.replace("'", "\\'")
+    q = f"name = '{safe}' and '{folder}' in parents and trashed = false"
+    async with httpx.AsyncClient(timeout=20) as hc:
+        r = await hc.get(DRIVE_API_URL, params={"q": q, "spaces": "drive", "pageSize": 1, "fields": "files(id)"},
+                         headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        f = r.json().get("files", [])
+        return f[0]["id"] if f else None
+
+
+async def _drive_upload(token: str, content: bytes, filename: str, mime: str,
+                        parent: str, file_id: Optional[str] = None) -> dict:
+    boundary = "===" + uuid.uuid4().hex
+    meta: dict = {"name": filename}
+    if parent and not file_id:
+        meta["parents"] = [parent]
+    body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
+            + json.dumps(meta) + f"\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n").encode() \
+        + content + f"\r\n--{boundary}--\r\n".encode()
+    url = DRIVE_UPLOAD_URL if not file_id else f"{DRIVE_UPLOAD_URL}/{file_id}"
+    method = "POST" if not file_id else "PATCH"
+    async with httpx.AsyncClient(timeout=60) as hc:
+        r = await hc.request(method, url, params={"uploadType": "multipart", "fields": "id,name"},
+                             headers={"Authorization": f"Bearer {token}",
+                                      "Content-Type": f'multipart/related; boundary="{boundary}"'},
+                             content=body)
+    r.raise_for_status()
+    return r.json()
+
+
+def _decode_b64_image(s: str) -> bytes:
+    import base64 as _b64
+    if s[:5] == "data:" and "," in s[:64]:
+        s = s.split(",", 1)[1]
+    return _b64.b64decode(s)
+
+
+def _build_backup_csv(income, expenses, trips) -> bytes:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Type", "Date", "Amount / Distance", "Category / Platform", "Merchant / Note", "Vehicle"])
+    for i in income:
+        w.writerow(["Income", i.get("date"), i.get("amount"), i.get("platform", ""), i.get("note", ""), i.get("vehicle_id", "")])
+    for e in expenses:
+        w.writerow(["Expense", e.get("date"), e.get("amount"), e.get("category", ""), e.get("merchant") or e.get("note", ""), e.get("vehicle_id", "")])
+    for t in trips:
+        w.writerow(["Trip", t.get("date"), t.get("distance_km"), t.get("type", ""), t.get("purpose", ""), t.get("vehicle_id", "")])
+    return buf.getvalue().encode()
+
+
+async def backup_profile(profile_id: str) -> dict:
+    token = await _drive_access_token(profile_id)
+    root = await _drive_folder(token, "GigTax Backups")
+    income = [clean(x) for x in await db.income.find({"profile_id": profile_id}).to_list(10000)]
+    expenses = [clean(x) for x in await db.expenses.find({"profile_id": profile_id}).to_list(10000)]
+    trips = [clean(x) for x in await db.trips.find({"profile_id": profile_id}).to_list(10000)]
+    # data CSV (overwrite in place)
+    csv_bytes = _build_backup_csv(income, expenses, trips)
+    csv_id = await _drive_find(token, root, "gigtax-data.csv")
+    await _drive_upload(token, csv_bytes, "gigtax-data.csv", "text/csv", root, csv_id)
+    # receipt images organised into month subfolders
+    receipts = 0
+    month_folders: dict = {}
+    for e in expenses:
+        img = e.get("receipt_image")
+        if not img:
+            continue
+        month = (e.get("date") or "")[:7] or "undated"
+        if month not in month_folders:
+            month_folders[month] = await _drive_folder(token, month, root)
+        try:
+            data = _decode_b64_image(img)
+        except Exception:
+            continue
+        fname = f"receipt-{e.get('date', '')}-{str(e.get('id', ''))[:8]}.jpg"
+        fid = await _drive_find(token, month_folders[month], fname)
+        await _drive_upload(token, data, fname, "image/jpeg", month_folders[month], fid)
+        receipts += 1
+    ts = now_iso()
+    await db.drive_tokens.update_one({"profile_id": profile_id},
+                                     {"$set": {"last_backup_at": ts, "last_backup_count": receipts}})
+    return {"backed_up_at": ts, "receipts": receipts,
+            "records": len(income) + len(expenses) + len(trips)}
+
+
+@api_router.get("/backups/status")
+async def backup_status(profile_id: str = Query(...)):
+    row = await db.drive_tokens.find_one({"profile_id": profile_id})
+    if not row:
+        return {"connected": False}
+    return {
+        "connected": bool(row.get("refresh_token")) and not row.get("needs_reauth"),
+        "needs_reauth": bool(row.get("needs_reauth")),
+        "email": row.get("email"),
+        "last_backup_at": row.get("last_backup_at"),
+        "last_backup_count": row.get("last_backup_count"),
+    }
+
+
+@api_router.post("/backups/google-drive")
+async def run_backup(profile_id: str = Query(...)):
+    return await backup_profile(profile_id)
+
+
+@api_router.post("/backups/disconnect")
+async def disconnect_backup(profile_id: str = Query(...)):
+    await db.drive_tokens.delete_one({"profile_id": profile_id})
+    return {"connected": False}
 
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
   PrimaryButton, useToast,
 } from "@/src/ui";
+import { connectDrive, type BackupStatus } from "@/src/backup";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const { colors } = useTheme();
@@ -42,6 +43,40 @@ export default function Settings() {
   const [autoOn, setAutoOn] = useState(false);
   const [name, setName] = useState("");
 
+  const [backup, setBackup] = useState<BackupStatus | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+
+  const loadBackup = useCallback(async () => {
+    try { setBackup(await api.backupStatus()); } catch { /* ignore */ }
+  }, []);
+
+  const onConnectDrive = async () => {
+    setBackupBusy(true);
+    try {
+      const st = await connectDrive();
+      setBackup(st);
+      show(st.connected ? "Google Drive connected" : "Drive not connected", st.connected ? "success" : "info");
+    } catch { show("Couldn't connect Google Drive", "error"); }
+    finally { setBackupBusy(false); }
+  };
+
+  const onBackupNow = async () => {
+    setBackupBusy(true);
+    try {
+      const r = await api.runBackup();
+      show(`Backed up ${r.receipts} receipt${r.receipts === 1 ? "" : "s"} + data to Drive`, "success");
+      await loadBackup();
+    } catch { show("Backup failed — reconnect Drive and try again", "error"); }
+    finally { setBackupBusy(false); }
+  };
+
+  const onDisconnectDrive = async () => {
+    setBackupBusy(true);
+    try { await api.disconnectBackup(); setBackup({ connected: false }); show("Drive disconnected", "info"); }
+    catch { /* ignore */ }
+    finally { setBackupBusy(false); }
+  };
+
   useEffect(() => {
     if (!profile) return;
     setName(profile.driver_name || "");
@@ -54,7 +89,7 @@ export default function Settings() {
       setBizPct(rep.business_use_pct);
     } catch { /* ignore */ }
   }, []);
-  useFocusEffect(useCallback(() => { loadPct(); isAutotrackEnabled().then(setAutoOn); }, [loadPct, version]));
+  useFocusEffect(useCallback(() => { loadPct(); isAutotrackEnabled().then(setAutoOn); loadBackup(); }, [loadPct, version, loadBackup]));
 
   const toggleAuto = async () => {
     if (autoOn) {
@@ -151,6 +186,53 @@ export default function Settings() {
             <Ionicons name="chevron-forward" size={20} color={colors.dim} />
           </Pressable>
         ) : null}
+      </Section>
+
+      {/* Backups — Google Drive */}
+      <Section title="Backups">
+        {backup?.connected ? (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+                alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                <Ionicons name="cloud-done" size={20} color={colors.profit} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <AppText variant="bodySemi">Google Drive connected</AppText>
+                <AppText variant="caption" color={colors.dim} numberOfLines={1}>
+                  {backup.email || "Your Drive"}
+                  {backup.last_backup_at ? ` · last backup ${new Date(backup.last_backup_at).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : " · not backed up yet"}
+                </AppText>
+              </View>
+            </View>
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 10 }}>
+              Your scanned receipts and a CSV of income, expenses & trips are saved to a "GigTax Backups" folder in your Drive. Backs up automatically once a day when you open the app.
+            </AppText>
+            <PrimaryButton testID="backup-now" label={backupBusy ? "Backing up…" : "Back up now"}
+              icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 12 }} />
+            <Pressable testID="backup-disconnect" onPress={onDisconnectDrive} disabled={backupBusy}
+              hitSlop={8} style={{ marginTop: 12, alignItems: "center" }}>
+              <AppText variant="caption" color={colors.loss}>Disconnect Google Drive</AppText>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+                alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                <Ionicons name="cloud-outline" size={20} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <AppText variant="bodySemi">Back up to Google Drive</AppText>
+                <AppText variant="caption" color={colors.dim}>
+                  {backup?.needs_reauth ? "Reconnect needed — please connect again" : "Keep your receipts & records safe in your own Drive"}
+                </AppText>
+              </View>
+            </View>
+            <PrimaryButton testID="backup-connect" label={backupBusy ? "Connecting…" : "Connect Google Drive"}
+              icon="logo-google" onPress={onConnectDrive} disabled={backupBusy} style={{ marginTop: 12 }} />
+          </>
+        )}
       </Section>
 
       {/* Help & user guide */}

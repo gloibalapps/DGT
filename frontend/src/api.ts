@@ -155,6 +155,25 @@ export const api = {
   async authClaim(fromProfileId: string) {
     return req(`/auth/claim`, { method: "POST", body: JSON.stringify({ from_profile_id: fromProfileId }) });
   },
+
+  // ---- Google Drive backup ----
+  async backupStatus() {
+    const pid = await getProfileId();
+    return req(`/backups/status?profile_id=${pid}`);
+  },
+  async runBackup() {
+    const pid = await getProfileId();
+    // Backups can take a while (uploads) — long timeout, no auto-retry.
+    return req(`/backups/google-drive?profile_id=${pid}`, { method: "POST" }, 0, 120000);
+  },
+  async disconnectBackup() {
+    const pid = await getProfileId();
+    return req(`/backups/disconnect?profile_id=${pid}`, { method: "POST" });
+  },
+  async driveConnectUrl(redirect: string) {
+    const pid = await getProfileId();
+    return `${BASE}/api/auth/google/start?backup=1&profile_id=${encodeURIComponent(pid)}&app_redirect=${encodeURIComponent(redirect)}`;
+  },
   async getProfile(): Promise<ProfileT> {
     const pid = await getProfileId();
     return req(`/profile?profile_id=${pid}`);
