@@ -19,7 +19,7 @@ const FEATURES = [
 
 // Shown only when RevenueCat isn't running (web preview / Expo Go / keys not set).
 const FALLBACK_PLANS: Plan[] = [
-  { id: "yearly", title: "Yearly", price: "$99.99", period: "year", trial: true, pkg: null },
+  { id: "yearly", title: "Yearly", price: "$199.99", period: "year", trial: true, pkg: null },
   { id: "monthly", title: "Monthly", price: "$19.99", period: "month", trial: true, pkg: null },
 ];
 
@@ -79,10 +79,10 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
     toast.show(ok ? "Subscription restored." : "No active subscription found.");
   }
 
-  const cta = selected?.trial ? "Start 7-day free trial" : "Subscribe";
+  const cta = selected?.trial ? "Start 14-day free trial" : "Subscribe";
   const priceLine = selected
     ? (selected.trial
-        ? `7 days free, then ${selected.price}/${selected.period}. Cancel anytime.`
+        ? `14 days free — no card required. Then ${selected.price}/${selected.period}. Cancel anytime.`
         : `${selected.price}/${selected.period}. Cancel anytime.`)
     : "";
 
@@ -150,7 +150,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
                         ) : null}
                       </View>
                       {p.trial ? (
-                        <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>7-day free trial included</AppText>
+                        <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>14-day free trial · no card required</AppText>
                       ) : null}
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
