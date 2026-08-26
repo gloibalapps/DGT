@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Drivers GigTax — Tax & expense tracker for rideshare and delivery drivers</title>
+<meta name="description" content="Drivers GigTax turns every drive into a tax deduction. AI receipt scanning, GPS mileage logbook, real-time tax-savings jar and ATO-ready reports — built for rideshare and delivery drivers." />
+<link rel="icon" href="https://customer-assets-rejwkqb3.emergentagent.net/job_earnings-audit-app/artifacts/peuiiwgz_file_00000000565081faad56f3a8823d83d5.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0A1A2F; --navy2:#071322; --blue:#2563EB; --blue2:#3B82F6;
+    --green:#22C55E; --ink:#0B1E33; --muted:#5B7186; --line:#E4EBF3;
+    --lmuted:#9FB2C8; --white:#ffffff; --soft:#F5F8FC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--white);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:700;border-radius:12px;padding:14px 22px;cursor:pointer;border:0;font-size:15px;transition:transform .15s ease,box-shadow .15s ease}
+  .btn:hover{transform:translateY(-2px)}
+  .btn-primary{background:var(--blue);color:#fff;box-shadow:0 8px 20px rgba(37,99,235,.35)}
+  .btn-ghost{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.25)}
+  .btn-dark{background:var(--ink);color:#fff}
+  .eyebrow{display:inline-block;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:12px;color:var(--blue);background:rgba(37,99,235,.1);padding:6px 12px;border-radius:999px}
+
+  /* NAV */
+  nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:70px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .nav-icon{height:42px;width:42px}
+  .brand-txt{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.01em}
+  .brand-txt b{color:var(--blue);font-weight:800}
+  .nav-links{display:flex;gap:28px;align-items:center}
+  .nav-links a{font-weight:600;color:var(--ink);font-size:15px}
+  .nav-links a:hover{color:var(--blue)}
+  .nav-cta{background:var(--blue);color:#fff;padding:10px 18px;border-radius:10px;font-weight:700}
+  .burger{display:none}
+  @media(max-width:860px){.nav-links{display:none}}
+
+  /* HERO */
+  .hero{background:radial-gradient(1200px 600px at 70% -10%,rgba(37,99,235,.35),transparent),linear-gradient(180deg,var(--navy),var(--navy2));color:#fff;overflow:hidden}
+  .hero-in{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;padding:70px 0 80px}
+  .hero h1{font-size:clamp(34px,5vw,56px);line-height:1.05;font-weight:900;letter-spacing:-.02em}
+  .hero h1 .g{color:var(--green)}
+  .hero p.sub{color:var(--lmuted);font-size:19px;margin:20px 0 28px;max-width:520px}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .store{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
+  .store a{display:flex;align-items:center;gap:10px;background:#fff;color:var(--ink);border-radius:12px;padding:10px 16px;font-weight:700}
+  .store small{display:block;font-size:11px;color:var(--muted);font-weight:600}
+  .store b{font-size:15px}
+  .trust{display:flex;gap:26px;margin-top:30px;flex-wrap:wrap;color:var(--lmuted);font-size:14px}
+  .trust b{color:#fff}
+  .phone-stack{position:relative;display:flex;justify-content:center;align-items:center}
+  .phone{width:270px;border-radius:36px;border:9px solid #0e2036;box-shadow:0 30px 70px rgba(0,0,0,.5);background:#0e2036}
+  .phone.side{width:210px;position:absolute;opacity:.85;filter:brightness(.85)}
+  .phone.left{left:-6%;transform:rotate(-8deg) translateY(18px)}
+  .phone.right{right:-6%;transform:rotate(8deg) translateY(18px)}
+  @media(max-width:860px){.hero-in{grid-template-columns:1fr;padding:44px 0 56px}.phone.side{display:none}.phone{width:230px}}
+
+  /* SECTION */
+  section.blk{padding:82px 0}
+  .sec-head{text-align:center;max-width:680px;margin:0 auto 48px}
+  .sec-head h2{font-size:clamp(28px,3.6vw,40px);font-weight:900;letter-spacing:-.02em}
+  .sec-head p{color:var(--muted);font-size:18px;margin-top:12px}
+
+  /* FEATURES */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:26px;transition:transform .15s,box-shadow .15s}
+  .card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(11,30,51,.08)}
+  .ic{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px;background:rgba(37,99,235,.1)}
+  .ic.g{background:rgba(34,197,94,.12)}
+  .card h3{font-size:19px;font-weight:800;margin-bottom:8px}
+  .card p{color:var(--muted);font-size:15px}
+
+  /* STEPS */
+  .steps{background:var(--soft)}
+  .steps .grid{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:860px){.steps .grid{grid-template-columns:1fr}}
+  .step{text-align:center}
+  .step .num{width:60px;height:60px;border-radius:50%;background:var(--blue);color:#fff;font-weight:900;font-size:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;box-shadow:0 10px 24px rgba(37,99,235,.35)}
+  .step h3{font-size:20px;font-weight:800;margin-bottom:8px}
+  .step p{color:var(--muted)}
+
+  /* SPLIT (money) */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:center}
+  @media(max-width:860px){.split{grid-template-columns:1fr}}
+  .split .phone{width:300px;margin:0 auto}
+  .checklist{list-style:none;margin-top:22px;display:grid;gap:14px}
+  .checklist li{display:flex;gap:12px;font-size:16px;color:var(--ink)}
+  .checklist .tick{color:var(--green);font-weight:900;flex:0 0 auto}
+
+  /* PRICING */
+  .pricing{background:linear-gradient(180deg,var(--navy),var(--navy2));color:#fff}
+  .pricing .sec-head h2,.pricing .sec-head p{color:#fff}
+  .price-card{max-width:460px;margin:0 auto;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:22px;padding:34px;text-align:center;backdrop-filter:blur(8px)}
+  .price-badge{display:inline-block;background:var(--green);color:#04220f;font-weight:800;padding:7px 16px;border-radius:999px;font-size:13px;letter-spacing:.03em}
+  .price-plans{display:flex;gap:16px;justify-content:center;margin:24px 0 8px}
+  .plan{flex:1;border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:20px}
+  .plan .amt{font-size:34px;font-weight:900}
+  .plan .per{color:var(--lmuted);font-size:14px}
+  .plan.best{border-color:var(--green);box-shadow:0 0 0 2px rgba(34,197,94,.35)}
+  .plan .save{display:inline-block;margin-top:8px;font-size:12px;color:var(--green);font-weight:700}
+  .fineprint{color:var(--lmuted);font-size:13px;margin-top:16px}
+
+  /* FAQ */
+  .faq details{background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 20px;margin-bottom:12px}
+  .faq summary{cursor:pointer;font-weight:700;font-size:17px;padding:16px 0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::after{content:"+";font-size:24px;color:var(--blue);font-weight:400}
+  .faq details[open] summary::after{content:"–"}
+  .faq p{color:var(--muted);padding:0 0 18px;font-size:15px}
+
+  /* CTA / WAITLIST */
+  .waitlist{background:var(--soft);text-align:center}
+  .wl-form{display:flex;gap:12px;max-width:480px;margin:26px auto 0;flex-wrap:wrap}
+  .wl-form input{flex:1;min-width:220px;padding:15px 18px;border-radius:12px;border:1px solid var(--line);font-size:15px;font-family:inherit}
+  .wl-msg{margin-top:14px;font-weight:700;min-height:22px}
+
+  /* FOOTER */
+  footer{background:var(--navy2);color:var(--lmuted);padding:56px 0 30px;font-size:14px}
+  .foot-top{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:28px}
+  .foot-logo{height:38px;margin-bottom:14px}
+  .foot-col h4{color:#fff;font-size:14px;margin-bottom:12px;letter-spacing:.04em}
+  .foot-col a{display:block;margin-bottom:8px;color:var(--lmuted)}
+  .foot-col a:hover{color:#fff}
+  .disc{margin-top:22px;font-size:12px;line-height:1.6;color:#6b7f93}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="wrap nav-in">
+    <a href="#top" class="brand"><img class="nav-icon" src="https://customer-assets-rejwkqb3.emergentagent.net/job_earnings-audit-app/artifacts/peuiiwgz_file_00000000565081faad56f3a8823d83d5.png" alt="Drivers GigTax"/><span class="brand-txt">Drivers <b>GigTax</b></span></a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <a href="#get" class="nav-cta">Get the app</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero" id="top">
+  <div class="wrap hero-in">
+    <div>
+      <span class="eyebrow" style="background:rgba(255,255,255,.12);color:#fff">For rideshare &amp; delivery drivers</span>
+      <h1>Turn every drive into a <span class="g">tax deduction.</span></h1>
+      <p class="sub">Drivers GigTax tracks your income, expenses and kilometres automatically — so you claim every dollar, set aside the right tax, and stay ATO-ready without the spreadsheet stress.</p>
+      <div class="store" id="get">
+        <a href="#get"><span>🍎</span><span><small>Coming soon on the</small><b>App Store</b></span></a>
+        <a href="#get"><span>▶️</span><span><small>Coming soon on</small><b>Google Play</b></span></a>
+      </div>
+      <div class="trust">
+        <div>⭐️ Built for <b>Uber, DiDi, Ola, Amazon Flex, DoorDash &amp; more</b></div>
+        <div>🇦🇺 <b>ATO logbook</b> ready</div>
+      </div>
+    </div>
+    <div class="phone-stack">
+      <img class="phone" src="https://customer-assets-rejwkqb3.emergentagent.net/job_earnings-audit-app/artifacts/7iai5rud_Screenshot_20260816-213613.webp" alt="Drivers GigTax money dashboard"/>
+    </div>
+  </div>
+</header>
+
+<!-- FEATURES -->
+<section class="blk" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Everything in one app</span>
+      <h2>Less admin. Bigger refund.</h2>
+      <p>Purpose-built for gig drivers — not a generic accounting app.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="ic">📸</div><h3>AI receipt scanning</h3><p>Snap a fuel or service receipt and the app reads the amount, date, merchant — and even the litres — in seconds.</p></div>
+      <div class="card"><div class="ic">🛰️</div><h3>GPS mileage logbook</h3><p>Track drives with one tap. Tag business or private and build a real, ATO-compliant logbook automatically.</p></div>
+      <div class="card"><div class="ic g">🫙</div><h3>Tax-savings jar</h3><p>See exactly how much tax to set aside in real time, so tax time is never a nasty surprise.</p></div>
+      <div class="card"><div class="ic">📊</div><h3>BAS, GST &amp; tax reports</h3><p>Instant summaries and a logbook-vs-standard method comparison that shows which saves you more.</p></div>
+      <div class="card"><div class="ic">🚗</div><h3>Multi-vehicle tracking</h3><p>Drive more than one car? Each vehicle keeps its own trips, expenses, logbook and deductions.</p></div>
+      <div class="card"><div class="ic g">☁️</div><h3>Google Drive backup</h3><p>Your receipts and records auto-back up to your own Google Drive every day. Never lose a claim again.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="blk steps" id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Drive. Earn. Track it.</span>
+      <h2>Three taps and you're done</h2>
+    </div>
+    <div class="grid">
+      <div class="step"><div class="num">1</div><h3>Drive</h3><p>Start a GPS shift or add a trip. The app logs your kilometres while you focus on the road.</p></div>
+      <div class="step"><div class="num">2</div><h3>Track</h3><p>Snap receipts and log earnings. Everything is sorted into income, expenses and deductions for you.</p></div>
+      <div class="step"><div class="num">3</div><h3>Done</h3><p>Open the Money tab to see your real take-home, tax owed and best shifts — ready for your accountant.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- MONEY SPLIT -->
+<section class="blk">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow">Know your real numbers</span>
+      <h2 style="font-size:clamp(26px,3.4vw,36px);font-weight:900;margin-top:12px">See what you actually keep</h2>
+      <p style="color:var(--muted);font-size:17px;margin-top:12px">Most apps show gross earnings. Drivers GigTax shows the truth — after fuel, expenses, vehicle rental and tax.</p>
+      <ul class="checklist">
+        <li><span class="tick">✓</span> Real $/hour after every cost, not just gross</li>
+        <li><span class="tick">✓</span> Your "keep rate" and live tax position</li>
+        <li><span class="tick">✓</span> Best day &amp; best shift insights to earn more</li>
+        <li><span class="tick">✓</span> Weekly earnings goal with progress tracking</li>
+      </ul>
+    </div>
+    <div><img class="phone" src="https://customer-assets-rejwkqb3.emergentagent.net/job_earnings-audit-app/artifacts/72ct5xco_Screenshot_20260816-162158.webp" alt="Money dashboard"/></div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="blk pricing" id="pricing">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow" style="background:rgba(255,255,255,.12);color:#fff">Simple pricing</span>
+      <h2>Try it free for 14 days</h2>
+      <p>Full access. Cancel anytime. You won't be charged until the trial ends.</p>
+    </div>
+    <div class="price-card">
+      <span class="price-badge">14-DAY FREE TRIAL</span>
+      <div class="price-plans">
+        <div class="plan"><div class="amt">$19.99</div><div class="per">per month</div></div>
+        <div class="plan best"><div class="amt">$199.99</div><div class="per">per year</div><span class="save">Save 17%</span></div>
+      </div>
+      <a href="#get" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px">Start your free trial</a>
+      <p class="fineprint">Prices in AUD. Billed through the App Store / Google Play after your 14-day trial. Cancel anytime in your store account.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="blk faq" id="faq">
+  <div class="wrap" style="max-width:820px">
+    <div class="sec-head"><span class="eyebrow">Questions</span><h2>Frequently asked</h2></div>
+    <details open><summary>Which drivers is this for?</summary><p>Any rideshare or delivery driver — Uber, DiDi, Ola, Bolt, Amazon Flex, DoorDash, Uber Eats, Menulog and more. If you drive to earn, it's for you.</p></details>
+    <details><summary>Do I need to be good with tax or spreadsheets?</summary><p>No. The app does the tracking and calculations for you and gives you clear, ATO-ready summaries you can hand straight to your accountant.</p></details>
+    <details><summary>How does the mileage logbook work?</summary><p>Start a GPS shift and drive — the app records your kilometres. Tag each trip business or private to build a real ATO-compliant logbook and business-use percentage.</p></details>
+    <details><summary>Is my data safe?</summary><p>Yes. Your receipts and records back up privately to your own Google Drive, and your account is protected with secure Google sign-in.</p></details>
+    <details><summary>Is this tax advice?</summary><p>Drivers GigTax is a record-keeping and estimation tool based on ATO guidance. It's not personal tax advice — always confirm with a registered tax agent.</p></details>
+  </div>
+</section>
+
+<!-- WAITLIST -->
+<section class="blk waitlist" id="waitlist">
+  <div class="wrap" style="max-width:640px">
+    <span class="eyebrow">Be first in line</span>
+    <h2 style="font-size:clamp(26px,3.4vw,36px);font-weight:900;margin-top:12px">Get early access</h2>
+    <p style="color:var(--muted);font-size:17px;margin-top:10px">Drop your email and we'll let you know the moment Drivers GigTax lands on your app store.</p>
+    <form class="wl-form" onsubmit="return submitWaitlist(event)">
+      <input type="email" id="wl-email" placeholder="you@email.com" required />
+      <button class="btn btn-primary" type="submit">Notify me</button>
+    </form>
+    <div class="wl-msg" id="wl-msg"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div style="max-width:300px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><img src="https://customer-assets-rejwkqb3.emergentagent.net/job_earnings-audit-app/artifacts/peuiiwgz_file_00000000565081faad56f3a8823d83d5.png" alt="Drivers GigTax" style="height:42px;width:42px"/><span style="font-size:20px;font-weight:800;color:#fff">Drivers <span style="color:var(--blue2)">GigTax</span></span></div>
+        <p style="margin-top:6px">Drive. Earn. Track it. The tax &amp; expense tracker built for gig drivers.</p>
+      </div>
+      <div class="foot-col"><h4>Product</h4><a href="#features">Features</a><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+      <div class="foot-col"><h4>Company</h4><a href="mailto:support@drivergigtax.com">Contact</a><a href="#">Privacy Policy</a><a href="#">Terms of Service</a></div>
+      <div class="foot-col"><h4>Get the app</h4><a href="#get">App Store (soon)</a><a href="#get">Google Play (soon)</a><a href="https://www.drivergigtax.com">www.drivergigtax.com</a></div>
+    </div>
+    <p class="disc">© 2026 Drivers GigTax. All rights reserved. Drivers GigTax is a record-keeping and tax-estimation tool based on publicly available ATO guidance and is not a substitute for personal advice from a registered tax agent. Uber, DiDi, Amazon Flex, DoorDash and other names are trademarks of their respective owners and are used for descriptive purposes only.</p>
+  </div>
+</footer>
+
+<script>
+async function submitWaitlist(e){
+  e.preventDefault();
+  var email=document.getElementById('wl-email').value.trim();
+  var msg=document.getElementById('wl-msg');
+  if(!email){return false;}
+  msg.style.color='#5B7186';msg.textContent='Adding you…';
+  try{
+    var r=await fetch('/api/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})});
+    if(r.ok){msg.style.color='#16A34A';msg.textContent="You're on the list! We'll be in touch. 🎉";document.getElementById('wl-email').value='';}
+    else{msg.style.color='#DC2626';msg.textContent='Something went wrong — please try again.';}
+  }catch(err){msg.style.color='#DC2626';msg.textContent='Network error — please try again.';}
+  return false;
+}
+</script>
+</body>
+</html>

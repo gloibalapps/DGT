@@ -38,6 +38,36 @@ async def health():
     # slow/unavailable DB never trips the health check.
     return {"status": "ok"}
 
+
+# Marketing landing page (served here so it's reachable via the /api ingress).
+_SITE_HTML_PATH = Path(__file__).resolve().parent.parent / "website" / "index.html"
+
+
+@api_router.get("/site")
+async def marketing_site():
+    try:
+        html = _SITE_HTML_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise HTTPException(404, "Site not found")
+    return HTMLResponse(html)
+
+
+class WaitlistEntry(BaseModel):
+    email: str
+
+
+@api_router.post("/waitlist")
+async def join_waitlist(entry: WaitlistEntry):
+    email = (entry.email or "").strip().lower()
+    if "@" not in email or "." not in email:
+        raise HTTPException(400, "Invalid email")
+    await db.waitlist.update_one(
+        {"email": email},
+        {"$setOnInsert": {"email": email, "created_at": now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True}
+
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("gigtax")
