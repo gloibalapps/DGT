@@ -261,22 +261,25 @@ export default function Mileage() {
       {/* ---- Today ---- */}
       <Card style={{ marginBottom: 14 }}>
         <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <View>
-            <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
-              {(today.total_km + (tracking ? dist : 0)).toFixed(1)} {unit}
-            </AppText>
-            <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
+        <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
+          {(today.total_km + (tracking ? dist : 0)).toFixed(1)} {unit}
+        </AppText>
+        <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+            <AppText variant="caption" color={colors.profit} style={{ fontWeight: "700" }}>{today.business_km} {unit} business</AppText>
           </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <AppText variant="bodySemi" color={colors.profit}>{today.business_km} {unit} business</AppText>
-            <AppText variant="caption" color={colors.dim}>{today.private_km} {unit} private · {today.business_pct}% business</AppText>
-            {today.per_business_km != null ? (
-              <View style={{ marginTop: 6, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                <AppText variant="caption" color={colors.accent}>{fmtMoney(today.per_business_km)}/business {unit}</AppText>
-              </View>
-            ) : null}
+          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+            <AppText variant="caption" color={colors.dim}>{today.private_km} {unit} private</AppText>
           </View>
+          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+            <AppText variant="caption" color={colors.dim}>{today.business_pct}% business</AppText>
+          </View>
+          {today.per_business_km != null ? (
+            <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+              <AppText variant="caption" color={colors.accent}>{fmtMoney(today.per_business_km)}/business {unit}</AppText>
+            </View>
+          ) : null}
         </View>
       </Card>
 

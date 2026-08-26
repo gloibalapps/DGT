@@ -52,6 +52,22 @@ async def marketing_site():
     return HTMLResponse(html)
 
 
+@api_router.get("/privacy")
+async def privacy_page():
+    try:
+        return HTMLResponse((_SITE_HTML_PATH.parent / "privacy.html").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise HTTPException(404, "Not found")
+
+
+@api_router.get("/terms")
+async def terms_page():
+    try:
+        return HTMLResponse((_SITE_HTML_PATH.parent / "terms.html").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise HTTPException(404, "Not found")
+
+
 class WaitlistEntry(BaseModel):
     email: str
 
