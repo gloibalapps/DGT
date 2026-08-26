@@ -136,6 +136,7 @@ export interface IncomeT {
 export interface ExpenseT {
   id: string; profile_id: string; date: string; amount: number;
   category: "fuel" | "tolls" | "vehicle" | "phone" | "other";
+  liters?: number | null;
   merchant?: string | null; vehicle_id?: string | null;
   tax_treatment: string; note?: string | null;
   receipt_image?: string | null;

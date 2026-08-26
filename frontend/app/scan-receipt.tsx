@@ -27,6 +27,7 @@ export default function ScanReceipt() {
           type: "expense", fromScan: "1",
           amount: data.amount != null ? String(data.amount) : "",
           date: data.date || "", merchant: data.merchant || "", category: data.category || "other",
+          liters: data.liters != null ? String(data.liters) : "",
         },
       });
     } catch (e) {

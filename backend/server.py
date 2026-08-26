@@ -578,6 +578,7 @@ class Expense(BaseModel):
     vehicle_id: Optional[str] = None
     tax_treatment: Literal["inclusive", "free", "exempt", "out_of_scope"] = "inclusive"
     note: Optional[str] = None
+    liters: Optional[float] = None  # fuel volume (litres), for fuel receipts
     receipt_image: Optional[str] = None  # base64
     created_at: str = Field(default_factory=now_iso)
 
@@ -1061,6 +1062,7 @@ async def scan_receipt(req: ScanRequest):
         '{"amount": number (total incl GST, no currency symbol), '
         '"date": "YYYY-MM-DD" (best guess, today if unclear), '
         '"merchant": string, '
+        '"liters": number|null (fuel volume in litres for FUEL receipts, e.g. 42.15; null for non-fuel), '
         '"category": one of "fuel","tolls","vehicle","phone","other"}. '
         "Map petrol/servo/gas -> fuel; car service/tyres/repairs/parts -> vehicle; "
         "toll/etoll/linkt -> tolls; telco/mobile/data -> phone; everything else -> other."
@@ -1093,11 +1095,17 @@ async def scan_receipt(req: ScanRequest):
     cat = data.get("category", "other")
     if cat not in ("fuel", "tolls", "vehicle", "phone", "other"):
         cat = "other"
+    liters = data.get("liters")
+    try:
+        liters = round(float(liters), 2) if liters not in (None, "") and cat == "fuel" else None
+    except (TypeError, ValueError):
+        liters = None
     return {
         "amount": data.get("amount"),
         "date": data.get("date") or date.today().isoformat(),
         "merchant": data.get("merchant") or "",
         "category": cat,
+        "liters": liters,
     }
 
 

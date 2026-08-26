@@ -37,7 +37,7 @@ export default function Entry() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     type?: string; id?: string; fromScan?: string;
-    amount?: string; date?: string; merchant?: string; category?: string;
+    amount?: string; date?: string; merchant?: string; category?: string; liters?: string;
   }>();
   const kind = (params.type || "income") as Kind;
   const editing = !!params.id;
@@ -51,6 +51,7 @@ export default function Entry() {
   const [platform, setPlatform] = useState(profile?.platforms?.[0] || "Other");
   const [category, setCategory] = useState((params.category as string) || "fuel");
   const [merchant, setMerchant] = useState(params.merchant || "");
+  const [liters, setLiters] = useState(params.liters || "");
   const [treatment, setTreatment] = useState("inclusive");
   const [distance, setDistance] = useState("");
   const [minutes, setMinutes] = useState("");
@@ -89,7 +90,7 @@ export default function Entry() {
         } else if (kind === "expense") {
           const list = await api.listExpenses();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
+          if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setLiters(it.liters != null ? String(it.liters) : ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
         } else if (kind === "shift") {
           const list = await api.listShifts();
           const it = list.find((x) => x.id === params.id);
@@ -119,6 +120,10 @@ export default function Entry() {
         const amt = parseFloat(amount);
         if (!amt) { show("Enter an amount", "error"); setSaving(false); return; }
         const payload: any = { date: iso, amount: amt, category, merchant, tax_treatment: treatment, note };
+        if (category === "fuel") {
+          const l = parseFloat(liters);
+          payload.liters = isNaN(l) ? null : l;
+        }
         if (receiptImage) payload.receipt_image = receiptImage;
         if ((category === "fuel" || category === "vehicle") && activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (editing) await api.updateExpense(params.id!, payload); else await api.addExpense(payload);
@@ -274,6 +279,12 @@ export default function Entry() {
                 <Field label="Merchant (optional)">
                   <Input testID="entry-merchant" value={merchant} onChangeText={setMerchant} placeholder="Shell, Linkt…" />
                 </Field>
+                {category === "fuel" ? (
+                  <Field label="Litres (optional)">
+                    <Input testID="entry-liters" value={liters} onChangeText={setLiters}
+                      keyboardType="decimal-pad" placeholder="e.g. 42.15" />
+                  </Field>
+                ) : null}
                 {receiptImage ? (
                   <Field label="Receipt">
                     <Image source={{ uri: `data:image/jpeg;base64,${receiptImage}` }}
