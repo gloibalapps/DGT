@@ -203,6 +203,30 @@ async def auth_claim(payload: dict = Body(...), authorization: Optional[str] = H
     return {"claimed": moved > 0, "moved": moved}
 
 
+@api_router.delete("/account")
+async def delete_account(profile_id: str = Query(...), authorization: Optional[str] = Header(None)):
+    """Permanently delete a driver's account and ALL their data.
+    Required by the Apple App Store & Google Play for apps with sign-in."""
+    deleted: dict = {}
+    for name, coll in (
+        ("profiles", db.profiles), ("vehicles", db.vehicles), ("trips", db.trips),
+        ("income", db.income), ("expenses", db.expenses), ("shifts", db.shifts),
+        ("drive_tokens", db.drive_tokens),
+    ):
+        res = await coll.delete_many({"profile_id": profile_id})
+        deleted[name] = res.deleted_count
+    # If signed in, also remove the user record + all of their sessions.
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        sess = await db.user_sessions.find_one({"session_token": token})
+        if sess:
+            uid = sess["user_id"]
+            await db.user_sessions.delete_many({"user_id": uid})
+            await db.users.delete_one({"user_id": uid})
+            deleted["user"] = 1
+    return {"ok": True, "deleted": deleted}
+
+
 # ---------------------------------------------------------------------------
 # Own-branded Google OAuth (drivergigtax.com) — backend-mediated code flow.
 # The Google consent shows the developer's own app name, not Emergent.

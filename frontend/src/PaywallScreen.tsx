@@ -97,7 +97,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
               <Ionicons name="rocket" size={38} color={colors.bg} />
             </View>
             <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 38, color: colors.text }}>
-              GigTax Pro
+              GigTax
             </AppText>
             <AppText variant="body" color={colors.dim} style={{ textAlign: "center", marginTop: 6, maxWidth: 300, lineHeight: 21 }}>
               Everything you need to track income, mileage and tax — in one place.
@@ -108,7 +108,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
             <View style={{ marginTop: 24, padding: 16, borderRadius: 16, backgroundColor: colors.surface,
               borderWidth: 1, borderColor: colors.profit, flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="checkmark-circle" size={22} color={colors.profit} style={{ marginRight: 10 }} />
-              <AppText variant="bodySemi" color={colors.text}>You're subscribed to GigTax Pro.</AppText>
+              <AppText variant="bodySemi" color={colors.text}>You're subscribed to GigTax.</AppText>
             </View>
           ) : null}
 
@@ -184,10 +184,10 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
             </Pressable>
 
             <View style={{ flexDirection: "row", gap: 18 }}>
-              <Pressable onPress={() => Linking.openURL("https://gigtax.app/terms")} hitSlop={6}>
+              <Pressable onPress={() => Linking.openURL("https://driversgigtax.com/terms")} hitSlop={6}>
                 <AppText variant="caption" color={colors.dim}>Terms</AppText>
               </Pressable>
-              <Pressable onPress={() => Linking.openURL("https://gigtax.app/privacy")} hitSlop={6}>
+              <Pressable onPress={() => Linking.openURL("https://driversgigtax.com/privacy")} hitSlop={6}>
                 <AppText variant="caption" color={colors.dim}>Privacy</AppText>
               </Pressable>
             </View>

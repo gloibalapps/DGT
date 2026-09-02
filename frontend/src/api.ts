@@ -31,6 +31,14 @@ export async function getProfileId(): Promise<string> {
   return _pid;
 }
 
+// Forget the current local profile so a brand-new one is generated on next
+// access (used after account deletion → fresh onboarding).
+export async function resetLocalProfileId(): Promise<void> {
+  _pid = null;
+  _authPid = null;
+  await storage.removeItem(PID_KEY);
+}
+
 async function req(path: string, opts: RequestInit = {}, retries = 2, timeoutMs = 15000): Promise<any> {
   const method = (opts.method || "GET").toUpperCase();
   // Only GET/PUT/DELETE are safe to auto-retry; POST is not idempotent.
@@ -155,6 +163,10 @@ export const api = {
   async authLogout() { return req(`/auth/logout`, { method: "POST" }); },
   async authClaim(fromProfileId: string) {
     return req(`/auth/claim`, { method: "POST", body: JSON.stringify({ from_profile_id: fromProfileId }) });
+  },
+  async deleteAccount() {
+    const pid = await getProfileId();
+    return req(`/account?profile_id=${pid}`, { method: "DELETE" });
   },
 
   // ---- Google Drive backup ----

@@ -8,7 +8,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { useAuth } from "@/src/auth";
 import { useSubscription } from "@/src/subscription";
-import { api } from "@/src/api";
+import { api, resetLocalProfileId } from "@/src/api";
 import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
@@ -33,7 +33,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function Settings() {
   const { colors, mode, toggle } = useTheme();
-  const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle } = useStore();
+  const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle, reloadProfile, reloadVehicles } = useStore();
   const { user, signOut } = useAuth();
   const { isActive: subActive, managed: subManaged, presentCustomerCenter } = useSubscription();
   const { show } = useToast();
@@ -45,6 +45,27 @@ export default function Settings() {
 
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const doDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteAccount();
+      try { await signOut(); } catch { /* auth may be disabled */ }
+      await resetLocalProfileId();
+      await reloadProfile();
+      await reloadVehicles();
+      show("Your account and data have been deleted", "success");
+      setConfirmDelete(false);
+      router.replace("/" as any);
+    } catch {
+      show("Couldn't delete account — please try again", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const loadBackup = useCallback(async () => {
     try { setBackup(await api.backupStatus()); } catch { /* ignore */ }
@@ -157,7 +178,7 @@ export default function Settings() {
               style={{ width: 40, height: 40 }} contentFit="cover" />
           </View>
           <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">{subActive ? "GigTax Pro" : "Subscribe to GigTax"}</AppText>
+            <AppText variant="bodySemi">{subActive ? "GigTax" : "Subscribe to GigTax"}</AppText>
             <AppText variant="caption" color={colors.dim}>
               {subActive ? "Your subscription is active" : "14-day free trial · cancel anytime"}
             </AppText>
@@ -473,6 +494,35 @@ export default function Settings() {
           <Ionicons name="chevron-forward" size={18} color={colors.dim} />
         </Card>
       </Pressable>
+
+      {/* Delete account — App Store / Play requirement */}
+      <View style={{ marginBottom: 40 }}>
+        {!confirmDelete ? (
+          <Pressable testID="set-delete-account" onPress={() => setConfirmDelete(true)}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center",
+              paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+            <Ionicons name="trash-outline" size={18} color={colors.loss} style={{ marginRight: 8 }} />
+            <AppText variant="bodySemi" color={colors.loss}>Delete account</AppText>
+          </Pressable>
+        ) : (
+          <Card style={{ borderColor: colors.loss, borderWidth: 1 }}>
+            <AppText variant="bodySemi">Delete your account?</AppText>
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 6, lineHeight: 18 }}>
+              This permanently erases your profile, trips, income, expenses, vehicles and logged hours, and disconnects any backup. This can't be undone.
+            </AppText>
+            <Pressable testID="set-delete-confirm" onPress={doDeleteAccount} disabled={deleting}
+              style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                paddingVertical: 13, borderRadius: 12, backgroundColor: colors.loss, opacity: deleting ? 0.6 : 1 }}>
+              <Ionicons name="trash" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <AppText variant="bodySemi" color="#fff">{deleting ? "Deleting…" : "Delete permanently"}</AppText>
+            </Pressable>
+            <Pressable testID="set-delete-cancel" onPress={() => setConfirmDelete(false)} disabled={deleting}
+              hitSlop={8} style={{ marginTop: 12, alignItems: "center" }}>
+              <AppText variant="caption" color={colors.dim}>Cancel</AppText>
+            </Pressable>
+          </Card>
+        )}
+      </View>
     </Screen>
   );
 }

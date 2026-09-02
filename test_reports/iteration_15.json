@@ -1,0 +1,43 @@
+{
+  "summary": "Full end-to-end production-readiness review of GigTax v2. BACKEND: 98/98 pytest tests pass (fixed 3 stale tests in test_recent_features.py — /api/report -> /api/reports, POST /api/vehicles now returns list, DELETE requires profile_id query). FRONTEND: 5-step onboarding (AU -> delivery -> Uber Eats -> own -> start driving) completes cleanly and lands on Money tab. All 5 tabs render without red-screens or console errors. Money hero updates on Add-income (verified $75 appears in body), period toggles all work. Reports tab shows NET PROFIT, Vehicle deduction, method comparison (Logbook vs Cents/km), BAS card, and Export CSV; Week/Month/Quarter/Year toggles work. Ask tab returns a Claude-grounded ATO reply within ~5s to 'Can I claim fuel expenses?' (mentions 88c/km, logbook method, receipts). Mileage tab renders Vehicle switcher, Add trip, GPS shift, TODAY 0.0 km, and History. Profile tab correctly shows 'Subscribe to GigTax' + '14-day free trial · cancel anytime' (NO 'GigTax Pro' anywhere), Backups (Google Drive) with Connect button, User guide (opens Manual with 5+ expandable sections), Driver name, Appearance/theme, and Vehicles section. Only one console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' (from an upstream RN Web dep — non-blocking).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /health", "issue": "Route is registered on the FastAPI app directly (server.py:35) rather than under the /api router, so it is not reachable through the k8s ingress (only /api/* is proxied to backend). If you rely on it as an external liveness probe, move it to @api_router.get('/health'). Internal k8s pod probes still work."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Money period tabs (home.tsx:24-29,182)", "issue": "testID mismatch vs review-request docs: request expected `money-period-fy` and `money-period-all`, but actual code emits `money-period-today | week | month | year`. There is no 'all-time' option any more. Not a functional bug — all 4 toggles work — but update your test/QA docs (or restore an all-time period if intended).", "testID": "money-period-year (was expected as money-period-fy)", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Upstream RN Web (unknown source; not in this repo)", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking, silence with LogBox or upgrade the offending dep when convenient."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_iteration15.xml",
+    "/app/backend/tests/test_recent_features.py"
+  ],
+  "action_items": [
+    "Optional: move @app.get('/health') to @api_router.get('/health') so it is reachable via the /api ingress for external uptime monitors.",
+    "Optional: align docs/test-plan testIDs — Money period toggles are today/week/month/year (no 'fy' or 'all').",
+    "Optional: silence the 'props.pointerEvents is deprecated' warning (upstream RN Web)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1240 lines — consider splitting auth, drive-backup, vehicles, and AI endpoints into separate modules for maintainability (files >700 lines guideline).",
+    "AUTH_ENABLED=false and RC_ENABLED/SUB_GATE_ENABLED=false are intentional for APK preview — confirmed and NOT flagged as bugs.",
+    "MongoDB _id is consistently stripped via clean(). ObjectId leakage checked — none found in dashboard/money/reports/tax-mileage/insights/performance/vehicles/shifts responses.",
+    "All frontend API calls use process.env.EXPO_PUBLIC_BACKEND_URL via src/api.ts — no hardcoded URLs.",
+    "Subscription card branding fix verified: Profile shows 'Subscribe to GigTax' / '14-day free trial · cancel anytime'; no 'GigTax Pro' substring anywhere in Profile/Paywall render.",
+    "Ask assistant is properly grounded — returns a detailed reply citing cents-per-km, logbook method, ATO 88c rate, and includes the mandated 'consult a registered tax agent' disclaimer."
+  ],
+  "updated_files": ["/app/backend/tests/test_recent_features.py"],
+  "success_rate": {"backend": "100% (98/98 pytest)", "frontend": "100% for all 5 tabs & core flows tested"},
+  "seed_data_creation": "Transient: added a $75 income and $20 expense during the Money-tab test then deleted them. No residual data. Backend tests use TEST_-prefixed unique profile_id per test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Onboarding (5 steps): country-AU -> worktype-delivery -> platform-Uber Eats -> ownership-own -> onboarding-next (final CTA is 'Start driving'). Money period testIDs are today|week|month|year (NOT fy/all as older docs said). Reports periods: Week/Month/Quarter/Year (Quarter is default). Ask tab has no header — first element is disclaimer card. Profile subscription now reads 'Subscribe to GigTax'. Backend base = https://earnings-audit-app.preview.emergentagent.com; pytest suite in /app/backend/tests uses conftest.py -> EXPO_PUBLIC_BACKEND_URL.",
+  "rca_of_issue": "N/A — no bugs found. 3 stale backend tests fixed in test_recent_features.py: (a) TestCoreEndpoints was hitting /api/report (singular) but the API is /api/reports (plural, aligned with frontend src/api.ts:279). (b) TestVehiclesCRUD.test_full_vehicle_lifecycle assumed POST /api/vehicles returns a single vehicle object and DELETE takes no query — but the real API (server.py:709-751) returns the full vehicle list and DELETE requires ?profile_id=... The tests now match the implementation."
+}
