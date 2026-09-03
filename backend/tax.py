@@ -29,12 +29,34 @@ AU_CPK_MAX_KM = 5000
 # ---------------------------------------------------------------------------
 US_SE_TAX_RATE = 0.153        # 12.4% Social Security + 2.9% Medicare
 US_SE_NET_FACTOR = 0.9235     # net earnings from SE = 92.35% of net profit
+US_SS_RATE = 0.124            # Social Security portion (capped at the wage base)
+US_MEDICARE_RATE = 0.029      # Medicare portion (no cap)
+# Social Security wage base by year (only the 12.4% SS portion is capped).
+US_SS_WAGE_BASE = {2024: 168600.0, 2025: 176100.0, 2026: 184500.0}
 US_QUARTER_DUE = {1: "15 Apr", 2: "15 Jun", 3: "15 Sep", 4: "15 Jan"}
-US_STD_DEDUCTION = 15000.0    # 2025 single standard deduction (estimate)
-# 2025 single-filer federal income tax brackets: (upper_bound, rate)
-US_FED_BRACKETS = [(11925, 0.10), (48475, 0.12), (103350, 0.22),
-                   (197300, 0.24), (250525, 0.32), (626350, 0.35),
-                   (float("inf"), 0.37)]
+
+# Single-filer standard deduction by tax year (OBBBA-adjusted).
+US_STD_DEDUCTION_BY_YEAR = {2024: 14600.0, 2025: 15000.0, 2026: 16100.0}
+# Single-filer federal income tax brackets by year: (upper_bound, rate).
+US_FED_BRACKETS_BY_YEAR = {
+    2025: [(11925, 0.10), (48475, 0.12), (103350, 0.22),
+           (197300, 0.24), (250525, 0.32), (626350, 0.35),
+           (float("inf"), 0.37)],
+    2026: [(12400, 0.10), (50400, 0.12), (105700, 0.22),
+           (201775, 0.24), (256225, 0.32), (640600, 0.35),
+           (float("inf"), 0.37)],
+}
+_US_LATEST_YEAR = max(US_FED_BRACKETS_BY_YEAR)
+
+
+def us_tax_year(ref: Optional[date] = None) -> int:
+    """Clamp to the latest year we have official figures for."""
+    y = (ref or date.today()).year
+    return y if y in US_FED_BRACKETS_BY_YEAR else (2025 if y < 2025 else _US_LATEST_YEAR)
+
+
+def us_std_deduction(year: int) -> float:
+    return US_STD_DEDUCTION_BY_YEAR.get(year, US_STD_DEDUCTION_BY_YEAR[_US_LATEST_YEAR])
 
 # AU resident individual tax 2024-25: (upper_bound, rate). Medicare levy added.
 AU_INCOME_BRACKETS = [(18200, 0.0), (45000, 0.16), (135000, 0.30),
@@ -55,8 +77,20 @@ def _bracket_tax(taxable: float, brackets) -> float:
     return round(tax, 2)
 
 
-def us_federal_income_tax(taxable: float) -> float:
-    return _bracket_tax(max(0.0, taxable), US_FED_BRACKETS)
+def us_federal_income_tax(taxable: float, year: Optional[int] = None) -> float:
+    brackets = US_FED_BRACKETS_BY_YEAR.get(year or _US_LATEST_YEAR,
+                                           US_FED_BRACKETS_BY_YEAR[_US_LATEST_YEAR])
+    return _bracket_tax(max(0.0, taxable), brackets)
+
+
+def us_se_tax(net_profit: float, year: Optional[int] = None) -> float:
+    """Self-employment tax: 12.4% Social Security up to the year's wage base +
+    2.9% Medicare (uncapped), on 92.35% of net profit."""
+    net_se = max(0.0, net_profit) * US_SE_NET_FACTOR
+    base = US_SS_WAGE_BASE.get(year or _US_LATEST_YEAR, US_SS_WAGE_BASE[max(US_SS_WAGE_BASE)])
+    ss = min(net_se, base) * US_SS_RATE
+    medicare = net_se * US_MEDICARE_RATE
+    return round(ss + medicare, 2)
 
 
 def au_income_tax(taxable: float) -> float:
@@ -515,9 +549,10 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
     total_deductions = round(car_and_truck + other_expenses, 2)
     net_profit = round(total_income - total_deductions, 2)
 
-    # ---- self-employment tax estimate ----
+    # ---- self-employment tax estimate (year-aware; SS capped at wage base) ----
+    tax_year = us_tax_year(ref)
     net_se = round(max(0.0, net_profit) * US_SE_NET_FACTOR, 2)
-    se_tax = round(net_se * US_SE_TAX_RATE, 2)
+    se_tax = us_se_tax(net_profit, tax_year)
     st_code, st_rate, st_tax = us_state_tax(profile.get("region"), max(0.0, net_profit))
 
     q_due = None
@@ -566,6 +601,7 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
             "net_earnings": net_se,
             "rate": US_SE_TAX_RATE,
             "amount": se_tax,
+            "tax_year": tax_year,
             "state": st_code,
             "state_rate": st_rate,
             "state_tax": st_tax,
@@ -818,9 +854,10 @@ def tax_jar(profile: dict, report: dict, ref: date) -> Dict[str, Any]:
     year_label = _fy_label(fy_s, country)
 
     if country == "US":
+        tax_year = us_tax_year(ref)
         se = report["se_tax"]["amount"]
-        taxable = max(0.0, net - se / 2 - US_STD_DEDUCTION)  # half SE-tax is deductible
-        fed = us_federal_income_tax(taxable)
+        taxable = max(0.0, net - se / 2 - us_std_deduction(tax_year))  # half SE-tax is deductible
+        fed = us_federal_income_tax(taxable, tax_year)
         st_tax = report["se_tax"].get("state_tax", 0.0)
         st_code = report["se_tax"].get("state") or ""
         set_aside = round(se + fed + st_tax, 2)

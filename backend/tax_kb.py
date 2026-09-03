@@ -71,7 +71,7 @@ SOURCE: Internal Revenue Service (IRS) — Schedule C (Form 1040), Publication 4
 
 A. CAR EXPENSE METHODS (choose ONE per car, per year)
 1. Standard mileage rate
-   - Rate: 67 cents per business mile for tax year 2024; 70 cents per mile for 2025. Updated yearly by the IRS.
+   - Rate: 67 cents per business mile for tax year 2024; 70 cents per mile for 2025. For 2026 the IRS set a split rate: 72.5 cents per mile for Jan 1–Jun 30, 2026 and 76 cents per mile for Jul 1–Dec 31, 2026 (a mid-year increase) — categorise each trip by its date. Updated by the IRS.
    - To use it, you generally must choose the standard mileage rate in the FIRST year the car is used for business; in later years you can switch to actual expenses (with restrictions). For a LEASED car, if you choose the standard mileage rate you must use it for the entire lease period.
    - The rate already includes gas, oil, maintenance, insurance and depreciation — you cannot deduct these separately.
 2. Actual expense method
@@ -96,8 +96,9 @@ C. WHAT IS NOT DEDUCTIBLE
    - Commuting/personal miles.
 
 D. SELF-EMPLOYMENT & ESTIMATED TAX
-   - Net profit from Schedule C is subject to self-employment tax of 15.3% (Social Security + Medicare) plus federal (and any state) income tax.
-   - You generally must pay estimated taxes quarterly using Form 1040-ES if you expect to owe $1,000 or more.
+   - Net profit from Schedule C is subject to self-employment tax of 15.3% (12.4% Social Security up to the annual wage base — $176,100 for 2025, $184,500 for 2026 — plus 2.9% Medicare with no cap), calculated on 92.35% of net profit, plus federal (and any state) income tax.
+   - The single-filer standard deduction is $15,000 for 2025 and $16,100 for 2026 (OBBBA-adjusted). One-half of your self-employment tax is deductible when working out income tax.
+   - You generally must pay estimated taxes quarterly using Form 1040-ES if you expect to owe $1,000 or more. 2026 due dates: Apr 15, Jun 15, Sep 15 (2026) and Jan 15 (2027).
    - A Form 1099-NEC or 1099-K from a platform reports income, but you must report ALL income even if you don't receive a form.
 
 E. RECORDS
