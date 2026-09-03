@@ -143,6 +143,29 @@ export async function syncAutotrack(): Promise<void> {
   if (!enabled && running) { await disableAutotrack(); }
 }
 
+// Suspend background auto-tracking while a manual GPS shift is running, so the
+// same physical drive isn't captured twice (once by auto, once by the manual
+// tracker). This does NOT change the user's enabled preference — it just stops
+// the background updates and drops any half-captured drive so it can't become a
+// duplicate pending trip. syncAutotrack() on the next app open will restore it.
+export async function pauseAutotrackForManual(): Promise<void> {
+  if (Platform.OS === "web") return;
+  if (await isRunning()) {
+    try { await Location.stopLocationUpdatesAsync(AUTOTRACK_TASK); } catch { /* noop */ }
+  }
+  await writeJSON(BUF_KEY, null);
+}
+
+// Resume background auto-tracking after a manual GPS shift ends, but only if the
+// driver still has auto-detection turned on. Starts fresh (no carried-over buffer).
+export async function resumeAutotrackIfEnabled(): Promise<void> {
+  if (Platform.OS === "web") return;
+  await writeJSON(BUF_KEY, null);
+  if ((await isAutotrackEnabled()) && !(await isRunning())) {
+    try { await enableAutotrack(); } catch { /* noop */ }
+  }
+}
+
 // If a drive is sitting open past the stop-gap, close it into the queue.
 export async function flushOpenDrive(): Promise<void> {
   const buf = await readJSON<Buffer | null>(BUF_KEY, null);

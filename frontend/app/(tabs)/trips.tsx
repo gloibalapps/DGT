@@ -8,7 +8,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
-import { getPendingDrives, clearPendingDrive, PendingDrive } from "@/src/autotrack";
+import { getPendingDrives, clearPendingDrive, PendingDrive, pauseAutotrackForManual, resumeAutotrackIfEnabled } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
   EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney,
@@ -88,6 +88,10 @@ export default function Mileage() {
     }
     setDist(0); setPath([]); lastRef.current = null; startTimeRef.current = Date.now(); setTracking(true);
 
+    // Pause background auto-detection while this manual shift runs so the same
+    // drive isn't logged twice (auto + manual).
+    await pauseAutotrackForManual();
+
     // Seed an immediate first fix so tracking starts right away instead of
     // waiting for the first watch callback (which can be slow on Android).
     try {
@@ -125,7 +129,7 @@ export default function Mileage() {
     try { subRef.current?.remove(); } catch { /* web */ }
     subRef.current = null; setTracking(false);
     const km = Math.round(dist * 10) / 10;
-    if (km <= 0) { show("No distance recorded", "info"); return; }
+    if (km <= 0) { show("No distance recorded", "info"); await resumeAutotrackIfEnabled(); return; }
     setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
     setPendingTag(km);
   };
@@ -137,6 +141,7 @@ export default function Mileage() {
       show(`${pendingTag} km logged as ${type === "business" ? "business" : "private"}`, "success");
       setPendingTag(null); refresh(); load();
     } catch { show("Couldn't save trip — try again", "error"); }
+    finally { await resumeAutotrackIfEnabled(); }
   };
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {

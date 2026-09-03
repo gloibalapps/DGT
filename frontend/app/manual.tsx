@@ -192,6 +192,7 @@ export default function Manual() {
       lines: [
         "In Profile \u203A Automatic tracking you can let GigTax detect drives in the background — no start/stop needed.",
         "It logs each drive and asks you to tag it Business or Personal later.",
+        "If you start a manual GPS shift while auto-detection is on, GigTax pauses the automatic tracking for that drive so it's never counted twice — it resumes on its own once you finish.",
         "Grant background-location permission when asked so it can log drives while you work.",
       ],
     },
