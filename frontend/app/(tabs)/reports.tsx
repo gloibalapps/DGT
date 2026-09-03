@@ -184,6 +184,13 @@ export default function Reports() {
                   <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
                     Copy these onto your ATO Business Activity Statement.
                   </AppText>
+                  {rep.gst_note ? (
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", backgroundColor: colors.surfaceAlt,
+                      borderRadius: 10, padding: 10, marginBottom: 10 }}>
+                      <Ionicons name="alert-circle" size={16} color={colors.warm} style={{ marginRight: 8, marginTop: 1 }} />
+                      <AppText variant="caption" color={colors.text} style={{ flex: 1, lineHeight: 16 }}>{rep.gst_note}</AppText>
+                    </View>
+                  ) : null}
                   <Row label="G1 — Total sales (incl GST)" value={rep.bas.G1} symbol={rep.symbol} />
                   <Row label="1A — GST on sales" value={rep.bas["1A"]} symbol={rep.symbol} />
                   <Row label="1B — GST on purchases" value={rep.bas["1B"]} symbol={rep.symbol} />

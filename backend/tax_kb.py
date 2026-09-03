@@ -51,6 +51,9 @@ D. GST
    - Ride-sourcing (carrying passengers) is treated like taxi travel: you MUST register for GST from the first dollar, regardless of turnover.
    - Food/parcel delivery only: you register for GST only if your turnover reaches $75,000 or more.
    - If registered: report income and GST on your Business Activity Statement (BAS); you can claim GST credits on business expenses; income-tax deductions are then GST-exclusive.
+   - GST on ride-sourcing is calculated on the FULL passenger fare (the GST-inclusive amount the passenger pays), NOT the smaller amount deposited after the platform takes its commission. Example: a $55 fare has $5 GST (1/11 of $55) even if Uber keeps $11 commission and pays you $44 — you still owe GST on the $55.
+   - The platform's commission/service fee is a separate business expense you can deduct, and if you are GST-registered you can claim the GST credit on that commission (it reduces your net GST at 1B). So: declare the gross fare as income (GST at 1A), and claim the commission as an expense (GST credit at 1B).
+   - Drivers doing BOTH rideshare and delivery under the same ABN: once you must register for GST because of the rideshare activity, your whole enterprise is GST-registered — GST then applies to your delivery income too, not just the passenger fares. The $75,000 delivery test no longer applies once you're registered.
 
 E. RECORDS
    - Keep your logbook, odometer readings and receipts for 5 years.

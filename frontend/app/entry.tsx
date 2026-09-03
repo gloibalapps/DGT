@@ -111,6 +111,7 @@ export default function Entry() {
   }, [editing, kind, params.id]);
 
   const title = `${editing ? "Edit" : "Add"} ${kind}`;
+  const carriesPassengers = profile?.work_type === "passengers" || profile?.work_type === "both";
 
   const save = async () => {
     if (!dateISO) { show("Pick a date", "error"); return; }
@@ -288,10 +289,23 @@ export default function Entry() {
                 </Field>
               </>
             ) : (
-              <Field label="Amount">
+              <Field label="Amount"
+                hint={kind === "income" && carriesPassengers
+                  ? "Rideshare: enter the FULL passenger fare before the platform's commission — GST is calculated on the whole fare."
+                  : undefined}>
                 <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
               </Field>
             )}
+
+            {kind === "income" && carriesPassengers ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-start", backgroundColor: colors.surfaceAlt,
+                borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                <Ionicons name="information-circle" size={16} color={colors.accent} style={{ marginRight: 8, marginTop: 1 }} />
+                <AppText variant="caption" color={colors.dim} style={{ flex: 1, lineHeight: 16 }}>
+                  Log the platform's commission separately as an expense (category “Other”) — it's deductible and, if you're GST-registered, gives you a GST credit.
+                </AppText>
+              </View>
+            ) : null}
 
             {(kind === "income" || kind === "shift") && (
               <Field label="Platform">

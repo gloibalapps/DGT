@@ -1,0 +1,45 @@
+{
+  "summary": "Confirmation pass for the two new features on GigTax v2 — both fully verified. BACKEND: 103/103 pytest pass (98 previous + 5 new in /app/backend/tests/test_new_features_iter16.py). FEATURE 1 (Active vs Online hours) — /api/money?period=week returns performance.active_hours=5.5, performance.utilisation=68.8, performance.real_active_per_hour, performance.active_per_hour, and performance.by_platform[] with per_active_hour per platform (Uber Eats 3.5h/$120 -> $34.29/hr, DoorDash 2.0h/$80 -> $40/hr). FEATURE 2 (AU GST ride-sourcing) — /api/reports?period=quarter with work_type=passengers returns show_bas=true, gst_required=true, gst_registered=false, gst_note starts with 'Ride-sourcing must be GST-registered from your first dollar…', and BAS block computes G1=220, 1A=20.00. work_type=both also flips show_bas=true. work_type=delivery + low income returns show_bas=false / gst_required=false. FRONTEND: full flow works on mobile viewport (390x844). Onboarded AU / passengers / Uber / own, then: (a) Add-income form shows rideshare hint 'Rideshare: enter the FULL passenger fare before the platform's commission — GST is calculated on the whole fare.' and the commission info note. (b) Log-hours (hours-add) shows 'Hours online' + 'Active hours per app' section with entry-active-Uber input; saved online=8 / active=5.5. (c) Home Performance card renders new stats 'real / active hr' and 'utilisation'. (d) Tapping detail-performance opens money-detail showing '8 hours online · 5.5 active', Real $/active hour = $36.36/hr, Utilisation = 68.8%, and a 'BY APP' breakdown 'Uber · 5.5h active · $220 earned · $40/hr'. (e) Reports tab renders BAS / GST summary card AND top warning 'You carry passengers — ride-sourcing requires GST registration from your first dollar. Register with the ATO.' plus the gst_note that begins 'Ride-sourcing must be GST-registered from your first dollar…' — all rendered even though registration_status is not 'registered'. No console errors. Only the persistent upstream 'props.pointerEvents is deprecated' warning (already tracked in iteration 15, non-blocking).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Money → Performance card vs money-detail",
+        "issues": [
+          "Minor label-case inconsistency (non-blocking): the Home Performance card uses lowercase labels ('real / active hr', 'utilisation') while money-detail uses Title Case ('Real $/active hour', 'Utilisation'). Both are readable — flag only if you want case parity."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features_iter16.py",
+    "/app/test_reports/pytest/pytest_iteration16.xml"
+  ],
+  "action_items": [
+    "None required for these two features — both are behaving exactly as specified. (Optional polish: unify capitalisation of 'utilisation'/'real / active hr' between home.tsx and money-detail.tsx.)"
+  ],
+  "critical_code_review_comments": [
+    "tax.py money_overview correctly computes active_hours = sum of active_by_platform values per shift, utilisation = active/online, and per-platform breakdown from active_by_platform + platform-tagged incomes.",
+    "tax.py compute_report gates show_bas on gst_applicable = registered OR gst_required(work_type in {passengers, both}) — ride-sourcing surfaces BAS from the first dollar as required.",
+    "Frontend entry.tsx enforces sum(active_by_platform) <= hours online before saving (shows toast 'Active hours can't be more than online hours'), and skips zero/blank inputs cleanly.",
+    "Rideshare income hint in entry.tsx is correctly gated on profile.work_type in ('passengers','both') via `carriesPassengers` — verified renders for passengers, and (per iter15 pytest) hidden for delivery-only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features_iter16.py (new file — 5 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (103/103 pytest)",
+    "frontend": "100% for both new features across the full mobile-viewport flow"
+  },
+  "seed_data_creation": "Backend pytest uses TEST_-prefixed unique profile_id per test — no residual data. Frontend UI walk-through created a single Uber $220 income + one 8h shift under a fresh preview session; not deleted, since it belongs to a per-preview local profile and does not pollute production data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For AU passengers/both onboarding path use: country-AU -> onboarding-next -> worktype-passengers -> onboarding-next -> platform-Uber -> onboarding-next -> ownership-own -> onboarding-next -> (final) onboarding-next. Each step needs its own onboarding-next click. Backend uses PUT /api/profile (not POST) and singular /api/income (not /incomes). Reports uses period=quarter and ref_date=<ISO>. Money uses period=week|month|year|today and ref_date. The Home 'Performance' card sits below the hero and its 4th/5th stat tiles are 'real / active hr' and 'utilisation'; tap detail-performance to open money-detail with the 'BY APP' section.",
+  "rca_of_issue": "N/A — this is a confirmation pass. Two features verified working end-to-end (backend + UI) with no regressions."
+}

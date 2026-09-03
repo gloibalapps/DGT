@@ -344,9 +344,15 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
     total_deductions = round(vehicle_deduction_total + full_claim_total, 2)
     net_profit = round(total_income - total_deductions, 2)
 
-    # ---- BAS / GST (only if registered) ----
+    # ---- BAS / GST ----------------------------------------------------------
+    # Ride-sourcing (carrying passengers) MUST be GST-registered from the first
+    # dollar, so we treat passengers/both as GST-liable and always surface the
+    # BAS figures — even before the driver flips the manual "registered" switch.
+    # Delivery-only stays gated on the $75k turnover / manual registration.
     work_type = profile.get("work_type", "delivery")
     registered = profile.get("registration_status") == "registered"
+    gst_required = work_type in ("passengers", "both")
+    gst_applicable = registered or gst_required
 
     g1 = inclusive_income
     one_a = round(g1 / 11.0, 2)  # GST on sales at 10% inclusive
@@ -370,9 +376,13 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
 
     # ---- registration guidance ----
     reg_warning = None
+    gst_note = None
     if work_type in ("passengers", "both") and not registered:
         reg_warning = ("You carry passengers — ride-sourcing requires GST "
                        "registration from your first dollar. Register with the ATO.")
+        gst_note = ("Ride-sourcing must be GST-registered from your first dollar. "
+                    "These are the GST amounts you're liable for — register your ABN "
+                    "for GST with the ATO to lodge them.")
     elif work_type == "delivery" and not registered:
         fy_start = au_fy_start(today)
         fy_income = round(sum(i["amount"] for i in incomes
@@ -417,7 +427,10 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
             "total": full_claim_total,
         },
         # BAS / GST
-        "show_bas": registered,
+        "show_bas": gst_applicable,
+        "gst_required": gst_required,
+        "gst_registered": registered,
+        "gst_note": gst_note,
         "bas": {
             "G1": round(g1, 2),
             "1A": one_a,

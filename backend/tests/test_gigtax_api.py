@@ -224,7 +224,11 @@ class TestReports:
                              params={"profile_id": pid, "period": "quarter"}).json()
         assert rep["registration_warning"] is not None
         assert "GST" in rep["registration_warning"]
-        assert rep["show_bas"] is False
+        # Ride-sourcing is GST-liable from the first dollar, so BAS is shown
+        # even before the driver marks themselves registered.
+        assert rep["show_bas"] is True
+        assert rep["gst_required"] is True
+        assert rep["gst_note"] is not None
 
     def test_period_boundaries_additive(self, base_url, api_client):
         """Quarter total + rest-of-year = full FY, no double count, no gap."""
