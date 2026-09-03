@@ -70,7 +70,8 @@ function LineRow({ label, value, symbol, color, strong }:
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 4 }}>
-      <AppText variant={strong ? "bodySemi" : "bodyMed"} color={strong ? colors.text : colors.dim}>{label}</AppText>
+      <AppText variant={strong ? "bodySemi" : "bodyMed"} color={colors.onGradient}
+        style={strong ? undefined : { opacity: 0.8 }}>{label}</AppText>
       <Money value={value} symbol={symbol} size={strong ? 18 : 16} color={color} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} />
     </View>
   );
