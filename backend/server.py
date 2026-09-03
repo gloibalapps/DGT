@@ -8,14 +8,14 @@ import logging
 import httpx
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
-from typing import List, Optional, Literal, Annotated
+from typing import List, Optional, Literal, Annotated, Dict
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Request
 from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 
 import tax as taxlib
 
@@ -659,12 +659,23 @@ class Shift(BaseModel):
     profile_id: str
     date: str
     hours: float
+    active_hours: Optional[float] = None            # time actually on a job (making money)
+    active_by_platform: Optional[Dict[str, float]] = None  # active hrs split per app (multi-apping)
     start_time: Optional[str] = None  # "HH:MM"
     end_time: Optional[str] = None    # "HH:MM"
     platform: Optional[str] = None
     vehicle_id: Optional[str] = None
     note: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
+
+    @model_validator(mode="after")
+    def _sum_active(self):
+        # When per-app active hours are provided, the total is their sum.
+        if self.active_by_platform:
+            cleaned = {k: round(float(v), 2) for k, v in self.active_by_platform.items() if (v or 0) > 0}
+            object.__setattr__(self, "active_by_platform", cleaned or None)
+            object.__setattr__(self, "active_hours", round(sum(cleaned.values()), 2) if cleaned else None)
+        return self
 
 
 def clean(doc: dict) -> dict:

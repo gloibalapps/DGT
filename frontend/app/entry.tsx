@@ -56,6 +56,7 @@ export default function Entry() {
   const [distance, setDistance] = useState("");
   const [minutes, setMinutes] = useState("");
   const [hours, setHours] = useState("");
+  const [activeByPlatform, setActiveByPlatform] = useState<Record<string, string>>({});
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [tripType, setTripType] = useState<"business" | "personal" | "mixed">("business");
@@ -94,7 +95,12 @@ export default function Entry() {
         } else if (kind === "shift") {
           const list = await api.listShifts();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setHours(String(it.hours)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); setStartTime(it.start_time || ""); setEndTime(it.end_time || ""); }
+          if (it) { setHours(String(it.hours)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); setStartTime(it.start_time || ""); setEndTime(it.end_time || "");
+            if (it.active_by_platform) {
+              const m: Record<string, string> = {};
+              Object.entries(it.active_by_platform).forEach(([k, v]) => { m[k] = String(v); });
+              setActiveByPlatform(m);
+            } }
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
@@ -131,6 +137,15 @@ export default function Entry() {
         const hrs = parseFloat(hours);
         if (!hrs || hrs <= 0) { show("Enter your online hours", "error"); setSaving(false); return; }
         const payload: any = { date: iso, hours: hrs, platform, note };
+        // Active hours per app (multi-apping). Backend sums the total.
+        const abp: Record<string, number> = {};
+        Object.entries(activeByPlatform).forEach(([k, v]) => {
+          const n = parseFloat(v);
+          if (!isNaN(n) && n > 0) abp[k] = n;
+        });
+        const activeTotal = Object.values(abp).reduce((a, b) => a + b, 0);
+        if (activeTotal > hrs + 0.01) { show("Active hours can't be more than online hours", "error"); setSaving(false); return; }
+        if (Object.keys(abp).length) payload.active_by_platform = abp;
         if (validTime(startTime)) payload.start_time = startTime;
         if (validTime(endTime)) payload.end_time = endTime;
         if (activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
@@ -254,8 +269,22 @@ export default function Entry() {
                     </Field>
                   </View>
                 </View>
-                <Field label="Hours online" hint="Auto-filled from start/end, or type it in. Powers your $/hour.">
+                <Field label="Hours online" hint="Auto-filled from start/end, or type it in. Total time logged on — your $/online hour.">
                   <Input testID="entry-hours" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="6.5" />
+                </Field>
+                <Field label="Active hours per app" hint="Time actually on a job (making money) for each app. Powers your $/active hour & utilisation.">
+                  <View style={{ gap: 8 }}>
+                    {(profile?.platforms?.length ? profile.platforms : ["Other"]).map((p) => (
+                      <View key={p} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                        <AppText variant="bodyMed" style={{ flex: 1 }}>{p}</AppText>
+                        <View style={{ width: 120 }}>
+                          <Input testID={`entry-active-${p}`} value={activeByPlatform[p] || ""}
+                            onChangeText={(v) => setActiveByPlatform((m) => ({ ...m, [p]: v }))}
+                            keyboardType="decimal-pad" placeholder="hrs" />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
                 </Field>
               </>
             ) : (

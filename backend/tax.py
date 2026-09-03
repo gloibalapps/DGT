@@ -984,6 +984,28 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
 
     biz_km = round(sum(trip_business_km(t) for t in trips if in_range(t, start, end)), 2)
     hours = round(sum((s.get("hours") or 0) for s in shifts if in_range(s, start, end)), 2)
+    active_hours = round(sum((s.get("active_hours") or 0) for s in shifts if in_range(s, start, end)), 2)
+
+    # Active hours split per app (multi-apping) + income per app for $/active-hr.
+    active_by_plat: Dict[str, float] = {}
+    for s in shifts:
+        if in_range(s, start, end):
+            for p, h in (s.get("active_by_platform") or {}).items():
+                active_by_plat[p] = active_by_plat.get(p, 0.0) + (h or 0)
+    plat_income: Dict[str, float] = {}
+    for i in incomes:
+        if in_range(i, start, end):
+            p = i.get("platform") or "Other"
+            plat_income[p] = plat_income.get(p, 0.0) + i["amount"]
+    by_platform = []
+    for p in set(list(active_by_plat.keys()) + list(plat_income.keys())):
+        ah = round(active_by_plat.get(p, 0.0), 2)
+        inc = round(plat_income.get(p, 0.0), 2)
+        by_platform.append({
+            "platform": p, "active_hours": ah, "income": inc,
+            "per_active_hour": round(inc / ah, 2) if ah > 0 else None,
+        })
+    by_platform.sort(key=lambda x: (x["income"], x["active_hours"]), reverse=True)
 
     money_now = {
         "take_home": money_after_tax,
@@ -998,12 +1020,17 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
 
     performance = {
         "hours": hours,
+        "active_hours": active_hours,
+        "utilisation": round(active_hours / hours * 100, 1) if hours > 0 and active_hours > 0 else None,
         "km": biz_km,
         "gross_per_hour": round(gross / hours, 2) if hours > 0 else None,
         "real_per_hour": round(money_after_tax / hours, 2) if hours > 0 else None,
+        "active_per_hour": round(gross / active_hours, 2) if active_hours > 0 else None,
+        "real_active_per_hour": round(money_after_tax / active_hours, 2) if active_hours > 0 else None,
         "per_km": round(gross / biz_km, 2) if biz_km > 0 else None,
         "cost_per_km": round(expenses_total / biz_km, 2) if biz_km > 0 else None,
         "profit_per_km": round(profit_before_tax / biz_km, 2) if biz_km > 0 else None,
+        "by_platform": by_platform,
     }
 
     # ---- Where your money went (period) -------------------------------------

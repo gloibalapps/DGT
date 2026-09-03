@@ -117,12 +117,44 @@ export default function MoneyDetail() {
       return (
         <Card>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 2 }}>
-            {perf.hours} hours online · {perf.km} {unit} driven
+            {perf.hours} hours online{perf.active_hours ? ` · ${perf.active_hours} active` : ""} · {perf.km} {unit} driven
           </AppText>
           {stat("Real $/hour", perf.real_per_hour, "/hr", true)}
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Take-home ÷ hours — what you actually keep per hour.</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Take-home ÷ online hours — what you keep per hour logged on.</AppText>
           {stat("Gross $/hour", perf.gross_per_hour, "/hr")}
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Total earnings ÷ hours, before any costs.</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Total earnings ÷ online hours, before any costs.</AppText>
+          {perf.active_hours ? (
+            <>
+              {stat("Real $/active hour", perf.real_active_per_hour, "/hr", true)}
+              <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Take-home ÷ hours actually on a job (making money).</AppText>
+              <BigStat label="Utilisation" color={colors.accent}
+                value={perf.utilisation != null ? `${perf.utilisation}%` : "—"} />
+              <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Active ÷ online — how much of your time on the road actually paid.</AppText>
+              {perf.by_platform && perf.by_platform.some((p: any) => p.active_hours > 0) ? (
+                <View style={{ marginTop: 8, marginBottom: 4 }}>
+                  <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>BY APP</AppText>
+                  {perf.by_platform.filter((p: any) => p.active_hours > 0 || p.income > 0).map((p: any) => (
+                    <View key={p.platform} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                      paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                      <View style={{ flex: 1 }}>
+                        <AppText variant="bodySemi">{p.platform}</AppText>
+                        <AppText variant="caption" color={colors.dim}>
+                          {p.active_hours > 0 ? `${p.active_hours}h active` : "no active hours"} · {symbol}{p.income} earned
+                        </AppText>
+                      </View>
+                      {p.per_active_hour != null ? (
+                        <AppText variant="bodySemi" color={colors.profit}>{symbol}{p.per_active_hour}/hr</AppText>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>
+              Log active hours per app when you add hours to unlock your $/active hour and utilisation.
+            </AppText>
+          )}
           {stat(`Earned / ${unit}`, perf.per_km, "/" + unit)}
           {stat(`Cost / ${unit}`, perf.cost_per_km, "/" + unit)}
           {stat(`Profit / ${unit}`, perf.profit_per_km, "/" + unit)}

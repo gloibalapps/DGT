@@ -263,6 +263,8 @@ export default function Money_() {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           <Stat label="real / hour" highlight value={perf.real_per_hour != null ? `${symbol}${perf.real_per_hour}` : "—"} />
           <Stat label="gross / hour" value={perf.gross_per_hour != null ? `${symbol}${perf.gross_per_hour}` : "—"} />
+          <Stat label="real / active hr" highlight value={perf.real_active_per_hour != null ? `${symbol}${perf.real_active_per_hour}` : "—"} />
+          <Stat label="utilisation" value={perf.utilisation != null ? `${perf.utilisation}%` : "—"} />
           <Stat label={`${unit} driven`} value={perf.km ? String(perf.km) : "—"} />
           <Stat label={`earned / ${unit}`} value={perf.per_km != null ? `${symbol}${perf.per_km}` : "—"} />
           <Stat label={`cost / ${unit}`} value={perf.cost_per_km != null ? `${symbol}${perf.cost_per_km}` : "—"} />
