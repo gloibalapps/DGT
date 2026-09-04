@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Pressable, RefreshControl } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
+import { storage } from "@/src/utils/storage";
 import { displayDateShort } from "@/src/date";
 import { CATEGORIES, TAX_TREATMENTS } from "@/src/config";
 import {
@@ -112,6 +113,13 @@ export default function Money_() {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const toggle = (k: string) => setOpenKey((cur) => (cur === k ? null : k));
 
+  const [showGuide, setShowGuide] = useState(false);
+  useEffect(() => {
+    storage.getItem<string>("gigtax.guide_seen", "").then((v) => { if (!v) setShowGuide(true); });
+  }, []);
+  const dismissGuide = () => { setShowGuide(false); void storage.setItem("gigtax.guide_seen", "1"); };
+  const openGuide = () => { dismissGuide(); router.push("/manual" as any); };
+
   const country = profile?.country || "AU";
 
   const load = useCallback(async (p: Period) => {
@@ -206,6 +214,24 @@ export default function Money_() {
           );
         })}
       </View>
+
+      {showGuide && (
+        <Pressable testID="home-guide-banner" onPress={openGuide} style={{ marginBottom: 14 }}>
+          <Card style={{ flexDirection: "row", alignItems: "center", borderColor: colors.accent }}>
+            <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: colors.surfaceAlt,
+              alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+              <Ionicons name="book" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodySemi">New here? Read the quick guide</AppText>
+              <AppText variant="caption" color={colors.dim}>A 2-minute tour of logging, mileage & your tax figures</AppText>
+            </View>
+            <Pressable testID="home-guide-dismiss" onPress={dismissGuide} hitSlop={10} style={{ padding: 4 }}>
+              <Ionicons name="close" size={18} color={colors.dim} />
+            </Pressable>
+          </Card>
+        </Pressable>
+      )}
 
       {!profile?.legal_name && (
         <Pressable testID="home-tax-nudge" onPress={() => router.push("/tax-setup" as any)} style={{ marginBottom: 14 }}>
