@@ -109,8 +109,8 @@ export default function Money_() {
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>("week");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const toggle = (k: string) => setOpenKey((cur) => (cur === k ? null : k));
 
   const country = profile?.country || "AU";
 
@@ -267,7 +267,7 @@ export default function Money_() {
       </View>
 
       {/* ============ PERFORMANCE ============ */}
-      <Accordion testID="detail-performance" title="Performance" open={!!open.performance} onToggle={() => toggle("performance")}
+      <Accordion testID="detail-performance" title="Performance" open={openKey === "performance"} onToggle={() => toggle("performance")}
         summary={<AppText variant="bodySemi" color={colors.accent}>{perf.real_per_hour != null ? `${symbol}${perf.real_per_hour}/hr` : "—"}</AppText>}>
         <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 8 }}>
           What your driving is really worth · {periodLabel.toLowerCase()}
@@ -319,7 +319,7 @@ export default function Money_() {
       {data.where.length > 0 ? (() => {
         const maxAmt = Math.max(mn.take_home, ...data.where.map((w: any) => w.amount));
         return (
-          <Accordion testID="detail-where" title="Where your money went" open={!!open.where} onToggle={() => toggle("where")}
+          <Accordion testID="detail-where" title="Where your money went" open={openKey === "where"} onToggle={() => toggle("where")}
             summary={<AppText variant="bodySemi" color={colors.profit}>kept {fmtMoney(mn.take_home, symbol)}</AppText>}>
             <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 12 }}>
               You earned {fmtMoney(mn.gross, symbol)} {periodLabel.toLowerCase()}
@@ -355,7 +355,7 @@ export default function Money_() {
       <AppText variant="label" color={colors.dim} style={{ marginBottom: 10, marginLeft: 2 }}>TAX & INSIGHTS</AppText>
 
       {/* Tax position */}
-      <Accordion testID="detail-tax" title="Tax position" open={!!open.tax} onToggle={() => toggle("tax")}
+      <Accordion testID="detail-tax" title="Tax position" open={openKey === "tax"} onToggle={() => toggle("tax")}
         borderColor={tp.status === "behind" ? colors.loss : colors.profit}
         summary={<AppText variant="bodySemi" color={tp.status === "behind" ? colors.loss : colors.profit}>
           {tp.status === "behind" ? "Behind" : "Ahead"} {fmtMoney(Math.abs(tp.position), symbol)}
@@ -379,7 +379,7 @@ export default function Money_() {
       </Accordion>
 
       {/* Deductions tracked */}
-      <Accordion testID="detail-deductions" title="Deductions tracked" open={!!open.deductions} onToggle={() => toggle("deductions")}
+      <Accordion testID="detail-deductions" title="Deductions tracked" open={openKey === "deductions"} onToggle={() => toggle("deductions")}
         summary={<AppText variant="bodySemi" color={colors.accent}>{fmtMoney(ded.total, symbol)}</AppText>}>
         <AppText variant="caption" color={colors.dim} style={{ marginTop: -4 }}>Year to date · {ded.tax_year_label}</AppText>
         <Money value={ded.total} symbol={symbol} size={34} color={colors.accent} style={{ marginTop: 6 }} />
