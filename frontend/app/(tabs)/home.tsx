@@ -77,6 +77,25 @@ function LineRow({ label, value, symbol, color, strong }:
   );
 }
 
+/** Collapsible "harmonica" card — closed by default, expands inline for review. */
+function Accordion({ title, summary, open, onToggle, children, borderColor, testID }: {
+  title: string; summary?: React.ReactNode; open: boolean; onToggle: () => void;
+  children: React.ReactNode; borderColor?: string; testID?: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Card style={{ marginBottom: 12, borderColor: borderColor || colors.border }}>
+      <Pressable testID={testID} onPress={onToggle} hitSlop={6}
+        style={{ flexDirection: "row", alignItems: "center" }}>
+        <AppText variant="h2" style={{ flex: 1 }}>{title}</AppText>
+        {!open && summary ? <View style={{ marginRight: 10, alignItems: "flex-end" }}>{summary}</View> : null}
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.dim} />
+      </Pressable>
+      {open ? <View style={{ marginTop: 12 }}>{children}</View> : null}
+    </Card>
+  );
+}
+
 export default function Money_() {
   const { colors } = useTheme();
   const { profile, version, refresh } = useStore();
@@ -90,11 +109,10 @@ export default function Money_() {
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>("week");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   const country = profile?.country || "AU";
-
-  const openDetail = (s: string) =>
-    router.push({ pathname: "/money-detail" as any, params: { section: s, period } });
 
   const load = useCallback(async (p: Period) => {
     try {
@@ -202,15 +220,11 @@ export default function Money_() {
         </Pressable>
       )}
 
-      {/* ============ LAYER 1 · MONEY NOW ============ */}
-      <Pressable testID="detail-money-now" onPress={() => openDetail("money-now")}>
-      <GradientCard style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.85 }}>
-            YOUR REAL EARNINGS · {periodLabel.toUpperCase()}
-          </AppText>
-          <Ionicons name="chevron-forward" size={18} color={colors.onGradient} style={{ opacity: 0.8 }} />
-        </View>
+      {/* ============ MONEY NOW (headline — always visible) ============ */}
+      <GradientCard style={{ marginBottom: 12 }}>
+        <AppText variant="label" color={colors.onGradient} style={{ opacity: 0.85 }}>
+          YOUR REAL EARNINGS · {periodLabel.toUpperCase()}
+        </AppText>
         <View style={{ marginTop: 6 }}>
           <Money value={mn.take_home} symbol={symbol} size={takeSize} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}
             color={mn.take_home >= 0 ? "#FFFFFF" : "#FF7A7A"} />
@@ -237,7 +251,6 @@ export default function Money_() {
         <LineRow label="Work expenses" value={-mn.expenses} symbol={symbol} color="#FF7A7A" />
         <LineRow label="Estimated tax" value={-mn.estimated_tax} symbol={symbol} color="#FF7A7A" />
       </GradientCard>
-      </Pressable>
 
       {/* Quick actions */}
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
@@ -253,15 +266,13 @@ export default function Money_() {
           onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift" } })} />
       </View>
 
-      {/* ============ LAYER 2 · PERFORMANCE ============ */}
-      <Pressable testID="detail-performance" onPress={() => openDetail("performance")}>
-      <Card style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <AppText variant="h2">Performance</AppText>
-          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
-        </View>
-        <AppText variant="caption" color={colors.dim}>What your driving is really worth · {periodLabel.toLowerCase()}</AppText>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+      {/* ============ PERFORMANCE ============ */}
+      <Accordion testID="detail-performance" title="Performance" open={!!open.performance} onToggle={() => toggle("performance")}
+        summary={<AppText variant="bodySemi" color={colors.accent}>{perf.real_per_hour != null ? `${symbol}${perf.real_per_hour}/hr` : "—"}</AppText>}>
+        <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 8 }}>
+          What your driving is really worth · {periodLabel.toLowerCase()}
+        </AppText>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           <Stat label="real / hour" highlight value={perf.real_per_hour != null ? `${symbol}${perf.real_per_hour}` : "—"} />
           <Stat label="gross / hour" value={perf.gross_per_hour != null ? `${symbol}${perf.gross_per_hour}` : "—"} />
           <Stat label="real / active hr" highlight value={perf.real_active_per_hour != null ? `${symbol}${perf.real_active_per_hour}` : "—"} />
@@ -271,6 +282,23 @@ export default function Money_() {
           <Stat label={`cost / ${unit}`} value={perf.cost_per_km != null ? `${symbol}${perf.cost_per_km}` : "—"} />
           <Stat label={`profit / ${unit}`} value={perf.profit_per_km != null ? `${symbol}${perf.profit_per_km}` : "—"} />
         </View>
+        {perf.by_platform && perf.by_platform.some((p: any) => p.active_hours > 0) ? (
+          <View style={{ marginTop: 12 }}>
+            <AppText variant="label" color={colors.dim} style={{ marginBottom: 6 }}>BY APP · $/ACTIVE HOUR</AppText>
+            {perf.by_platform.filter((p: any) => p.active_hours > 0 || p.income > 0).map((p: any) => (
+              <View key={p.platform} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodySemi">{p.platform}</AppText>
+                  <AppText variant="caption" color={colors.dim}>
+                    {p.active_hours > 0 ? `${p.active_hours}h active` : "no active hours"} · {symbol}{p.income} earned
+                  </AppText>
+                </View>
+                {p.per_active_hour != null ? <AppText variant="bodySemi" color={colors.profit}>{symbol}{p.per_active_hour}/hr</AppText> : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
         {perf.hours === 0 ? (
           <AppText variant="caption" color={colors.dim} style={{ marginTop: 10 }}>
             Tap “Log hours” above to record your online time and unlock your real {symbol}/hour.
@@ -285,20 +313,15 @@ export default function Money_() {
             </AppText>
           </View>
         ) : null}
-      </Card>
-      </Pressable>
+      </Accordion>
 
       {/* Where your money went */}
       {data.where.length > 0 ? (() => {
         const maxAmt = Math.max(mn.take_home, ...data.where.map((w: any) => w.amount));
         return (
-          <Pressable testID="detail-where" onPress={() => openDetail("where")}>
-          <Card style={{ marginBottom: 14 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <AppText variant="h2">Where your money went</AppText>
-              <Ionicons name="chevron-forward" size={18} color={colors.dim} />
-            </View>
-            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+          <Accordion testID="detail-where" title="Where your money went" open={!!open.where} onToggle={() => toggle("where")}
+            summary={<AppText variant="bodySemi" color={colors.profit}>kept {fmtMoney(mn.take_home, symbol)}</AppText>}>
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 12 }}>
               You earned {fmtMoney(mn.gross, symbol)} {periodLabel.toLowerCase()}
             </AppText>
             {data.where.map((w: any) => (
@@ -324,53 +347,41 @@ export default function Money_() {
                   width: `${Math.max(2, (Math.max(0, mn.take_home) / maxAmt) * 100)}%` }} />
               </View>
             </View>
-          </Card>
-          </Pressable>
+          </Accordion>
         );
       })() : null}
 
-      {/* ============ LAYER 3 · MONEY INTELLIGENCE ============ */}
-      <AppText variant="label" color={colors.dim} style={{ marginBottom: 10, marginLeft: 2 }}>MONEY INTELLIGENCE</AppText>
+      {/* ============ TAX & INTELLIGENCE ============ */}
+      <AppText variant="label" color={colors.dim} style={{ marginBottom: 10, marginLeft: 2 }}>TAX & INSIGHTS</AppText>
 
       {/* Tax position */}
-      <Pressable testID="detail-tax" onPress={() => openDetail("tax")}>
-      <Card style={{ marginBottom: 14, borderColor: tp.status === "behind" ? colors.loss : colors.profit }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <AppText variant="h2">Tax position</AppText>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Pressable testID="tax-update-setaside" onPress={() => router.push("/tax-saved" as any)} hitSlop={8}>
-              <AppText variant="caption" color={colors.accent}>Update</AppText>
-            </Pressable>
-            <Ionicons name="chevron-forward" size={18} color={colors.dim} style={{ marginLeft: 8 }} />
-          </View>
-        </View>
-        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Year to date · {tp.tax_year_label}</AppText>
+      <Accordion testID="detail-tax" title="Tax position" open={!!open.tax} onToggle={() => toggle("tax")}
+        borderColor={tp.status === "behind" ? colors.loss : colors.profit}
+        summary={<AppText variant="bodySemi" color={tp.status === "behind" ? colors.loss : colors.profit}>
+          {tp.status === "behind" ? "Behind" : "Ahead"} {fmtMoney(Math.abs(tp.position), symbol)}
+        </AppText>}>
+        <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 6 }}>Year to date · {tp.tax_year_label}</AppText>
         <LineRowLight label="Estimated tax owed" value={tp.owed_ytd} symbol={symbol} />
         <LineRowLight label="You've set aside" value={tp.set_aside} symbol={symbol} />
         <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, marginRight: 8,
-              backgroundColor: tp.status === "behind" ? colors.loss : colors.profit }} />
-            <AppText variant="bodySemi" color={tp.status === "behind" ? colors.loss : colors.profit}>
-              {tp.status === "behind" ? "Behind" : "Ahead"} by {fmtMoney(Math.abs(tp.position), symbol)}
-            </AppText>
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, marginRight: 8,
+            backgroundColor: tp.status === "behind" ? colors.loss : colors.profit }} />
+          <AppText variant="bodySemi" color={tp.status === "behind" ? colors.loss : colors.profit}>
+            {tp.status === "behind" ? "Behind" : "Ahead"} by {fmtMoney(Math.abs(tp.position), symbol)}
+          </AppText>
         </View>
         <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 16 }}>
           Set aside about {tp.recommend_rate}% of your profit as you earn. Estimate only — not tax advice.
         </AppText>
-      </Card>
-      </Pressable>
+        <PrimaryButton testID="tax-update-setaside" label="Update tax set aside" icon="wallet-outline"
+          style={{ marginTop: 12 }} onPress={() => router.push("/tax-saved" as any)} />
+      </Accordion>
 
       {/* Deductions tracked */}
-      <Pressable testID="detail-deductions" onPress={() => openDetail("deductions")}>
-      <Card style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <AppText variant="h2">Deductions tracked</AppText>
-          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
-        </View>
-        <AppText variant="caption" color={colors.dim}>Year to date · {ded.tax_year_label}</AppText>
+      <Accordion testID="detail-deductions" title="Deductions tracked" open={!!open.deductions} onToggle={() => toggle("deductions")}
+        summary={<AppText variant="bodySemi" color={colors.accent}>{fmtMoney(ded.total, symbol)}</AppText>}>
+        <AppText variant="caption" color={colors.dim} style={{ marginTop: -4 }}>Year to date · {ded.tax_year_label}</AppText>
         <Money value={ded.total} symbol={symbol} size={34} color={colors.accent} style={{ marginTop: 6 }} />
         {ded.breakdown.map((b: any) => (
           <LineRowLight key={b.label} label={b.label} value={b.amount} symbol={symbol} />
@@ -380,17 +391,12 @@ export default function Money_() {
             Estimated tax impact ≈ {fmtMoney(ded.estimated_tax_impact, symbol)} — an estimate of tax these deductions may save, not a guarantee.
           </AppText>
         ) : null}
-      </Card>
-      </Pressable>
+      </Accordion>
 
       {/* Best/worst day + best platform */}
-      <Pressable testID="detail-bestworst" onPress={() => openDetail("bestworst")}>
-      <Card style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <AppText variant="h2">Best & worst</AppText>
-          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
-        </View>
-        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>By real {symbol}/hour · {data.intel_label}</AppText>
+      <Accordion testID="detail-bestworst" title="Best & worst" open={!!open.bestworst} onToggle={() => toggle("bestworst")}
+        summary={data.best_day ? <AppText variant="bodySemi" color={colors.profit}>{symbol}{data.best_day.real_per_hour}/hr</AppText> : undefined}>
+        <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 10 }}>By real {symbol}/hour · {data.intel_label}</AppText>
         {data.best_day ? (
           <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.profit, marginRight: 10 }} />
@@ -429,8 +435,7 @@ export default function Money_() {
             </AppText>
           </View>
         ) : null}
-      </Card>
-      </Pressable>
+      </Accordion>
 
       {/* Driving insights link */}
       <Pressable testID="money-insights" onPress={() => router.push("/insights" as any)} style={{ marginBottom: 14 }}>
