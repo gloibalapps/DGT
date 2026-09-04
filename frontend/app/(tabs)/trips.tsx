@@ -11,7 +11,7 @@ import { displayDateShort } from "@/src/date";
 import { getPendingDrives, clearPendingDrive, PendingDrive, pauseAutotrackForManual, resumeAutotrackIfEnabled } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
-  EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney,
+  EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney, Input,
 } from "@/src/ui";
 
 function haversine(a: any, b: any) {
@@ -26,7 +26,7 @@ function haversine(a: any, b: any) {
 
 export default function Mileage() {
   const { colors } = useTheme();
-  const { version, refresh, vehicles, activeVehicleId, setActiveVehicle } = useStore();
+  const { version, refresh, vehicles, activeVehicleId, setActiveVehicle, reloadVehicles } = useStore();
   const { show } = useToast();
   const router = useRouter();
   const [trips, setTrips] = useState<TripT[]>([]);
@@ -41,6 +41,8 @@ export default function Mileage() {
   const [dist, setDist] = useState(0);
   const [path, setPath] = useState<{ latitude: number; longitude: number }[]>([]);
   const [pendingTag, setPendingTag] = useState<number | null>(null);
+  const [pendingRawKm, setPendingRawKm] = useState<number | null>(null);
+  const [odoInput, setOdoInput] = useState("");
   const [pendingDuration, setPendingDuration] = useState(0);
   const subRef = useRef<Location.LocationSubscription | null>(null);
   const lastRef = useRef<any>(null);
@@ -135,16 +137,29 @@ export default function Mileage() {
     subRef.current = null; setTracking(false);
     const km = Math.round(dist * cal * 10) / 10;
     if (km <= 0) { show("No distance recorded", "info"); await resumeAutotrackIfEnabled(); return; }
+    setPendingRawKm(Math.round(dist * 10) / 10);   // raw GPS (uncalibrated) for auto-calibration
+    setOdoInput("");
     setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
     setPendingTag(km);
   };
 
   const saveGpsTrip = async (type: "business" | "personal") => {
     if (pendingTag == null) return;
+    const odo = parseFloat(odoInput);
+    const useOdo = !isNaN(odo) && odo > 0;
+    const km = useOdo ? Math.round(odo * 10) / 10 : pendingTag;
     try {
-      await api.addTrip({ date: todayISO(), distance_km: pendingTag, duration_min: pendingDuration, type, source: "gps", vehicle_id: activeVehicleId });
-      show(`${pendingTag} km logged as ${type === "business" ? "business" : "private"}`, "success");
-      setPendingTag(null); refresh(); load();
+      await api.addTrip({ date: todayISO(), distance_km: km, duration_min: pendingDuration, type, source: "gps", vehicle_id: activeVehicleId });
+      // Auto-calibrate this vehicle from the odometer vs the raw GPS distance.
+      if (useOdo && activeVehicle && pendingRawKm && pendingRawKm > 0) {
+        const pct = Math.min(150, Math.max(50, Math.round((odo / pendingRawKm) * 1000) / 10));
+        await api.updateVehicle(activeVehicle.id, { gps_calibration_pct: pct });
+        await reloadVehicles();
+        show(`${km} ${unit} logged · ${activeVehicle.make_model || "car"} GPS calibrated to ${pct}%`, "success");
+      } else {
+        show(`${km} ${unit} logged as ${type === "business" ? "business" : "private"}`, "success");
+      }
+      setPendingTag(null); setPendingRawKm(null); setOdoInput(""); refresh(); load();
     } catch { show("Couldn't save trip — try again", "error"); }
     finally { await resumeAutotrackIfEnabled(); }
   };
@@ -227,6 +242,11 @@ export default function Mileage() {
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
             Was this trip business or private? GPS knows you drove, not why.
           </AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
+            On your odometer? (optional) — logs the exact distance and auto-calibrates {activeVehicle?.make_model || "this car"} for next time.
+          </AppText>
+          <Input testID="gps-odo" value={odoInput} onChangeText={setOdoInput} keyboardType="decimal-pad"
+            placeholder={`${pendingTag} ${unit}`} style={{ marginBottom: 12 }} />
           <View style={{ flexDirection: "row", gap: 10 }}>
             <PrimaryButton testID="gps-tag-business" label="Business" onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
             <SecondaryButton testID="gps-tag-personal" label="Private" onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
