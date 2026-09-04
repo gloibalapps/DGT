@@ -132,6 +132,7 @@ export default function Entry() {
           payload.liters = isNaN(l) ? null : l;
         }
         if (receiptImage) payload.receipt_image = receiptImage;
+        else if (editing) payload.receipt_image = null;  // allow removing a scanned photo
         if ((category === "fuel" || category === "vehicle") && activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (editing) await api.updateExpense(params.id!, payload); else await api.addExpense(payload);
       } else if (kind === "shift") {
@@ -302,7 +303,7 @@ export default function Entry() {
                 borderRadius: 10, padding: 10, marginBottom: 14 }}>
                 <Ionicons name="information-circle" size={16} color={colors.accent} style={{ marginRight: 8, marginTop: 1 }} />
                 <AppText variant="caption" color={colors.dim} style={{ flex: 1, lineHeight: 16 }}>
-                  Log the platform's commission separately as an expense (category “Other”) — it's deductible and, if you're GST-registered, gives you a GST credit.
+                  {"Log the platform's commission separately as an expense (category \u201COther\u201D) — it's deductible and, if you're GST-registered, gives you a GST credit."}
                 </AppText>
               </View>
             ) : null}
@@ -332,6 +333,11 @@ export default function Entry() {
                   <Field label="Receipt">
                     <Image source={{ uri: `data:image/jpeg;base64,${receiptImage}` }}
                       style={{ width: 90, height: 120, borderRadius: 10, borderWidth: 1, borderColor: colors.border }} contentFit="cover" />
+                    <Pressable testID="entry-remove-receipt" onPress={() => setReceiptImage(null)}
+                      hitSlop={8} style={{ flexDirection: "row", alignItems: "center", marginTop: 10 }}>
+                      <Ionicons name="trash-outline" size={16} color={colors.loss} style={{ marginRight: 6 }} />
+                      <AppText variant="caption" color={colors.loss}>Remove photo</AppText>
+                    </Pressable>
                   </Field>
                 ) : null}
               </>
