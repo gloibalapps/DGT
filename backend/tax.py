@@ -822,12 +822,33 @@ def insights(profile: dict, incomes, expenses, shifts, ref: date,
     worst_shift = min(rated_shifts, key=lambda t: t["per_hour"]) if len(rated_shifts) > 1 else None
     has_timed = len(rated_shifts) > 0
 
+    # ---- By platform (last `weekday_weeks` weeks) -----------------------
+    plat: Dict[str, Dict[str, float]] = {}
+    for x in incomes:
+        if in_win(x):
+            name = x.get("platform") or "Other"
+            plat.setdefault(name, {"income": 0.0, "hours": 0.0})["income"] += x["amount"]
+    for s in shifts:
+        if in_win(s):
+            name = s.get("platform") or "Other"
+            plat.setdefault(name, {"income": 0.0, "hours": 0.0})["hours"] += (s.get("hours") or 0)
+    by_platform = []
+    for name, v in plat.items():
+        h = round(v["hours"], 2)
+        inc = round(v["income"], 2)
+        by_platform.append({
+            "name": name, "income": inc, "hours": h,
+            "per_hour": round(inc / h, 2) if h > 0 else None,
+        })
+    by_platform.sort(key=lambda p: (p["income"], p["hours"]), reverse=True)
+
     return {
         "symbol": symbol,
         "weeks_back": weeks_back,
         "weekday_weeks": weekday_weeks,
         "weekly": weekly,
         "by_weekday": by,
+        "by_platform": by_platform,
         "best_earning_day": best_earning_day,
         "best_hourly_day": best_hourly_day,
         "has_income": total_income > 0,

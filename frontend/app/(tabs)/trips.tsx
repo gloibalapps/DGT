@@ -95,7 +95,7 @@ export default function Mileage() {
     // Seed an immediate first fix so tracking starts right away instead of
     // waiting for the first watch callback (which can be slow on Android).
     try {
-      const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
       lastRef.current = first.coords;
       setPath([{ latitude: first.coords.latitude, longitude: first.coords.longitude }]);
     } catch { /* first fix may take a moment; the watcher below will catch up */ }
@@ -105,11 +105,14 @@ export default function Mileage() {
       const point = { latitude: c.latitude, longitude: c.longitude };
       if (lastRef.current) {
         const d = haversine(lastRef.current, c);
-        if (d > 0.005) {
+        // Accept moves above a small noise floor (4 m); finer sampling below
+        // means the path hugs the road instead of cutting corners, so the
+        // total lands closer to the vehicle's odometer.
+        if (d > 0.004) {
           setDist((prev) => prev + d);
           setPath((prev) => {
             const next = [...prev, point];
-            return next.length > 800 ? next.slice(next.length - 800) : next;
+            return next.length > 1500 ? next.slice(next.length - 1500) : next;
           });
           lastRef.current = c;
         }
@@ -120,7 +123,7 @@ export default function Mileage() {
     };
 
     subRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, distanceInterval: 10, timeInterval: 3000 },
+      { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5, timeInterval: 2000 },
       onPoint,
     );
   };

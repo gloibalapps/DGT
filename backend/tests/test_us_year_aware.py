@@ -61,12 +61,12 @@ class TestPureHelpers:
     """Exercises the year-aware helpers directly."""
 
     def test_us_std_deduction_by_year(self):
-        from backend.tax import us_std_deduction
+        from tax import us_std_deduction
         assert us_std_deduction(2025) == 15000.0
         assert us_std_deduction(2026) == 16100.0
 
     def test_us_tax_year_clamps(self):
-        from backend.tax import us_tax_year
+        from tax import us_tax_year
         from datetime import date
         assert us_tax_year(date(2025, 6, 15)) == 2025
         assert us_tax_year(date(2026, 6, 15)) == 2026
@@ -77,17 +77,17 @@ class TestPureHelpers:
 
     def test_us_federal_income_tax_2025_vs_2026(self):
         """Same $60k taxable → 2026 owes slightly less (brackets shift up)."""
-        from backend.tax import us_federal_income_tax
+        from tax import us_federal_income_tax
         # 2025 brackets: 10% to 11925, 12% to 48475, 22% to 103350...
         # $60k: 11925*.10 + (48475-11925)*.12 + (60000-48475)*.22 = 8113.00
-        assert us_federal_income_tax(60000, 2025) == 8113.00
+        assert us_federal_income_tax(60000, 2025) == 8114.00
         # 2026 brackets: 10% to 12400, 12% to 50400, 22% to 105700...
         # $60k: 12400*.10 + (50400-12400)*.12 + (60000-50400)*.22 = 7912.00
         assert us_federal_income_tax(60000, 2026) == 7912.00
 
     def test_us_se_tax_typical_vs_capped(self):
         """~15.3% for typical gig income; SS portion caps at wage base."""
-        from backend.tax import us_se_tax
+        from tax import us_se_tax
         # Typical: $60k net → 60000*.9235 = 55410; 55410*.153 = 8477.73
         assert us_se_tax(60000, 2025) == 8477.73
         assert us_se_tax(60000, 2026) == 8477.73
@@ -103,7 +103,7 @@ class TestPureHelpers:
         assert us_se_tax(300000, 2026) == 30912.45
 
     def test_us_mileage_rate_date_keyed(self):
-        from backend.tax import us_mileage_rate
+        from tax import us_mileage_rate
         from datetime import date
         assert us_mileage_rate(date(2025, 6, 30)) == 0.70
         # 2026 mid-year change: Jan-Jun = 0.725, Jul-Dec = 0.76
@@ -150,7 +150,7 @@ class TestYearAwareReports:
         # fed 2025 on 40761.14: 11925*.10 + (40761.14-11925)*.12 = 4652.84
         jar25 = requests.get(f"{BASE_URL}/api/dashboard",
                              params={"profile_id": pid25,
-                                     "today": "2025-06-15"}).json()["tax_jar"]
+                                     "ref_date": "2025-06-15"}).json()["tax_jar"]
         fed25 = [c for c in jar25["components"]
                  if c["label"].startswith("Federal")][0]["amount"]
         assert fed25 == 4652.84
@@ -159,7 +159,7 @@ class TestYearAwareReports:
         # fed 2026: 12400*.10 + (39661.14-12400)*.12 = 1240 + 3271.34 = 4511.34
         jar26 = requests.get(f"{BASE_URL}/api/dashboard",
                              params={"profile_id": pid26,
-                                     "today": "2026-06-15"}).json()["tax_jar"]
+                                     "ref_date": "2026-06-15"}).json()["tax_jar"]
         fed26 = [c for c in jar26["components"]
                  if c["label"].startswith("Federal")][0]["amount"]
         assert fed26 == 4511.34

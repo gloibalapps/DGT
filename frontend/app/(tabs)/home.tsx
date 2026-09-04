@@ -393,51 +393,7 @@ export default function Money_() {
         ) : null}
       </Accordion>
 
-      {/* Best/worst day + best platform */}
-      <Accordion testID="detail-bestworst" title="Best & worst" open={!!open.bestworst} onToggle={() => toggle("bestworst")}
-        summary={data.best_day ? <AppText variant="bodySemi" color={colors.profit}>{symbol}{data.best_day.real_per_hour}/hr</AppText> : undefined}>
-        <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 10 }}>By real {symbol}/hour · {data.intel_label}</AppText>
-        {data.best_day ? (
-          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.profit, marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi">Best day · {displayDateShort(data.best_day.date)}</AppText>
-              <AppText variant="caption" color={colors.dim}>
-                {fmtMoney(data.best_day.income, symbol)} · {data.best_day.hours}h · {data.best_day.km}{unit}
-              </AppText>
-            </View>
-            <AppText variant="bodySemi" color={colors.profit}>{symbol}{data.best_day.real_per_hour}/hr</AppText>
-          </View>
-        ) : (
-          <AppText variant="caption" color={colors.dim}>Log income and online hours to see your best days.</AppText>
-        )}
-        {data.worst_day ? (
-          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.loss, marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi">Worst day · {displayDateShort(data.worst_day.date)}</AppText>
-              <AppText variant="caption" color={colors.dim}>
-                {fmtMoney(data.worst_day.income, symbol)} · {data.worst_day.hours}h · {data.worst_day.km}{unit}
-              </AppText>
-            </View>
-            <AppText variant="bodySemi" color={colors.loss}>{symbol}{data.worst_day.real_per_hour}/hr</AppText>
-          </View>
-        ) : null}
-        {data.best_platform ? (
-          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <Ionicons name="trophy" size={16} color={colors.warm} style={{ marginRight: 8 }} />
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi">Best platform · {data.best_platform.name}</AppText>
-              <AppText variant="caption" color={colors.dim}>Your top earner {data.intel_label}</AppText>
-            </View>
-            <AppText variant="bodySemi" color={colors.profit}>
-              {data.platform_metric === "per_hour" ? `${symbol}${data.best_platform.per_hour}/hr` : fmtMoney(data.best_platform.income, symbol)}
-            </AppText>
-          </View>
-        ) : null}
-      </Accordion>
-
-      {/* Driving insights link */}
+      {/* Driving insights (now the single home for best/worst analysis) */}
       <Pressable testID="money-insights" onPress={() => router.push("/insights" as any)} style={{ marginBottom: 14 }}>
         <Card style={{ flexDirection: "row", alignItems: "center" }}>
           <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
@@ -446,7 +402,7 @@ export default function Money_() {
           </View>
           <View style={{ flex: 1 }}>
             <AppText variant="bodySemi">Driving insights</AppText>
-            <AppText variant="caption" color={colors.dim}>Weekly hours vs earnings & your best days to drive</AppText>
+            <AppText variant="caption" color={colors.dim}>Best & worst days, best platform, top times & weekly trend</AppText>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.dim} />
         </Card>

@@ -182,6 +182,32 @@ export default function Insights() {
             />
           </Card>
 
+          {/* By platform */}
+          {data.by_platform?.length ? (
+            <Card style={{ marginBottom: 14 }}>
+              <AppText variant="h2">By platform</AppText>
+              <AppText variant="caption" color={colors.dim}>
+                Which app pays best · last {data.weekday_weeks} weeks
+              </AppText>
+              {data.by_platform.map((p: any, i: number) => (
+                <View key={p.name} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                  paddingVertical: 9, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border, marginTop: i === 0 ? 10 : 0 }}>
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                    {i === 0 ? <Ionicons name="trophy" size={15} color={colors.warm} style={{ marginRight: 6 }} /> : null}
+                    <View>
+                      <AppText variant="bodySemi">{p.name}</AppText>
+                      <AppText variant="caption" color={colors.dim}>{p.hours > 0 ? `${p.hours}h logged` : "no hours logged"}</AppText>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Money value={p.income} symbol={symbol} size={16} />
+                    {p.per_hour != null ? <AppText variant="caption" color={colors.profit}>{symbol}{p.per_hour}/hr</AppText> : null}
+                  </View>
+                </View>
+              ))}
+            </Card>
+          ) : null}
+
           {/* Best time to drive (needs timed shifts) */}
           {data.has_timed ? (
             <Card style={{ marginBottom: 14 }}>
