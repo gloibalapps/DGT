@@ -14,14 +14,42 @@ function uuid(): string {
 let _pid: string | null = null;
 let _authPid: string | null = null;
 let _authToken: string | null = null;
+let _pidPromise: Promise<string> | null = null;
 
 export function setAuthProfileId(id: string | null) { _authPid = id; }
 export function setAuthToken(t: string | null) { _authToken = t; }
 
+// Durable local identity that scopes ALL of a driver's data. This MUST survive
+// the Android OS killing a backgrounded app and cold-starting it. We keep TWO
+// copies — AsyncStorage (primary) and SecureStore/Keychain (durable mirror that
+// survives cache clears) — and only ever mint a NEW id when BOTH are genuinely
+// empty (true first run). A transient read failure returns the fallback, so we
+// must never regenerate just because the primary read came back empty once.
 export async function getLocalProfileId(): Promise<string> {
-  let id = await storage.getItem<string>(PID_KEY, "");
-  if (!id) { id = uuid(); await storage.setItem(PID_KEY, id); }
-  return id;
+  if (_pidPromise) return _pidPromise;           // coalesce concurrent callers
+  _pidPromise = (async () => {
+    // 1) Primary store.
+    const primary = await storage.getItem<string>(PID_KEY, "");
+    if (primary) {
+      // Keep the durable mirror in sync (cheap, idempotent).
+      const mirror = await storage.secureGet<string>(PID_KEY, "");
+      if (mirror !== primary) await storage.secureSet(PID_KEY, primary);
+      return primary;
+    }
+    // 2) Primary empty — fall back to the durable mirror and restore it.
+    const mirror = await storage.secureGet<string>(PID_KEY, "");
+    if (mirror) {
+      await storage.setItem(PID_KEY, mirror);
+      return mirror;
+    }
+    // 3) Genuinely first run on this device — mint once, persist to BOTH.
+    const id = uuid();
+    await storage.setItem(PID_KEY, id);
+    await storage.secureSet(PID_KEY, id);
+    return id;
+  })();
+  try { return await _pidPromise; }
+  finally { _pidPromise = null; }
 }
 
 export async function getProfileId(): Promise<string> {
@@ -36,7 +64,9 @@ export async function getProfileId(): Promise<string> {
 export async function resetLocalProfileId(): Promise<void> {
   _pid = null;
   _authPid = null;
+  _pidPromise = null;
   await storage.removeItem(PID_KEY);
+  await storage.secureRemove(PID_KEY);
 }
 
 async function req(path: string, opts: RequestInit = {}, retries = 2, timeoutMs = 15000): Promise<any> {

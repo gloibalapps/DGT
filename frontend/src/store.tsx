@@ -7,6 +7,7 @@ interface Store {
   activeVehicle: VehicleT | null;
   activeVehicleId: string | null;
   loading: boolean;
+  loadError: boolean;
   version: number; // bump to force data reload across screens
   refresh: () => void;
   reloadProfile: () => Promise<void>;
@@ -21,6 +22,7 @@ const Ctx = createContext<Store>({
   activeVehicle: null,
   activeVehicleId: null,
   loading: true,
+  loadError: false,
   version: 0,
   refresh: () => {},
   reloadProfile: async () => {},
@@ -33,6 +35,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<ProfileT | null>(null);
   const [vehicles, setVehicles] = useState<VehicleT[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [version, setVersion] = useState(0);
   const mounted = useRef(true);
 
@@ -41,9 +44,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const reloadProfile = useCallback(async () => {
     try {
       const p = await api.getProfile();
-      if (mounted.current) setProfile(p);
+      if (mounted.current) { setProfile(p); setLoadError(false); }
     } catch (e) {
       console.log("profile load error", e);
+      // Keep any previously loaded profile; flag the error so the UI shows a
+      // retry state instead of falsely dropping the driver into onboarding.
+      if (mounted.current) setLoadError(true);
     } finally {
       if (mounted.current) setLoading(false);
     }
@@ -92,7 +98,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       profile, vehicles, activeVehicle, activeVehicleId: activeVehicle?.id || null,
-      loading, version, refresh, reloadProfile, reloadVehicles, setActiveVehicle, updateProfile,
+      loading, loadError, version, refresh, reloadProfile, reloadVehicles, setActiveVehicle, updateProfile,
     }}>
       {children}
     </Ctx.Provider>
