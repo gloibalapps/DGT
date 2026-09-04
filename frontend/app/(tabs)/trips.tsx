@@ -48,6 +48,8 @@ export default function Mileage() {
   const [elapsedSec, setElapsedSec] = useState(0);
 
   const activeVehicle = vehicles.find((v) => v.id === activeVehicleId);
+  // Per-vehicle GPS calibration (scales tracked distance to match the odometer).
+  const cal = ((activeVehicle?.gps_calibration_pct ?? 100) || 100) / 100;
 
   // Live-updating elapsed timer while a GPS drive is being tracked.
   useEffect(() => {
@@ -131,7 +133,7 @@ export default function Mileage() {
   const stopShift = async () => {
     try { subRef.current?.remove(); } catch { /* web */ }
     subRef.current = null; setTracking(false);
-    const km = Math.round(dist * 10) / 10;
+    const km = Math.round(dist * cal * 10) / 10;
     if (km <= 0) { show("No distance recorded", "info"); await resumeAutotrackIfEnabled(); return; }
     setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
     setPendingTag(km);
@@ -149,7 +151,7 @@ export default function Mileage() {
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
     try {
-      await api.addTrip({ date: d.date, distance_km: d.distance_km, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps", vehicle_id: activeVehicleId });
+      await api.addTrip({ date: d.date, distance_km: Math.round(d.distance_km * cal * 10) / 10, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps", vehicle_id: activeVehicleId });
       await clearPendingDrive(d.id);
       show(`${d.distance_km} km logged`, "success");
       refresh(); load();
@@ -243,7 +245,7 @@ export default function Mileage() {
             </View>
           ) : null}
           <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 46, color: colors.text, fontVariant: ["tabular-nums"], letterSpacing: 0.3 }}>
-            {dist.toFixed(1)}
+            {(dist * cal).toFixed(1)}
           </AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 2 }}>{unit} this drive</AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: activeVehicle ? 2 : 12 }}>
@@ -270,7 +272,7 @@ export default function Mileage() {
       <Card style={{ marginBottom: 14 }}>
         <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
         <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
-          {(today.total_km + (tracking ? dist : 0)).toFixed(1)} {unit}
+          {(today.total_km + (tracking ? dist * cal : 0)).toFixed(1)} {unit}
         </AppText>
         <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>

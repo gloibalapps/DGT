@@ -32,6 +32,7 @@ export default function VehicleSetup() {
   const [openOdoDate, setOpenOdoDate] = useState(current.opening_odometer_date || "");
   const [closeOdo, setCloseOdo] = useState(current.closing_odometer != null ? String(current.closing_odometer) : "");
   const [closeOdoDate, setCloseOdoDate] = useState(current.closing_odometer_date || "");
+  const [gpsCal, setGpsCal] = useState(current.gps_calibration_pct != null ? String(current.gps_calibration_pct) : "100");
 
   const [recEnabled, setRecEnabled] = useState(!!current.recurring_payment);
   const [recAmount, setRecAmount] = useState(current.recurring_payment ? String(current.recurring_payment.amount) : "");
@@ -59,6 +60,7 @@ export default function VehicleSetup() {
       opening_odometer_date: openOdoDate || null,
       closing_odometer: num(closeOdo),
       closing_odometer_date: closeOdoDate || null,
+      gps_calibration_pct: (() => { const n = num(gpsCal); return n && n >= 50 && n <= 150 ? n : 100; })(),
       recurring_payment: recEnabled ? {
         amount: parseFloat(recAmount), frequency: recFreq as any,
         anchor_type: "gigstart", anchor_date: recAnchor,
@@ -173,6 +175,16 @@ export default function VehicleSetup() {
             </Field>
             <Field label="Closing reading date">
               <DateField testID="veh-close-odo-date" value={closeOdoDate} onChange={setCloseOdoDate} />
+            </Field>
+          </Card>
+
+          <AppText variant="label" color={colors.dim} style={{ marginBottom: 8, marginLeft: 4 }}>GPS CALIBRATION</AppText>
+          <Card style={{ marginBottom: 16 }}>
+            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12, lineHeight: 16 }}>
+              GPS usually reads a little under your odometer. If a tracked drive doesn't match your dash, nudge this so future drives line up. 100% = no change.
+            </AppText>
+            <Field label="Calibration %" hint="Example: GigTax tracked 32.4 km but your odometer showed 33 → set 102%. (33 ÷ 32.4 × 100)">
+              <Input testID="veh-gps-cal" value={gpsCal} onChangeText={setGpsCal} keyboardType="decimal-pad" placeholder="100" maxLength={5} />
             </Field>
           </Card>
         </ScrollView>
