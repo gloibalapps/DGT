@@ -99,7 +99,7 @@ export default function Manual() {
       title: "Your Money dashboard",
       lines: [
         "The Money tab answers one question: how much of what you earn is really yours?",
-        "Switch the period tabs at the top between Today, Week, Month and This FY — every card updates.",
+        "Switch the period tabs at the top between Daily, Weekly, Quarterly and Financial Year — every card updates. The same four periods are used on the Reports tab too.",
         "MONEY NOW (always shown at the top): your real take-home (after expenses and estimated tax), a Gross/Expenses/Tax breakdown, and your Keep Rate — how many cents you keep from every dollar.",
         "The detail cards below (Performance, Where your money went, Tax position, Deductions) are tap-to-open — they start closed and expand right on the page. Only one opens at a time, and each shows a quick figure on the right so you can glance without opening.",
         "PERFORMANCE: real $/hour and gross $/hour (per online hour), plus real $/active hour, utilisation, and $ / cost / profit per km/mile — with a per-app $/active-hour breakdown.",

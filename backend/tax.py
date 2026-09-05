@@ -223,10 +223,17 @@ def _add_month(d: date) -> date:
     return date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
 
 
-def period_range(period: str, ref: date, country: str = "AU"):
+def start_of_week(ref: date, week_start: int = 0) -> date:
+    """First day of the week containing `ref`. week_start: 0=Mon … 6=Sun."""
+    return ref - timedelta(days=(ref.weekday() - week_start) % 7)
+
+
+def period_range(period: str, ref: date, country: str = "AU", week_start: int = 0):
     """Return [start, end_exclusive) for the given calendar-aligned period."""
+    if period in ("day", "today"):
+        return ref, ref + timedelta(days=1)
     if period == "week":
-        start = ref - timedelta(days=ref.weekday())  # Monday
+        start = start_of_week(ref, week_start)
         return start, start + timedelta(days=7)
     if period == "month":
         start = date(ref.year, ref.month, 1)
@@ -301,7 +308,7 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
                    vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
     if profile.get("country") == "US":
         return compute_report_us(profile, trips, incomes, expenses, period, ref, vehicles)
-    start, end = period_range(period, ref)
+    start, end = period_range(period, ref, "AU", int(profile.get("week_start") or 0))
     today = date.today()
 
     def in_period(row) -> bool:
@@ -485,7 +492,7 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
     """US Schedule C summary: car & truck expense (higher of IRS standard
     mileage vs actual expenses), other business expenses, net profit and a
     self-employment tax estimate. Calendar tax year, miles, no GST."""
-    start, end = period_range(period, ref, "US")
+    start, end = period_range(period, ref, "US", int(profile.get("week_start") or 0))
     today = date.today()
 
     def in_period(row):
@@ -626,7 +633,7 @@ def performance(profile: dict, trips, incomes, expenses, ref: date, shifts=None)
     otherwise fall back to business trip driving time. This lets earnings-per-hour
     reflect real online time (including idle/waiting), not just driving minutes.
     """
-    monday = ref - timedelta(days=ref.weekday())
+    monday = start_of_week(ref, int(profile.get("week_start") or 0))
     shifts = shifts or []
     weeks = []
     tot_inc = tot_exp = tot_km = tot_hours = tot_online = 0.0
@@ -688,7 +695,7 @@ def insights(profile: dict, incomes, expenses, shifts, ref: date,
     """
     shifts = shifts or []
     symbol = "$"
-    monday = ref - timedelta(days=ref.weekday())
+    monday = start_of_week(ref, int(profile.get("week_start") or 0))
 
     # ---- Weekly recap (oldest -> newest) --------------------------------
     weekly = []
@@ -996,17 +1003,17 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
 _PERIOD_WORD = {"today": "today", "week": "this week", "month": "this month", "year": "this FY"}
 
 
-def _period_bounds(period: str, ref: date, country: str):
-    if period == "today":
+def _period_bounds(period: str, ref: date, country: str, week_start: int = 0):
+    if period in ("today", "day"):
         return ref, ref + timedelta(days=1)
-    return period_range(period, ref, country)
+    return period_range(period, ref, country, week_start)
 
 
-def _prev_bounds(period: str, ref: date, country: str):
-    if period == "today":
+def _prev_bounds(period: str, ref: date, country: str, week_start: int = 0):
+    if period in ("today", "day"):
         return ref - timedelta(days=1), ref
-    start, _ = _period_bounds(period, ref, country)
-    return _period_bounds(period, start - timedelta(days=1), country)
+    start, _ = _period_bounds(period, ref, country, week_start)
+    return _period_bounds(period, start - timedelta(days=1), country, week_start)
 
 
 def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
@@ -1015,8 +1022,9 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
     sym = "$"
     unit = "mi" if country == "US" else "km"
     shifts = shifts or []
+    week_start = int(profile.get("week_start") or 0)
 
-    start, end = _period_bounds(period, ref, country)
+    start, end = _period_bounds(period, ref, country, week_start)
 
     def in_range(row, s, e):
         d = parse_date(row["date"])
@@ -1222,7 +1230,7 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
     }
 
     # trend — real earnings vs previous equivalent period
-    ps, pe = _prev_bounds(period, ref, country)
+    ps, pe = _prev_bounds(period, ref, country, week_start)
     _, _, _, _, prev_after = core(ps, pe)
     trend_pct = None
     if abs(prev_after) > 0.01:

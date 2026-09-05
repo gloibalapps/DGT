@@ -10,7 +10,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { AppText, Card, PrimaryButton, Input, Field, ChipRow, useToast, DateField } from "@/src/ui";
-import { COUNTRIES, US_STATES, WORK_TYPES, platformsForWorkType, OWNERSHIP, FREQUENCIES, flagUrl } from "@/src/config";
+import { COUNTRIES, US_STATES, WORK_TYPES, platformsForWorkType, OWNERSHIP, FREQUENCIES, WEEK_DAYS, flagUrl } from "@/src/config";
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -31,6 +31,7 @@ export default function Onboarding() {
   const [recFreq, setRecFreq] = useState("weekly");
   const [recAnchorType, setRecAnchorType] = useState<"acquisition" | "gigstart">("gigstart");
   const [recAnchorDate, setRecAnchorDate] = useState("");
+  const [weekStart, setWeekStart] = useState(0);
 
   const total = 5;
 
@@ -61,6 +62,7 @@ export default function Onboarding() {
       vehicle_ownership: ownership as any,
       acquisition_date: acqISO,
       recurring_payment: rec,
+      week_start: weekStart,
       onboarded: true,
     });
     if (!p) {
@@ -231,10 +233,14 @@ export default function Onboarding() {
 
           {step === 4 && (
             <View>
-              <AppText variant="displaySemi" style={{ fontSize: 28, marginBottom: 4 }}>Recurring payment</AppText>
+              <AppText variant="displaySemi" style={{ fontSize: 28, marginBottom: 4 }}>Your week & payment</AppText>
               <AppText variant="body" color={colors.dim} style={{ marginBottom: 20 }}>
-                Lease, rental or loan? We calculate what’s owed automatically. Optional — you can skip.
+                Set which day your driving week starts so weekly totals match your platforms. Add a recurring vehicle payment if you have one — optional.
               </AppText>
+              <Field label="Week starts on" hint="Used for your Weekly total, weekly goal and insights">
+                <ChipRow options={WEEK_DAYS.map((d) => ({ key: String(d.key), label: d.label }))}
+                  value={String(weekStart)} onChange={(k) => setWeekStart(Number(k))} testIDPrefix="weekstart" />
+              </Field>
               <Pressable testID="recurring-toggle" onPress={() => setRecEnabled(!recEnabled)}>
                 <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                   <AppText variant="bodySemi">I have a recurring vehicle payment</AppText>

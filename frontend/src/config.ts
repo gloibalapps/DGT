@@ -147,11 +147,16 @@ export const FUEL_TYPES = [
   { key: "lpg", label: "LPG" },
 ] as const;
 
+export const WEEK_DAYS = [
+  { key: 0, label: "Mon" }, { key: 1, label: "Tue" }, { key: 2, label: "Wed" },
+  { key: 3, label: "Thu" }, { key: 4, label: "Fri" }, { key: 5, label: "Sat" }, { key: 6, label: "Sun" },
+] as const;
+
 export const PERIODS = [
-  { key: "week", label: "Week" },
-  { key: "month", label: "Month" },
-  { key: "quarter", label: "Quarter" },
-  { key: "year", label: "Year" },
+  { key: "day", label: "Daily" },
+  { key: "week", label: "Weekly" },
+  { key: "quarter", label: "Quarterly" },
+  { key: "year", label: "Financial Year" },
 ] as const;
 
 export const ATO_LINK = "https://www.ato.gov.au/businesses-and-organisations/income-deductions-and-concessions/income-and-deductions-for-business/in-detail/gig-economy-and-the-sharing-economy";

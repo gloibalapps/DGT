@@ -1,28 +1,21 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Pressable, Linking, RefreshControl, Animated, Easing } from "react-native";
+import { View, Pressable, Linking, RefreshControl, Animated, Easing, Alert, Platform } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
+import * as IntentLauncher from "expo-intent-launcher";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
-import { getPendingDrives, clearPendingDrive, PendingDrive, pauseAutotrackForManual, resumeAutotrackIfEnabled } from "@/src/autotrack";
+import { storage } from "@/src/utils/storage";
+import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
   EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney, Input,
 } from "@/src/ui";
 
-function haversine(a: any, b: any) {
-  const R = 6371;
-  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-  const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
-  const la1 = (a.latitude * Math.PI) / 180;
-  const la2 = (b.latitude * Math.PI) / 180;
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
+const BATTERY_PROMPT_KEY = "gigtax.battery_prompt_seen";
 
 export default function Mileage() {
   const { colors } = useTheme();
@@ -36,16 +29,14 @@ export default function Mileage() {
   const [refreshing, setRefreshing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // GPS shift state
+  // GPS shift state. Distance is auto-saved to storage by a background
+  // foreground-service task, so it survives screen-off and even app kills.
   const [tracking, setTracking] = useState(false);
   const [dist, setDist] = useState(0);
-  const [path, setPath] = useState<{ latitude: number; longitude: number }[]>([]);
   const [pendingTag, setPendingTag] = useState<number | null>(null);
   const [pendingRawKm, setPendingRawKm] = useState<number | null>(null);
   const [odoInput, setOdoInput] = useState("");
   const [pendingDuration, setPendingDuration] = useState(0);
-  const subRef = useRef<Location.LocationSubscription | null>(null);
-  const lastRef = useRef<any>(null);
   const startTimeRef = useRef<number>(0);
   const [elapsedSec, setElapsedSec] = useState(0);
 
@@ -53,12 +44,32 @@ export default function Mileage() {
   // Per-vehicle GPS calibration (scales tracked distance to match the odometer).
   const cal = ((activeVehicle?.gps_calibration_pct ?? 100) || 100) / 100;
 
-  // Live-updating elapsed timer while a GPS drive is being tracked.
+  // While a drive is tracked, poll the auto-saved distance from storage (the
+  // background task keeps writing it even when the screen is off) + tick the timer.
   useEffect(() => {
     if (!tracking) { setElapsedSec(0); return; }
-    const id = setInterval(() => setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000)), 1000);
+    const id = setInterval(async () => {
+      const live = await getManualLive();
+      if (live) {
+        setDist(live.distanceKm);
+        if (live.startTs) startTimeRef.current = live.startTs;
+      }
+      setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1500);
     return () => clearInterval(id);
   }, [tracking]);
+
+  // Recover an in-progress drive if the app was killed & reopened mid-drive.
+  useEffect(() => {
+    (async () => {
+      const live = await getManualLive();
+      if (live && live.active) {
+        startTimeRef.current = live.startTs || Date.now();
+        setDist(live.distanceKm);
+        setTracking(true);
+      }
+    })();
+  }, []);
 
   const startedAtStr = () => new Date(startTimeRef.current).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const fmtElapsed = (s: number) => {
@@ -83,63 +94,50 @@ export default function Mileage() {
   useFocusEffect(useCallback(() => { load(); }, [load, version]));
 
   const startShift = async () => {
-    let perm = await Location.getForegroundPermissionsAsync();
-    if (!perm.granted && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync();
-    if (!perm.granted) {
+    const res = await startManualDrive();
+    if (!res.ok) {
+      if (res.reason === "unsupported") { show("GPS tracking needs a device build", "info"); return; }
       show("Location needed to track your drive", "error");
-      if (!perm.canAskAgain) Linking.openSettings();
+      if (res.canAskAgain === false) Linking.openSettings();
       return;
     }
-    setDist(0); setPath([]); lastRef.current = null; startTimeRef.current = Date.now(); setTracking(true);
+    setDist(0); startTimeRef.current = Date.now(); setTracking(true);
+    maybePromptBattery();
+  };
 
-    // Pause background auto-detection while this manual shift runs so the same
-    // drive isn't logged twice (auto + manual).
-    await pauseAutotrackForManual();
-
-    // Seed an immediate first fix so tracking starts right away instead of
-    // waiting for the first watch callback (which can be slow on Android).
-    try {
-      const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
-      lastRef.current = first.coords;
-      setPath([{ latitude: first.coords.latitude, longitude: first.coords.longitude }]);
-    } catch { /* first fix may take a moment; the watcher below will catch up */ }
-
-    const onPoint = (loc: Location.LocationObject) => {
-      const c = loc.coords;
-      const point = { latitude: c.latitude, longitude: c.longitude };
-      if (lastRef.current) {
-        const d = haversine(lastRef.current, c);
-        // Accept moves above a small noise floor (4 m); finer sampling below
-        // means the path hugs the road instead of cutting corners, so the
-        // total lands closer to the vehicle's odometer.
-        if (d > 0.004) {
-          setDist((prev) => prev + d);
-          setPath((prev) => {
-            const next = [...prev, point];
-            return next.length > 1500 ? next.slice(next.length - 1500) : next;
-          });
-          lastRef.current = c;
-        }
-      } else {
-        setPath([point]);
-        lastRef.current = c;
-      }
-    };
-
-    subRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5, timeInterval: 2000 },
-      onPoint,
+  // One-time nudge for aggressive Android battery managers (Blackview, Xiaomi,
+  // Oppo, Samsung…) that kill background apps and can interrupt drive tracking.
+  const maybePromptBattery = async () => {
+    if (Platform.OS !== "android") return;
+    if (await storage.getItem<boolean>(BATTERY_PROMPT_KEY, false)) return;
+    await storage.setItem(BATTERY_PROMPT_KEY, true);
+    Alert.alert(
+      "Keep drive tracking reliable",
+      "Some phones (Blackview, Xiaomi, Oppo, Samsung…) aggressively close apps in the background, which can stop your drive from being tracked. Allow GigTax to run without battery limits so your mileage keeps recording with the screen off.",
+      [
+        { text: "Not now", style: "cancel" },
+        { text: "Open settings", onPress: openBatterySettings },
+      ],
     );
   };
 
+  const openBatterySettings = async () => {
+    try { await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS); }
+    catch {
+      try { await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.BATTERY_SAVER_SETTINGS); }
+      catch { Linking.openSettings(); }
+    }
+  };
+
   const stopShift = async () => {
-    try { subRef.current?.remove(); } catch { /* web */ }
-    subRef.current = null; setTracking(false);
-    const km = Math.round(dist * cal * 10) / 10;
-    if (km <= 0) { show("No distance recorded", "info"); await resumeAutotrackIfEnabled(); return; }
-    setPendingRawKm(Math.round(dist * 10) / 10);   // raw GPS (uncalibrated) for auto-calibration
+    setTracking(false);
+    const res = await stopManualDrive();
+    const raw = res.distanceKm;
+    const km = Math.round(raw * cal * 10) / 10;
+    if (km <= 0) { show("No distance recorded", "info"); return; }
+    setPendingRawKm(Math.round(raw * 10) / 10);   // raw GPS (uncalibrated) for auto-calibration
     setOdoInput("");
-    setPendingDuration(Math.max(0, Math.round((Date.now() - startTimeRef.current) / 60000)));
+    setPendingDuration(Math.max(0, Math.round((Date.now() - (res.startTs || startTimeRef.current)) / 60000)));
     setPendingTag(km);
   };
 
@@ -161,7 +159,6 @@ export default function Mileage() {
       }
       setPendingTag(null); setPendingRawKm(null); setOdoInput(""); refresh(); load();
     } catch { show("Couldn't save trip — try again", "error"); }
-    finally { await resumeAutotrackIfEnabled(); }
   };
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
@@ -258,7 +255,7 @@ export default function Mileage() {
             <PulsingDot color={colors.profit} />
             <AppText variant="label" color={colors.profit}>GPS TRACKING ACTIVE</AppText>
           </View>
-          {path.length < 1 ? (
+          {dist <= 0 ? (
             <View style={{ alignSelf: "stretch", height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
               alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
               <AppText variant="caption" color={colors.dim}>Acquiring GPS…</AppText>

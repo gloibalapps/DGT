@@ -21,29 +21,31 @@ const TREAT_LABEL: Record<string, string> = Object.fromEntries(
   TAX_TREATMENTS.map((t) => [t.key, t.label]),
 );
 
-type Period = "today" | "week" | "month" | "year";
+type Period = "day" | "week" | "quarter" | "year";
 const PERIODS: { key: Period; label: string }[] = [
-  { key: "today", label: "Today" },
-  { key: "week", label: "Week" },
-  { key: "month", label: "Month" },
-  { key: "year", label: "This FY" },
+  { key: "day", label: "Daily" },
+  { key: "week", label: "Weekly" },
+  { key: "quarter", label: "Quarterly" },
+  { key: "year", label: "Financial Year" },
 ];
 
 interface Row { kind: "income" | "expense"; id: string; date: string; amount: number; title: string; subtitle: string; icon: any; treatment: string }
 
-function periodRange(period: Period, country: string) {
+function periodRange(period: Period, country: string, weekStart = 0) {
   const now = new Date();
   const iso = (d: Date) => d.toLocaleDateString("en-CA");
-  if (period === "today") { const t = iso(now); return { start: t, end: t }; }
+  if (period === "day") { const t = iso(now); return { start: t, end: t }; }
   if (period === "week") {
-    const diff = (now.getDay() + 6) % 7;
-    const mon = new Date(now); mon.setDate(now.getDate() - diff);
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    return { start: iso(mon), end: iso(sun) };
+    const jsStart = (weekStart + 1) % 7;                 // week_start 0=Mon → JS 1; 6=Sun → JS 0
+    const diff = (now.getDay() - jsStart + 7) % 7;
+    const s = new Date(now); s.setDate(now.getDate() - diff);
+    const e = new Date(s); e.setDate(s.getDate() + 6);
+    return { start: iso(s), end: iso(e) };
   }
-  if (period === "month") {
-    const s = new Date(now.getFullYear(), now.getMonth(), 1);
-    const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  if (period === "quarter") {
+    const qm = Math.floor(now.getMonth() / 3) * 3;       // calendar-aligned (AU BAS & US share these)
+    const s = new Date(now.getFullYear(), qm, 1);
+    const e = new Date(now.getFullYear(), qm + 3, 0);
     return { start: iso(s), end: iso(e) };
   }
   if (country === "US") return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-31` };
@@ -141,7 +143,7 @@ export default function Money_() {
 
   const symbol = data?.symbol || "$";
   const unit = data?.distance_unit || (country === "US" ? "mi" : "km");
-  const range = useMemo(() => periodRange(period, country), [period, country]);
+  const range = useMemo(() => periodRange(period, country, Number(profile?.week_start ?? 0)), [period, country, profile?.week_start]);
 
   const inRange = useCallback((dateStr: string) => {
     const d = String(dateStr).slice(0, 10);

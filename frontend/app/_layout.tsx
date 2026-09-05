@@ -20,8 +20,8 @@ import { maybeAutoBackup } from "@/src/backup";
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
-// TEMP: set to `true` to re-enable the RevenueCat subscription paywall gate after testing.
-const SUB_GATE_ENABLED = false;
+// Set to `true` to enforce the RevenueCat subscription paywall gate.
+const SUB_GATE_ENABLED = true;
 
 function SubGate() {
   const { loading, managed, isActive } = useSubscription();
@@ -53,8 +53,8 @@ function SubGate() {
   );
 }
 
-// TEMP: set to `true` to re-enable the Google login gate after testing.
-const AUTH_ENABLED = false;
+// Set to `true` to enforce the Google login gate.
+const AUTH_ENABLED = true;
 
 function AuthGate() {
   const { user, loading } = useAuth();

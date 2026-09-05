@@ -1,0 +1,40 @@
+{
+  "summary": "Iter17 P0 verification for the manual-drive foreground-service refactor (data-loss fix). Backend regression: 8/8 pytest pass in test_iter17_regression.py — /api/money (today+week), /api/dashboard, /api/reports (AU quarter, US year), /api/vehicles, /api/trips create/read/delete, and /api/ask all return 200 with valid payloads (no schema regressions from the frontend-only change). Frontend on mobile viewport 390x844: (1) Onboarding country-AU -> delivery -> Uber Eats -> own completes fine. (2) Mileage tab (/trips) renders WITHOUT red-screen — vehicle chip, TODAY 0.0 km total, business/private/percent chips, Add trip + GPS shift buttons, History toggle all render. (3) Tapping GPS shift (testID gps-start) on web produces the expected info toast 'GPS tracking needs a device build' — NO CRASH, and gps-stop button correctly is NOT rendered (tracking did not start). (4) Add trip (trips-add) opens /entry?type=trip; saving 7.3 returns to /trips; expanding mileage-history-toggle shows the new trip and its trip-del-* button; deleting removes it and shows 'Trip deleted' toast. (5) Settings tab renders with the 'Automatic tracking' section containing autotrack-toggle. Battery & background tracking row (testID battery-optimization) is correctly NOT rendered on web (Platform.OS==='android' gate) — conditional does not throw. (6) Code review of /app/frontend/src/autotrack.ts MANUAL_TASK block: TaskManager.defineTask is gated on Platform.OS!=='web'; readJSON/writeJSON persist LIVE_KEY every location batch (auto-save); startManualDrive pauses autotrack, sets LIVE_KEY active:true, starts foreground-service updates; getManualLive returns null-safe {distanceKm, startTs, active}; stopManualDrive stops updates, clears LIVE_KEY, resumes autotrack. Cold-start recovery useEffect in trips.tsx reads getManualLive() and restores tracking state correctly on app relaunch. Poll effect updates dist from getManualLive every 1.5s while tracking. Logic is correct — data-loss fix looks sound. No console errors; only known non-blocking warnings persist ('props.pointerEvents is deprecated' upstream in react-native-web, and preview 'Disconnected from Metro' cosmetic).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter17_regression.py",
+    "/app/test_reports/pytest/pytest_iter17_regression.xml"
+  ],
+  "action_items": [
+    "None. P0 manual-drive foreground-service refactor is preview-safe and does not regress any backend endpoint or existing UI flow. Physical device build required to validate real background survival (screen-off / app-kill) — outside harness scope, as noted by main agent."
+  ],
+  "critical_code_review_comments": [
+    "autotrack.ts MANUAL_TASK correctly persists Live state to LIVE_KEY every batch (line 219 writeJSON) so distance survives OS-kill; startManualDrive initializes active:true BEFORE starting updates (line 239) so the task handler's `if (!live || !live.active) return;` guard cannot race and drop early points.",
+    "trips.tsx cold-start recovery useEffect (lines 63-72) reads getManualLive() and restores startTimeRef.current, dist and tracking state — correct recovery contract for the killed-app case.",
+    "stopManualDrive returns {distanceKm, startTs} even if LIVE_KEY was already null (falls back to Date.now()) — trips.tsx stopShift handles km<=0 gracefully with an info toast, no crash.",
+    "startManualDrive calls pauseAutotrackForManual() first so background auto-detection can't double-log the same physical drive; resumeAutotrackIfEnabled() is called on stopManualDrive — matches earlier iterations' invariant.",
+    "battery-optimization row is correctly gated on Platform.OS==='android' in settings.tsx (line 331) — on web this conditional short-circuits, no attempt to import/call IntentLauncher unless the row is tapped, so no runtime error in preview.",
+    "The 'unsupported on web' return path (startManualDrive line 230) is the intended behavior — trips.tsx shows the info toast and does not enter tracking state (verified: gps-stop button does not render after tap)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter17_regression.py (new — 8 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 iter17 regression + full 103/103 previous suite unaffected)",
+    "frontend": "100% for all preview-verifiable behavior (Mileage load, GPS-shift graceful web fallback, Add trip CRUD, Settings with conditional battery row)"
+  },
+  "seed_data_creation": "Backend pytest uses per-test TEST_-prefixed profile IDs (auto-cleanup via unique namespace). Frontend flow created and deleted one 7.3 km trip on a fresh preview profile — nothing left over.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The manual GPS-shift button (testID gps-start) intentionally returns {ok:false, reason:'unsupported'} on web and shows 'GPS tracking needs a device build' toast — this is expected, NOT a bug. Battery-optimization row (testID battery-optimization) is Android-only and will NOT render in web preview. Cold-start recovery + background persistence CANNOT be validated in preview (native-only). Onboarding path for AU delivery: country-AU -> onboarding-next -> worktype-delivery -> onboarding-next -> platform-Uber Eats -> onboarding-next -> ownership-own -> onboarding-next -> onboarding-next (final). Backend uses PUT /api/profile, singular /api/trips.",
+  "rca_of_issue": "N/A — this is a P0 verification pass. Data-loss RCA (per main agent): prior implementation used an in-memory foreground watchPositionAsync in trips.tsx that Android's aggressive OOM-killer terminated when the app was backgrounded, losing all in-flight distance. Fix (verified via code review): (a) moved tracking to a TaskManager.defineTask(MANUAL_TASK) started via Location.startLocationUpdatesAsync with foregroundService config (kept alive as an Android foreground service with a sticky notification), (b) auto-writes running distance to AsyncStorage under LIVE_KEY on every batch, (c) trips.tsx cold-start useEffect recovers the drive on relaunch by reading LIVE_KEY, (d) Android-only battery-optimization row + first-run Alert nudge the user to whitelist GigTax from aggressive OEM battery managers. All logic paths are sound; only device-build execution can prove background survival on real phones."
+}

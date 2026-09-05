@@ -153,6 +153,7 @@ export interface ProfileT {
   reporting_frequency?: string | null;
   business_use_fallback: number;
   weekly_goal?: number | null;
+  week_start?: number | null;
   tax_set_aside?: number | null;
   vehicle?: VehicleT | null;
   theme: "dark" | "light";

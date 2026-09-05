@@ -189,3 +189,84 @@ export async function clearPendingDrive(id: string): Promise<void> {
   const pending = await readJSON<PendingDrive[]>(PENDING_KEY, []);
   await writeJSON(PENDING_KEY, pending.filter((p) => p.id !== id));
 }
+
+// ---------------------------------------------------------------------------
+// MANUAL DRIVE (foreground-service background task).
+// Keeps the live "GPS shift" alive when the app is backgrounded / screen off,
+// and auto-saves the running distance to storage every update so the drive is
+// recovered even if the OS kills the app. Native only.
+// ---------------------------------------------------------------------------
+export const MANUAL_TASK = "gigtax-manual-drive";
+const LIVE_KEY = "gigtax.manual.live"; // JSON string
+
+interface Live { distance: number; lastLat?: number; lastLon?: number; lastTs: number; startTs: number; active: boolean; }
+
+if (Platform.OS !== "web") {
+  TaskManager.defineTask(MANUAL_TASK, async ({ data, error }: any) => {
+    if (error) return;
+    const locs: Location.LocationObject[] = data?.locations || [];
+    if (!locs.length) return;
+    const live = await readJSON<Live | null>(LIVE_KEY, null);
+    if (!live || !live.active) return;
+    for (const loc of locs) {
+      const { latitude, longitude } = loc.coords;
+      if (live.lastLat != null && live.lastLon != null) {
+        const d = haversine(live.lastLat, live.lastLon, latitude, longitude);
+        if (d > 0.004) live.distance += d;
+      }
+      live.lastLat = latitude; live.lastLon = longitude; live.lastTs = loc.timestamp;
+    }
+    await writeJSON(LIVE_KEY, live);
+  });
+}
+
+export async function isManualRunning(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  try { return await Location.hasStartedLocationUpdatesAsync(MANUAL_TASK); }
+  catch { return false; }
+}
+
+export async function startManualDrive(): Promise<EnableResult> {
+  if (Platform.OS === "web") return { ok: false, reason: "unsupported" };
+  let fg = await Location.getForegroundPermissionsAsync();
+  if (!fg.granted && fg.canAskAgain) fg = await Location.requestForegroundPermissionsAsync();
+  if (!fg.granted) return { ok: false, reason: "permission", canAskAgain: fg.canAskAgain };
+  let bg = await Location.getBackgroundPermissionsAsync();
+  if (!bg.granted && bg.canAskAgain) bg = await Location.requestBackgroundPermissionsAsync();
+  if (!bg.granted) return { ok: false, reason: "permission", canAskAgain: bg.canAskAgain };
+
+  await pauseAutotrackForManual(); // don't double-count the same drive
+  await writeJSON(LIVE_KEY, { distance: 0, lastTs: Date.now(), startTs: Date.now(), active: true } as Live);
+  if (!(await isManualRunning())) {
+    await Location.startLocationUpdatesAsync(MANUAL_TASK, {
+      accuracy: Location.Accuracy.BestForNavigation,
+      distanceInterval: 5,
+      timeInterval: 2000,
+      pausesUpdatesAutomatically: false,
+      activityType: Location.ActivityType.AutomotiveNavigation,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        notificationTitle: "GigTax is tracking your drive",
+        notificationBody: "Your distance is being recorded — tap to return to the app.",
+        notificationColor: "#38BDF8",
+      },
+    });
+  }
+  return { ok: true };
+}
+
+export async function getManualLive(): Promise<{ distanceKm: number; startTs: number; active: boolean } | null> {
+  const live = await readJSON<Live | null>(LIVE_KEY, null);
+  if (!live) return null;
+  return { distanceKm: Math.round(live.distance * 100) / 100, startTs: live.startTs, active: !!live.active };
+}
+
+export async function stopManualDrive(): Promise<{ distanceKm: number; startTs: number }> {
+  const live = await readJSON<Live | null>(LIVE_KEY, null);
+  if (await isManualRunning()) {
+    try { await Location.stopLocationUpdatesAsync(MANUAL_TASK); } catch { /* noop */ }
+  }
+  await writeJSON(LIVE_KEY, null);
+  await resumeAutotrackIfEnabled();
+  return { distanceKm: live ? Math.round(live.distance * 100) / 100 : 0, startTs: live ? live.startTs : Date.now() };
+}

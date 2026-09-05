@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { View, Pressable, ScrollView, Linking } from "react-native";
+import { View, Pressable, ScrollView, Linking, Platform } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -12,8 +12,9 @@ import { api, resetLocalProfileId } from "@/src/api";
 import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
+import * as IntentLauncher from "expo-intent-launcher";
 import {
-  WORK_TYPES, platformsForWorkType, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, flagUrl,
+  WORK_TYPES, platformsForWorkType, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, WEEK_DAYS, flagUrl,
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
@@ -130,6 +131,14 @@ export default function Settings() {
       Linking.openSettings();
     } else {
       show("Background location is required — please allow it to detect drives", "error");
+    }
+  };
+
+  const openBatterySettings = async () => {
+    try { await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS); }
+    catch {
+      try { await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.BATTERY_SAVER_SETTINGS); }
+      catch { Linking.openSettings(); }
     }
   };
 
@@ -319,6 +328,19 @@ export default function Settings() {
             <View style={{ width: 22, height: 22, borderRadius: 999, backgroundColor: "#fff" }} />
           </View>
         </Pressable>
+        {Platform.OS === "android" ? (
+          <Pressable testID="battery-optimization" onPress={openBatterySettings}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <AppText variant="bodyMed">Battery &amp; background tracking</AppText>
+              <AppText variant="caption" color={colors.dim}>
+                Some phones (Blackview, Xiaomi, Oppo, Samsung…) close apps in the background and can stop drive tracking. Tap to allow GigTax to run without battery limits.
+              </AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+          </Pressable>
+        ) : null}
       </Section>
 
       {/* Country & region */}
@@ -368,6 +390,16 @@ export default function Settings() {
             </AppText>
           </View>
         ) : null}
+      </Section>
+
+      {/* Week start */}
+      <Section title="Your week">
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 8 }}>
+          Which day your driving week starts — used for your Weekly total, weekly goal and insights.
+        </AppText>
+        <ChipRow options={WEEK_DAYS.map((d) => ({ key: String(d.key), label: d.label }))}
+          value={String(profile.week_start ?? 0)}
+          onChange={(k) => updateProfile({ week_start: Number(k) } as any)} testIDPrefix="set-weekstart" />
       </Section>
 
       {/* Business use % read only */}

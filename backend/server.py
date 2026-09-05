@@ -600,6 +600,7 @@ class Profile(BaseModel):
     reporting_frequency: Optional[str] = None
     business_use_fallback: float = 100.0
     weekly_goal: Optional[float] = None
+    week_start: int = 0  # 0=Mon … 6=Sun; first day of the driver's week
     tax_set_aside: Optional[float] = None
     vehicle_method: Optional[str] = None  # US/UK only
     vehicle_first_business_year: Optional[str] = None
