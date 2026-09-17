@@ -201,22 +201,31 @@ const LIVE_KEY = "gigtax.manual.live"; // JSON string
 
 interface Live { distance: number; lastLat?: number; lastLon?: number; lastTs: number; startTs: number; active: boolean; }
 
+const MANUAL_NOISE_KM = 0.004; // 4 m floor — drop GPS jitter
+
+// Read-modify-write a single GPS fix into the live drive. Shared by BOTH the
+// background foreground-service task AND the in-app foreground watcher, so the
+// running distance is persisted to storage on EVERY update from either source
+// and can never be lost if the OS kills the app. Sharing lastLat/lastLon means
+// a point is never counted twice regardless of which source ingests it.
+export async function ingestManualPoint(latitude: number, longitude: number, ts: number): Promise<void> {
+  const live = await readJSON<Live | null>(LIVE_KEY, null);
+  if (!live || !live.active) return;
+  if (live.lastLat != null && live.lastLon != null) {
+    const d = haversine(live.lastLat, live.lastLon, latitude, longitude);
+    if (d > MANUAL_NOISE_KM) live.distance += d;
+  }
+  live.lastLat = latitude; live.lastLon = longitude; live.lastTs = ts;
+  await writeJSON(LIVE_KEY, live);
+}
+
 if (Platform.OS !== "web") {
   TaskManager.defineTask(MANUAL_TASK, async ({ data, error }: any) => {
     if (error) return;
     const locs: Location.LocationObject[] = data?.locations || [];
-    if (!locs.length) return;
-    const live = await readJSON<Live | null>(LIVE_KEY, null);
-    if (!live || !live.active) return;
     for (const loc of locs) {
-      const { latitude, longitude } = loc.coords;
-      if (live.lastLat != null && live.lastLon != null) {
-        const d = haversine(live.lastLat, live.lastLon, latitude, longitude);
-        if (d > 0.004) live.distance += d;
-      }
-      live.lastLat = latitude; live.lastLon = longitude; live.lastTs = loc.timestamp;
+      await ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
     }
-    await writeJSON(LIVE_KEY, live);
   });
 }
 

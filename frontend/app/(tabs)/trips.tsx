@@ -3,13 +3,14 @@ import { View, Pressable, Linking, RefreshControl, Animated, Easing, Alert, Plat
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as Location from "expo-location";
 
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
-import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive } from "@/src/autotrack";
+import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
   EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney, Input,
@@ -39,6 +40,7 @@ export default function Mileage() {
   const [pendingDuration, setPendingDuration] = useState(0);
   const startTimeRef = useRef<number>(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const subRef = useRef<Location.LocationSubscription | null>(null);
 
   const activeVehicle = vehicles.find((v) => v.id === activeVehicleId);
   // Per-vehicle GPS calibration (scales tracked distance to match the odometer).
@@ -60,6 +62,8 @@ export default function Mileage() {
   }, [tracking]);
 
   // Recover an in-progress drive if the app was killed & reopened mid-drive.
+  // The running distance was persisted to storage, so it comes back intact; we
+  // also restart the foreground watcher so continued driving keeps counting.
   useEffect(() => {
     (async () => {
       const live = await getManualLive();
@@ -67,9 +71,28 @@ export default function Mileage() {
         startTimeRef.current = live.startTs || Date.now();
         setDist(live.distanceKm);
         setTracking(true);
+        await startForegroundWatch();
       }
     })();
+    return () => stopForegroundWatch();
   }, []);
+
+  // Foreground GPS watcher — persists every fix straight to storage (via the
+  // shared ingest) so distance is NEVER only in memory. Belt-and-suspenders
+  // alongside the background foreground-service task for aggressive OEMs.
+  const startForegroundWatch = async () => {
+    if (subRef.current) return;
+    try {
+      subRef.current = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5, timeInterval: 2000 },
+        (loc) => { ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp); },
+      );
+    } catch { /* web / no perm — the background task still covers it */ }
+  };
+  const stopForegroundWatch = () => {
+    try { subRef.current?.remove(); } catch { /* noop */ }
+    subRef.current = null;
+  };
 
   const startedAtStr = () => new Date(startTimeRef.current).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const fmtElapsed = (s: number) => {
@@ -102,6 +125,7 @@ export default function Mileage() {
       return;
     }
     setDist(0); startTimeRef.current = Date.now(); setTracking(true);
+    await startForegroundWatch();
     maybePromptBattery();
   };
 
@@ -131,6 +155,7 @@ export default function Mileage() {
 
   const stopShift = async () => {
     setTracking(false);
+    stopForegroundWatch();
     const res = await stopManualDrive();
     const raw = res.distanceKm;
     const km = Math.round(raw * cal * 10) / 10;
