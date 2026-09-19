@@ -54,7 +54,10 @@ function SubGate() {
 }
 
 // Set to `true` to enforce the Google login gate.
-const AUTH_ENABLED = true;
+// Currently OFF: user was locked out because Google sign-in is blocked by the
+// OAuth consent screen (Testing mode / test-users allowlist). Re-enable once the
+// consent screen is published to production (or the user's Gmail is a test user).
+const AUTH_ENABLED = false;
 
 function AuthGate() {
   const { user, loading } = useAuth();

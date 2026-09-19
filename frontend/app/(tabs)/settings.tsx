@@ -35,7 +35,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function Settings() {
   const { colors, mode, toggle } = useTheme();
   const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle, reloadProfile, reloadVehicles } = useStore();
-  const { user, signOut } = useAuth();
+  const { user, signIn, signingIn, signOut } = useAuth();
   const { isActive: subActive, managed: subManaged, presentCustomerCenter } = useSubscription();
   const { show } = useToast();
   const router = useRouter();
@@ -175,7 +175,20 @@ export default function Settings() {
             <AppText variant="bodySemi" color={colors.loss}>Sign out</AppText>
           </Pressable>
         </Section>
-      ) : null}
+      ) : (
+        <Section title="Account">
+          <AppText variant="bodySemi">Sign in to sync &amp; back up</AppText>
+          <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>
+            Sign in with Google to keep your data safe and sync it across your phones. You can keep using the app without signing in.
+          </AppText>
+          <Pressable testID="set-signin" onPress={signIn} disabled={signingIn}
+            style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
+              paddingVertical: 12, borderRadius: 12, backgroundColor: colors.accent, opacity: signingIn ? 0.6 : 1 }}>
+            <Ionicons name="logo-google" size={18} color="#F1F5F9" style={{ marginRight: 8 }} />
+            <AppText variant="bodySemi" color="#F1F5F9">{signingIn ? "Signing in…" : "Sign in with Google"}</AppText>
+          </Pressable>
+        </Section>
+      )}
 
       {/* Subscription */}
       <Section title="Subscription">

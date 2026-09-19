@@ -54,17 +54,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeWithToken = useCallback(async (token: string) => {
     // Guard: a re-mount, hot deep link and the auth-session result can all
-    // surface the same token — only apply it once.
+    // surface the same token — only process it once *at a time*. But if the
+    // attempt fails (transient network / API hiccup), release the guard so a
+    // later duplicate deep-link event can retry instead of being swallowed
+    // (which would leave the user stuck logged-out on Android).
     if (!token || sentIds.current.has(token)) return;
     sentIds.current.add(token);
-    setAuthToken(token);
-    const me = await api.authMe();
-    await applySession(token, me.user);
-    // one-time: move this device's local data onto the account
     try {
-      const localPid = await getLocalProfileId();
-      await api.authClaim(localPid);
-    } catch { /* non-blocking */ }
+      setAuthToken(token);
+      const me = await api.authMe();
+      await applySession(token, me.user);
+      // one-time: move this device's local data onto the account
+      try {
+        const localPid = await getLocalProfileId();
+        await api.authClaim(localPid);
+      } catch { /* non-blocking */ }
+    } catch (e) {
+      sentIds.current.delete(token); // allow a retry from another source
+      throw e;
+    }
   }, [applySession]);
 
   // Restore an existing session on launch
