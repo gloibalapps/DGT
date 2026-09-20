@@ -17,7 +17,9 @@ export default function LoginScreen() {
       <SafeAreaView style={{ flex: 1, padding: 24, justifyContent: "space-between" }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <Image
-            source={require("@/assets/images/logo-dark.png")}
+            source={colors.mode === "light"
+              ? require("@/assets/images/logo-wordmark-light.png")
+              : require("@/assets/images/logo-dark.png")}
             style={{ width: 260, height: 98, marginBottom: 18 }}
             contentFit="contain"
           />
