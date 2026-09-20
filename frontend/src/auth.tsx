@@ -156,7 +156,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.location.href = `${BACKEND}/api/auth/google/start?app_redirect=${encodeURIComponent(redirect)}`;
         return; // browser navigates away
       }
-      const redirect = Linking.createURL("/");
+      // Force the app's OWN custom scheme (frontend://) as the return address.
+      // Plain Linking.createURL("/") resolves to the https dev/preview URL in
+      // non-standalone builds, so Google sends the token to a web page in the
+      // browser instead of back into the native app (user stays logged out).
+      const redirect = Linking.createURL("/", { scheme: "frontend" });
       const authUrl = `${BACKEND}/api/auth/google/start?app_redirect=${encodeURIComponent(redirect)}`;
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
       if (result.type === "success" && result.url) {
