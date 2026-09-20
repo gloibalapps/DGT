@@ -11,7 +11,7 @@ const CACHE_KEY = "gigtax.sub_active";
 // The Test Store key (test_...) makes the RevenueCat SDK force-close a RELEASE
 // build with a "Wrong API Key" dialog. While false, the SDK is never loaded or
 // configured. Set to `true` (and add a real appl_/goog_ key) to re-enable.
-const RC_ENABLED = true;
+const RC_ENABLED = false;
 
 // Load the native SDK lazily so the web / Expo Go bundles don't break.
 // Only require it when keys are configured (i.e. a real native build) — in

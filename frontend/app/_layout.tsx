@@ -21,7 +21,8 @@ LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
 // Set to `true` to enforce the RevenueCat subscription paywall gate.
-const SUB_GATE_ENABLED = true;
+// OFF for now — RevenueCat integration deferred at user's request.
+const SUB_GATE_ENABLED = false;
 
 function SubGate() {
   const { loading, managed, isActive } = useSubscription();
