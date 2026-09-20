@@ -303,14 +303,15 @@ async def google_callback(request: Request, code: Optional[str] = Query(None),
         await db.oauth_states.delete_one({"state": state})
 
     def bounce(fragment: str):
-        target = f"{app_redirect}#{fragment}"
-        # Web (http/https): a normal 302 to the same-origin app works fine.
+        # Web (http/https): browsers preserve the fragment, a normal 302 works.
         if app_redirect.startswith("http://") or app_redirect.startswith("https://"):
-            return RedirectResponse(target)
-        # Native custom scheme (e.g. frontend://): Android Chrome Custom Tabs will
-        # NOT auto-follow a 302 from https to a custom scheme, so the app never
-        # receives the token. Serve an HTML page that triggers the deep link via
-        # JS immediately, with a manual "Return to app" fallback button.
+            return RedirectResponse(f"{app_redirect}#{fragment}")
+        # Native custom scheme (e.g. frontend://): Android DROPS the URL fragment
+        # when it hands a custom-scheme intent to the app, so a `#token` payload is
+        # lost and the user lands back on the sign-in screen. Pass it as a QUERY
+        # param instead (reliably preserved); the app parses both `?` and `#`.
+        sep = "&" if "?" in app_redirect else "?"
+        target = f"{app_redirect}{sep}{fragment}"
         import json as _json
         t = _json.dumps(target)
         html = f"""<!doctype html><html><head>
