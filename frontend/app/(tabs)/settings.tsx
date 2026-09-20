@@ -293,9 +293,31 @@ export default function Settings() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.dim} />
         </Pressable>
+        <Pressable testID="set-privacy" onPress={() => router.push("/privacy" as any)}
+          style={{ flexDirection: "row", alignItems: "center", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="shield-checkmark" size={20} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodySemi">Privacy Policy</AppText>
+            <AppText variant="caption" color={colors.dim}>How we handle your data</AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+        </Pressable>
+        <Pressable testID="set-terms" onPress={() => router.push("/terms" as any)}
+          style={{ flexDirection: "row", alignItems: "center", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
+            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="document-text" size={20} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodySemi">Terms of Service</AppText>
+            <AppText variant="caption" color={colors.dim}>The rules for using GigTax</AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+        </Pressable>
       </Section>
-
-      {/* Driver */}
       <Section title="Driver">
         <Field label="Your name" hint="Shown on your dashboard">
           <Input testID="set-driver-name" value={name} onChangeText={setName}

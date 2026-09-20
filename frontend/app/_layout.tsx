@@ -1,4 +1,4 @@
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox, View } from "react-native";
@@ -62,8 +62,12 @@ const AUTH_ENABLED = false;
 
 function AuthGate() {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
+  // Legal pages must be publicly reachable (Google OAuth consent screen + app
+  // store review) even when the login gate is on.
+  const isPublic = pathname === "/privacy" || pathname === "/terms";
   if (loading) return null;  // splash stays until any stored session resolves
-  if (AUTH_ENABLED && !user) return <LoginScreen />;  // Google sign-in gate
+  if (AUTH_ENABLED && !user && !isPublic) return <LoginScreen />;  // Google sign-in gate
   return (
     <SubscriptionProvider>
       <SubGate />
