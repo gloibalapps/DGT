@@ -266,11 +266,14 @@ async def _login_google_user(email: str, name, picture) -> str:
 
 @api_router.get("/auth/google/start")
 async def google_start(request: Request, app_redirect: str = Query(...),
-                       backup: int = Query(0), profile_id: Optional[str] = Query(None)):
+                       backup: int = Query(0), profile_id: Optional[str] = Query(None),
+                       state: Optional[str] = Query(None)):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google login not configured")
     from urllib.parse import urlencode
-    state = uuid.uuid4().hex
+    # The app may supply its own `state` so it can poll for the result (robust
+    # against Android dropping the deep-link payload on the way back).
+    state = state or uuid.uuid4().hex
     await db.oauth_states.insert_one({
         "state": state, "app_redirect": app_redirect,
         "backup": bool(backup), "profile_id": profile_id,
@@ -299,8 +302,20 @@ async def google_callback(request: Request, code: Optional[str] = Query(None),
                           state: Optional[str] = Query(None), error: Optional[str] = Query(None)):
     st = await db.oauth_states.find_one({"state": state}) if state else None
     app_redirect = (st or {}).get("app_redirect") or ""
-    if state:
-        await db.oauth_states.delete_one({"state": state})
+
+    async def finish(fragment: str, *, keep: bool = False, session_token: str = None):
+        # Persist the result on the state doc so the app can POLL for it (this is
+        # the reliable path on Android, where the deep-link payload is often
+        # dropped). Non-login flows delete the state immediately.
+        if state:
+            if keep and session_token:
+                await db.oauth_states.update_one(
+                    {"state": state},
+                    {"$set": {"session_token": session_token, "ready_at": datetime.now(timezone.utc)}},
+                )
+            else:
+                await db.oauth_states.delete_one({"state": state})
+        return bounce(fragment)
 
     def bounce(fragment: str):
         # Web (http/https): browsers preserve the fragment, a normal 302 works.
@@ -327,7 +342,7 @@ border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size
         return HTMLResponse(html)
 
     if error or not code or not st:
-        return bounce("auth_error=1")
+        return await finish("auth_error=1")
     redirect_uri = f"{_public_base(request)}/api/auth/google/callback"
     async with httpx.AsyncClient(timeout=15) as hc:
         tok = await hc.post(GOOGLE_TOKEN_URL, data={
@@ -336,25 +351,42 @@ border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size
             "grant_type": "authorization_code",
         })
         if tok.status_code != 200:
-            return bounce("auth_error=token")
+            return await finish("auth_error=token")
         tokjson = tok.json()
         access_token = tokjson.get("access_token")
         ui = await hc.get(GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
         if ui.status_code != 200:
-            return bounce("auth_error=userinfo")
+            return await finish("auth_error=userinfo")
         info = ui.json()
     email = info.get("email")
     if not email:
-        return bounce("auth_error=noemail")
+        return await finish("auth_error=noemail")
 
     # Drive-backup connect: persist the encrypted refresh/access token for this
     # profile so the backend can upload backups on the user's behalf later.
     if st.get("backup") and st.get("profile_id"):
         await _save_drive_tokens(st["profile_id"], tokjson, email)
-        return bounce("drive_connected=1")
+        return await finish("drive_connected=1")
 
     session_token = await _login_google_user(email, info.get("name"), info.get("picture"))
-    return bounce(f"session_token={session_token}")
+    return await finish(f"session_token={session_token}", keep=True, session_token=session_token)
+
+
+@api_router.get("/auth/google/poll")
+async def google_poll(state: str = Query(...)):
+    """The app polls this with the `state` it generated for /start. Once Google
+    sign-in completes on the backend, the minted session token is returned here
+    (and consumed). This is the reliable path on Android, where the deep-link
+    payload is frequently dropped on the way back into the app."""
+    doc = await db.oauth_states.find_one({"state": state})
+    if not doc:
+        return {"status": "expired"}
+    token = doc.get("session_token")
+    if token:
+        await db.oauth_states.delete_one({"state": state})
+        return {"status": "ready", "session_token": token}
+    return {"status": "pending"}
+
 
 
 

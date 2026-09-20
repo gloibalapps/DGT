@@ -161,12 +161,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // non-standalone builds, so Google sends the token to a web page in the
       // browser instead of back into the native app (user stays logged out).
       const redirect = Linking.createURL("/", { scheme: "frontend" });
-      const authUrl = `${BACKEND}/api/auth/google/start?app_redirect=${encodeURIComponent(redirect)}`;
+      // A client-generated state lets us POLL the backend for the sign-in result.
+      // This is the reliable path on Android, where the deep-link payload that
+      // carries the token is frequently dropped on the way back into the app.
+      const state = `${Date.now().toString(16)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+      const authUrl = `${BACKEND}/api/auth/google/start?state=${state}&app_redirect=${encodeURIComponent(redirect)}`;
+
+      let done = false;
+      const finishToken = async (tok: string | null) => {
+        if (done || !tok) return;
+        done = true;
+        await completeWithToken(tok);
+      };
+
+      // Poll for the result in parallel with the browser session.
+      const poll = (async () => {
+        for (let i = 0; i < 80 && !done; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (done) return;
+          try {
+            const r = await fetch(`${BACKEND}/api/auth/google/poll?state=${state}`);
+            const j = await r.json();
+            if (j.status === "ready" && j.session_token) { await finishToken(j.session_token); return; }
+            if (j.status === "expired" && i > 3) return;
+          } catch { /* keep polling */ }
+        }
+      })();
+
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
+      // Fast path: token came straight back through the deep link.
       if (result.type === "success" && result.url) {
         const tok = parseToken(result.url);
-        if (tok) await completeWithToken(tok);
+        if (tok) await finishToken(tok);
+      } else if (result.type === "cancel") {
+        done = true; // user backed out — stop polling
       }
+      await poll;
     } catch (e) {
       console.log("signIn error", e);
     } finally {
