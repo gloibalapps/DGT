@@ -62,7 +62,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sentIds.current.add(token);
     try {
       setAuthToken(token);
-      const me = await api.authMe();
+      // Right after returning from the Google browser (esp. on Android) the
+      // first request can fail while the app is still resuming — retry a few
+      // times so a single transient hiccup doesn't leave the user logged out.
+      let me; let lastErr;
+      for (let i = 0; i < 4; i++) {
+        try { me = await api.authMe(); break; }
+        catch (err) { lastErr = err; await new Promise((r) => setTimeout(r, 700)); }
+      }
+      if (!me) throw lastErr;
       await applySession(token, me.user);
       // one-time: move this device's local data onto the account
       try {
