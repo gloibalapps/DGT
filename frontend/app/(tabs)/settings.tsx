@@ -46,6 +46,7 @@ export default function Settings() {
 
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -249,13 +250,21 @@ export default function Settings() {
                 </AppText>
               </View>
             </View>
-            <AppText variant="caption" color={colors.dim} style={{ marginTop: 10 }}>
-              Your scanned receipts and a CSV of income, expenses & trips are saved to a “GigTax Backups” folder in your Drive. Backs up automatically once a day when you open the app.
-            </AppText>
             <PrimaryButton testID="backup-now" label={backupBusy ? "Backing up…" : "Back up now"}
-              icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 12 }} />
+              icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 14 }} />
+            <Pressable testID="backup-how" onPress={() => setHowOpen((o) => !o)} hitSlop={6}
+              style={{ flexDirection: "row", alignItems: "center", marginTop: 14 }}>
+              <Ionicons name="help-circle-outline" size={16} color={colors.dim} style={{ marginRight: 6 }} />
+              <AppText variant="caption" color={colors.dim} style={{ flex: 1 }}>How backups work</AppText>
+              <Ionicons name={howOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.dim} />
+            </Pressable>
+            {howOpen ? (
+              <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 18 }}>
+                Your scanned receipts and a CSV of income, expenses & trips are saved to a “GigTax Backups” folder in your Drive. Backs up automatically once a day when you open the app.
+              </AppText>
+            ) : null}
             <Pressable testID="backup-disconnect" onPress={onDisconnectDrive} disabled={backupBusy}
-              hitSlop={8} style={{ marginTop: 12, alignItems: "center" }}>
+              hitSlop={8} style={{ marginTop: 14, alignItems: "center" }}>
               <AppText variant="caption" color={colors.loss}>Disconnect Google Drive</AppText>
             </Pressable>
           </>

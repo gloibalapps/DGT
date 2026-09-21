@@ -9,7 +9,7 @@ import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { PERIODS, ATO_LINK } from "@/src/config";
 import {
-  Screen, ScreenHeader, Card, AppText, Money, Spinner, ChipRow,
+  Screen, ScreenHeader, Card, AppText, Money, Spinner, SegmentedTabs,
   PrimaryButton, SecondaryButton, useToast, fmtMoney,
 } from "@/src/ui";
 
@@ -63,9 +63,9 @@ export default function Reports() {
   return (
     <Screen
       header={
-        <View>
+        <View style={{ paddingBottom: 8 }}>
           <ScreenHeader subtitle="Tax figures" title="Reports" />
-          <ChipRow options={PERIODS as any} value={period} onChange={setPeriod} testIDPrefix="period" />
+          <SegmentedTabs options={PERIODS as any} value={period} onChange={setPeriod} testIDPrefix="period" />
         </View>
       }
       scroll
@@ -86,7 +86,7 @@ export default function Reports() {
           ) : null}
 
           {/* Net profit summary */}
-          <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+          <Card style={{ marginBottom: 14 }}>
             <AppText variant="label" color={colors.dim} style={{ marginBottom: 4 }}>NET PROFIT</AppText>
             <Money value={rep.net_profit} symbol={rep.symbol} size={44} signed={false}
               color={rep.net_profit >= 0 ? colors.profit : colors.loss} />
@@ -98,7 +98,7 @@ export default function Reports() {
           {rep.country === "US" ? (
             <>
               {/* Schedule C summary */}
-              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+              <Card style={{ marginBottom: 14 }}>
                 <AppText variant="h2" style={{ marginBottom: 2 }}>Schedule C (Form 1040)</AppText>
                 <AppText variant="caption" color={colors.dim} style={{ marginBottom: 8 }}>
                   Estimated profit or loss from your gig business.
@@ -138,7 +138,7 @@ export default function Reports() {
           ) : (
             <>
               {/* Vehicle deduction breakdown */}
-              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+              <Card style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <AppText variant="h2" style={{ flexShrink: 1, marginRight: 8 }}>Vehicle deduction</AppText>
                   <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0 }}>
@@ -161,7 +161,7 @@ export default function Reports() {
               </Card>
 
               {/* Full-claim work expenses */}
-              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+              <Card style={{ marginBottom: 14 }}>
                 <AppText variant="h2" style={{ marginBottom: 4 }}>Other work expenses</AppText>
                 <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>Claimed in full — not apportioned.</AppText>
                 {rep.full_claim.tolls !== 0 ? <Row label="Tolls" value={rep.full_claim.tolls} symbol={rep.symbol} /> : null}
@@ -179,7 +179,7 @@ export default function Reports() {
 
               {/* BAS / GST */}
               {rep.show_bas ? (
-                <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
+                <Card style={{ marginBottom: 14 }}>
                   <AppText variant="h2" style={{ marginBottom: 2 }}>BAS / GST summary</AppText>
                   <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
                     Copy these onto your ATO Business Activity Statement.
@@ -218,10 +218,9 @@ export default function Reports() {
           {tm?.method_comparison ? (() => {
             const mc = tm.method_comparison;
             return (
-              <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-                <AppText variant="label" color={colors.dim} style={{ marginBottom: 4 }}>
-                  WHICH METHOD IS BETTER? · FY {mc.fy_label}
-                </AppText>
+              <Card style={{ marginBottom: 14 }}>
+                <AppText variant="bodySemi" style={{ marginBottom: 2 }}>Best deduction method</AppText>
+                <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>FY {mc.fy_label}</AppText>
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
                   <View style={[methodBox, { backgroundColor: colors.surfaceAlt, borderColor: mc.recommend === "logbook" ? colors.profit : colors.border }]}>
                     <AppText variant="caption" color={colors.dim}>{mc.logbook.title}</AppText>

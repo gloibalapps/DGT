@@ -93,7 +93,7 @@ export default function Ask() {
               {suggestions.map((s) => (
                 <Pressable key={s} testID={`ask-suggestion-${s.slice(0, 10)}`} onPress={() => send(s)}
                   style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.surface,
-                    borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                    borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8 }}>
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} style={{ marginRight: 10 }} />
                   <AppText variant="bodyMed" style={{ flex: 1 }}>{s}</AppText>
                   <Ionicons name="arrow-forward" size={16} color={colors.dim} />

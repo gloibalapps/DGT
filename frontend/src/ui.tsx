@@ -27,8 +27,8 @@ const WGT: Partial<Record<Variant, "400" | "500" | "600" | "700">> = {
   bodySemi: WEIGHT.semibold, label: WEIGHT.medium, caption: WEIGHT.regular,
 };
 const SIZE: Record<Variant, number> = {
-  display: 40, displaySemi: 30, h1: 22, h2: 18, body: 15, bodyMed: 15,
-  bodySemi: 15, label: 13, caption: 12,
+  display: 40, displaySemi: 30, h1: 22, h2: 20, body: 16, bodyMed: 16,
+  bodySemi: 16, label: 14, caption: 13,
 };
 
 export function AppText({ variant = "body", color, style, children, ...rest }:
@@ -118,7 +118,7 @@ export function ScreenHeader({ title, right, subtitle }:
         ) : null}
         <View style={{ flex: 1 }}>
           {subtitle ? <AppText variant="label" color={colors.dim}>{subtitle}</AppText> : null}
-          <AppText variant="h1" style={{ fontFamily: FONT.displaySemi, fontSize: 26 }}>{title}</AppText>
+          <AppText variant="h1" style={{ fontFamily: FONT.displaySemi, fontSize: 30 }}>{title}</AppText>
         </View>
       </View>
       {right}
@@ -150,17 +150,26 @@ export function GradientCard({ children, style }: { children: React.ReactNode; s
 }
 
 // ---------------------------------------------------------------- Buttons
-export function PrimaryButton({ label, onPress, icon, disabled, testID, style }:
-  { label: string; onPress: () => void; icon?: any; disabled?: boolean; testID?: string; style?: any }) {
+export function PrimaryButton({ label, onPress, icon, disabled, testID, style, solid }:
+  { label: string; onPress: () => void; icon?: any; disabled?: boolean; testID?: string; style?: any; solid?: boolean }) {
   const { colors } = useTheme();
+  const inner = (
+    <>
+      {icon ? <Ionicons name={icon} size={18} color="#F1F5F9" style={{ marginRight: 8 }} /> : null}
+      <AppText variant="bodySemi" color="#F1F5F9">{label}</AppText>
+    </>
+  );
   return (
     <Pressable testID={testID} onPress={onPress} disabled={disabled}
       style={({ pressed }) => [{ opacity: disabled ? 0.5 : pressed ? 0.9 : 1 }, style]}>
-      <LinearGradient colors={colors.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={styles.btn}>
-        {icon ? <Ionicons name={icon} size={18} color="#F1F5F9" style={{ marginRight: 8 }} /> : null}
-        <AppText variant="bodySemi" color="#F1F5F9">{label}</AppText>
-      </LinearGradient>
+      {solid ? (
+        // Solid dark-blue variant — used for secondary CTAs so the gradient
+        // stays reserved for hero results/actions.
+        <View style={[styles.btn, { backgroundColor: colors.gradient[0] }]}>{inner}</View>
+      ) : (
+        <LinearGradient colors={colors.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          style={styles.btn}>{inner}</LinearGradient>
+      )}
     </Pressable>
   );
 }
@@ -189,6 +198,31 @@ export function IconButton({ icon, onPress, color, size = 22, testID }:
       style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 6 })}>
       <Ionicons name={icon} size={size} color={color || colors.text} />
     </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------- Segmented tabs
+// Fixed-width segmented control that always fits the viewport (no horizontal
+// scroll/clipping). Labels wrap to two lines when needed (e.g. "Financial Year").
+export function SegmentedTabs({ options, value, onChange, testIDPrefix }:
+  { options: readonly { key: string; label: string }[]; value: string; onChange: (k: string) => void; testIDPrefix?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", backgroundColor: colors.surfaceAlt, borderRadius: 14, padding: 3, marginHorizontal: 16 }}>
+      {options.map((o) => {
+        const active = o.key === value;
+        return (
+          <Pressable key={o.key} testID={testIDPrefix ? `${testIDPrefix}-${o.key}` : undefined}
+            onPress={() => onChange(o.key)}
+            style={{ flex: 1, minHeight: 42, borderRadius: 11, alignItems: "center", justifyContent: "center",
+              paddingVertical: 5, paddingHorizontal: 2, backgroundColor: active ? colors.accent : "transparent" }}>
+            <AppText variant="caption" numberOfLines={2}
+              style={{ fontWeight: "700", textAlign: "center", fontSize: 12, lineHeight: 15 }}
+              color={active ? colors.bg : colors.dim}>{o.label}</AppText>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -252,7 +286,7 @@ export function Input(props: TextInputProps) {
       placeholderTextColor={colors.dim}
       {...props}
       style={[{
-        backgroundColor: colors.surfaceAlt, borderRadius: 12, paddingHorizontal: 14,
+        backgroundColor: colors.surfaceAlt, borderRadius: 16, paddingHorizontal: 14,
         paddingVertical: 14, color: colors.text, fontFamily: FONT.regular, fontSize: 16,
         borderWidth: 1, borderColor: colors.border,
       }, props.style]}
@@ -297,7 +331,7 @@ export function DateField({ value, onChange, placeholder = "Select date", testID
     <>
       <Pressable testID={testID} onPress={openPicker}
         style={{
-          backgroundColor: colors.surfaceAlt, borderRadius: 12, paddingHorizontal: 14,
+          backgroundColor: colors.surfaceAlt, borderRadius: 16, paddingHorizontal: 14,
           paddingVertical: 15, borderWidth: 1, borderColor: colors.border,
           flexDirection: "row", alignItems: "center", justifyContent: "space-between",
         }}>
@@ -462,6 +496,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 const styles = StyleSheet.create({
   btn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    height: 52, borderRadius: 14, paddingHorizontal: 20,
+    height: 52, borderRadius: 16, paddingHorizontal: 20,
   },
 });

@@ -321,6 +321,11 @@ export default function Mileage() {
           <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
             <AppText variant="caption" color={colors.profit} style={{ fontWeight: "700" }}>{today.business_km} {unit} business</AppText>
           </View>
+          {tracking && dist > 0 ? (
+            <View style={{ backgroundColor: colors.profit + "22", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.profit }}>
+              <AppText variant="caption" color={colors.profit} style={{ fontWeight: "700" }}>+{(dist * cal).toFixed(1)} {unit} business · drive in progress</AppText>
+            </View>
+          ) : null}
           <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
             <AppText variant="caption" color={colors.dim}>{today.private_km} {unit} private</AppText>
           </View>

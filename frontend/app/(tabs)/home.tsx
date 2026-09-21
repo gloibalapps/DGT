@@ -219,7 +219,7 @@ export default function Money_() {
 
       {showGuide && (
         <Pressable testID="home-guide-banner" onPress={openGuide} style={{ marginBottom: 14 }}>
-          <Card style={{ flexDirection: "row", alignItems: "center", borderColor: colors.accent }}>
+          <Card style={{ flexDirection: "row", alignItems: "center" }}>
             <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: colors.surfaceAlt,
               alignItems: "center", justifyContent: "center", marginRight: 12 }}>
               <Ionicons name="book" size={20} color={colors.accent} />
@@ -282,9 +282,9 @@ export default function Money_() {
 
       {/* Quick actions */}
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
-        <PrimaryButton testID="ledger-add-income" label="Add income" icon="add" style={{ flex: 1 }}
+        <PrimaryButton testID="ledger-add-income" label="Add income" icon="add" solid style={{ flex: 1 }}
           onPress={() => router.push({ pathname: "/entry" as any, params: { type: "income" } })} />
-        <PrimaryButton testID="expense-add" label="Add expense" icon="remove" style={{ flex: 1 }}
+        <PrimaryButton testID="expense-add" label="Add expense" icon="remove" solid style={{ flex: 1 }}
           onPress={() => router.push({ pathname: "/entry" as any, params: { type: "expense" } })} />
       </View>
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
