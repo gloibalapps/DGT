@@ -84,7 +84,7 @@ export default function Ask() {
                 <View style={{ width: 60, height: 60, borderRadius: 18, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                   <Ionicons name="sparkles" size={28} color={colors.bg} />
                 </View>
-                <AppText variant="bodySemi" style={{ textAlign: "center" }}>Ask about what you can claim</AppText>
+                <AppText variant="h2" style={{ textAlign: "center" }}>Ask about what you can claim</AppText>
                 <AppText variant="caption" color={colors.dim} style={{ textAlign: "center", marginTop: 4, maxWidth: 300, lineHeight: 18 }}>
                   Tax questions for {isUS ? "US" : "Australian"} rideshare & delivery drivers, answered from official {authority} rules.
                 </AppText>
@@ -95,7 +95,7 @@ export default function Ask() {
                   style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.surface,
                     borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8 }}>
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} style={{ marginRight: 10 }} />
-                  <AppText variant="bodyMed" style={{ flex: 1 }}>{s}</AppText>
+                  <AppText variant="bodyMed" style={{ flex: 1, fontSize: 17 }}>{s}</AppText>
                   <Ionicons name="arrow-forward" size={16} color={colors.dim} />
                 </Pressable>
               ))}

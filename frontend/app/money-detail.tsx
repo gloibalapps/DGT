@@ -324,7 +324,7 @@ function BigMini({ label, value, hi, color }: { label: string; value: string; hi
     <View style={{ flexBasis: "31%", flexGrow: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 10 }}>
       <AppText style={{ fontFamily: FONT.display, fontSize: 18, color: hi ? (color || colors.accent) : colors.text, fontVariant: ["tabular-nums"] }}
         numberOfLines={1} adjustsFontSizeToFit>{value}</AppText>
-      <AppText variant="caption" color={colors.dim} style={{ fontSize: 10 }}>{label}</AppText>
+      <AppText variant="caption" color={colors.dim} style={{ fontSize: 11 }}>{label}</AppText>
     </View>
   );
 }

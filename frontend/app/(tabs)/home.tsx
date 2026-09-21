@@ -62,7 +62,7 @@ function Stat({ label, value, sub, highlight }: { label: string; value: string; 
       <AppText style={{ fontFamily: FONT.display, fontSize: 20, color: highlight ? colors.accent : colors.text, fontVariant: ["tabular-nums"] }}
         numberOfLines={1} adjustsFontSizeToFit>{value}</AppText>
       <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>{label}</AppText>
-      {sub ? <AppText variant="caption" color={colors.dim} style={{ fontSize: 10 }}>{sub}</AppText> : null}
+      {sub ? <AppText variant="caption" color={colors.dim} style={{ fontSize: 11 }}>{sub}</AppText> : null}
     </View>
   );
 }
@@ -348,7 +348,7 @@ export default function Money_() {
         const maxAmt = Math.max(mn.take_home, ...data.where.map((w: any) => w.amount));
         return (
           <Accordion testID="detail-where" title="Where your money went" open={openKey === "where"} onToggle={() => toggle("where")}
-            summary={<AppText variant="bodySemi" color={colors.profit}>kept {fmtMoney(mn.take_home, symbol)}</AppText>}>
+            summary={<AppText variant="bodySemi" color={mn.take_home >= 0 ? colors.profit : colors.loss}>Net {fmtMoney(mn.take_home, symbol)}</AppText>}>
             <AppText variant="caption" color={colors.dim} style={{ marginTop: -4, marginBottom: 12 }}>
               You earned {fmtMoney(mn.gross, symbol)} {periodLabel.toLowerCase()}
             </AppText>

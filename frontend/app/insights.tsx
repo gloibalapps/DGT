@@ -37,14 +37,14 @@ function WeeklyBars({ weeks, symbol }: { weeks: any[]; symbol: string }) {
         const h = Math.max(3, (Math.max(0, w.income) / max) * H);
         return (
           <View key={i} style={{ flex: 1, alignItems: "center" }}>
-            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4, fontSize: 10 }}>
+            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4, fontSize: 11 }}>
               {w.income >= 1000 ? `${symbol}${Math.round(w.income / 100) / 10}k` : `${symbol}${Math.round(w.income)}`}
             </AppText>
             <View style={{ height: H, justifyContent: "flex-end" }}>
               <View style={{ width: 18, height: h, borderRadius: 4, backgroundColor: colors.profit }} />
             </View>
-            <AppText variant="caption" color={colors.dim} style={{ marginTop: 6, fontSize: 10 }}>{w.label}</AppText>
-            <AppText variant="caption" color={w.hours > 0 ? colors.accent : colors.dim} style={{ fontSize: 10 }}>
+            <AppText variant="caption" color={colors.dim} style={{ marginTop: 6, fontSize: 11 }}>{w.label}</AppText>
+            <AppText variant="caption" color={w.hours > 0 ? colors.accent : colors.dim} style={{ fontSize: 11 }}>
               {w.hours > 0 ? `${w.hours}h` : "—"}
             </AppText>
           </View>
@@ -222,7 +222,7 @@ export default function Insights() {
                     <View key={s.key} style={{ flexDirection: "row", alignItems: "center" }}>
                       <View style={{ width: 76 }}>
                         <AppText variant="caption" color={best ? colors.profit : colors.text}>{s.label}</AppText>
-                        <AppText variant="caption" color={colors.dim} style={{ fontSize: 10 }}>{s.sub}</AppText>
+                        <AppText variant="caption" color={colors.dim} style={{ fontSize: 11 }}>{s.sub}</AppText>
                       </View>
                       <View style={{ flex: 1, height: 20, backgroundColor: colors.surfaceAlt, borderRadius: 6, overflow: "hidden" }}>
                         <View style={{ height: 20, width: `${Math.max(2, (v / max) * 100)}%` as any, borderRadius: 6,

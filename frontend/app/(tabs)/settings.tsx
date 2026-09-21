@@ -171,7 +171,7 @@ export default function Settings() {
           </View>
           <Pressable testID="set-signout" onPress={signOut}
             style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
-              paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+              paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
             <Ionicons name="log-out-outline" size={18} color={colors.loss} style={{ marginRight: 8 }} />
             <AppText variant="bodySemi" color={colors.loss}>Sign out</AppText>
           </Pressable>
@@ -184,7 +184,7 @@ export default function Settings() {
           </AppText>
           <Pressable testID="set-signin" onPress={signIn} disabled={signingIn}
             style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
-              paddingVertical: 12, borderRadius: 12, backgroundColor: colors.accent, opacity: signingIn ? 0.6 : 1 }}>
+              paddingVertical: 12, borderRadius: 16, backgroundColor: colors.accent, opacity: signingIn ? 0.6 : 1 }}>
             <Ionicons name="logo-google" size={18} color="#F1F5F9" style={{ marginRight: 8 }} />
             <AppText variant="bodySemi" color="#F1F5F9">{signingIn ? "Signing in…" : "Sign in with Google"}</AppText>
           </Pressable>
@@ -576,7 +576,7 @@ export default function Settings() {
         {!confirmDelete ? (
           <Pressable testID="set-delete-account" onPress={() => setConfirmDelete(true)}
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "center",
-              paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+              paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
             <Ionicons name="trash-outline" size={18} color={colors.loss} style={{ marginRight: 8 }} />
             <AppText variant="bodySemi" color={colors.loss}>Delete account</AppText>
           </Pressable>
@@ -588,7 +588,7 @@ export default function Settings() {
             </AppText>
             <Pressable testID="set-delete-confirm" onPress={doDeleteAccount} disabled={deleting}
               style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                paddingVertical: 13, borderRadius: 12, backgroundColor: colors.loss, opacity: deleting ? 0.6 : 1 }}>
+                paddingVertical: 13, borderRadius: 16, backgroundColor: colors.loss, opacity: deleting ? 0.6 : 1 }}>
               <Ionicons name="trash" size={18} color="#fff" style={{ marginRight: 8 }} />
               <AppText variant="bodySemi" color="#fff">{deleting ? "Deleting…" : "Delete permanently"}</AppText>
             </Pressable>
