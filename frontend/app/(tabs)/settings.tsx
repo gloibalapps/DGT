@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 
-import { useTheme } from "@/src/theme";
+import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { useAuth } from "@/src/auth";
 import { useSubscription } from "@/src/subscription";
@@ -208,7 +208,7 @@ export default function Settings() {
           </View>
           {subActive ? (
             <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
-              <AppText variant="caption" color={colors.bg} style={{ fontWeight: "700" }}>ACTIVE</AppText>
+              <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>ACTIVE</AppText>
             </View>
           ) : (
             <Ionicons name="chevron-forward" size={20} color={colors.dim} />
@@ -453,7 +453,7 @@ export default function Settings() {
             <AppText variant="body" color={colors.dim}>Calculated this financial year (read-only)</AppText>
             <AppText variant="caption" color={colors.dim}>Derived from your tagged trips — a real logbook, not a guess.</AppText>
           </View>
-          <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 34, color: colors.accent, fontVariant: ["tabular-nums"] }}>
+          <AppText style={{ fontFamily: FONT.display, fontSize: 34, color: colors.accent, fontVariant: ["tabular-nums"] }}>
             {bizPct == null ? "—" : `${bizPct}%`}
           </AppText>
         </View>
@@ -484,7 +484,7 @@ export default function Settings() {
               </Pressable>
               {active ? (
                 <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
-                  <AppText variant="caption" color={colors.bg} style={{ fontWeight: "700" }}>ACTIVE</AppText>
+                  <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>ACTIVE</AppText>
                 </View>
               ) : (
                 <Pressable testID={`set-vehicle-activate-${v.id}`} onPress={() => v.id && setActiveVehicle(v.id)} hitSlop={8}>

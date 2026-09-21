@@ -75,9 +75,10 @@ function AuthGate() {
 export default function RootLayout() {
   const [iconsLoaded, iconErr] = useIconFonts();
   const [fontsLoaded, fontErr] = useFonts({
-    "BarlowCondensed-Bold": require("../assets/fonts/BarlowCondensed-Bold.ttf"),
-    "BarlowCondensed-SemiBold": require("../assets/fonts/BarlowCondensed-SemiBold.ttf"),
-    "Inter": require("../assets/fonts/Inter.ttf"),
+    "PlusJakartaSans-Regular": require("../assets/fonts/PlusJakartaSans-Regular.ttf"),
+    "PlusJakartaSans-Medium": require("../assets/fonts/PlusJakartaSans-Medium.ttf"),
+    "PlusJakartaSans-SemiBold": require("../assets/fonts/PlusJakartaSans-SemiBold.ttf"),
+    "PlusJakartaSans-Bold": require("../assets/fonts/PlusJakartaSans-Bold.ttf"),
   });
 
   const ready = (iconsLoaded || iconErr) && (fontsLoaded || fontErr);

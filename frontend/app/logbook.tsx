@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 
-import { useTheme } from "@/src/theme";
+import { useTheme, FONT } from "@/src/theme";
 import { api, todayISO } from "@/src/api";
 import {
   AppText, Card, IconButton, Spinner, EmptyState, Badge,
@@ -56,7 +56,7 @@ export default function Logbook() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           <Card style={{ marginBottom: 14, alignItems: "center" }}>
             <AppText variant="label" color={colors.dim}>{isUS ? "BUSINESS USE (TAX YEAR)" : "12-WEEK BUSINESS USE"}</AppText>
-            <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 60, color: colors.accent, fontVariant: ["tabular-nums"] }}>
+            <AppText style={{ fontFamily: FONT.display, fontSize: 60, color: colors.accent, fontVariant: ["tabular-nums"] }}>
               {lb.business_pct}%
             </AppText>
             <AppText variant="caption" color={colors.dim}>{lb.period_label}</AppText>

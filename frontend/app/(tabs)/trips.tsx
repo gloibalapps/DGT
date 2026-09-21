@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Location from "expo-location";
 
-import { useTheme } from "@/src/theme";
+import { useTheme, FONT } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
@@ -286,7 +286,7 @@ export default function Mileage() {
               <AppText variant="caption" color={colors.dim}>Acquiring GPS…</AppText>
             </View>
           ) : null}
-          <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 46, color: colors.text, fontVariant: ["tabular-nums"], letterSpacing: 0.3 }}>
+          <AppText style={{ fontFamily: FONT.display, fontSize: 46, color: colors.text, fontVariant: ["tabular-nums"], letterSpacing: 0.3 }}>
             {(dist * cal).toFixed(1)}
           </AppText>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 2 }}>{unit} this drive</AppText>
@@ -313,17 +313,17 @@ export default function Mileage() {
       {/* ---- Today ---- */}
       <Card style={{ marginBottom: 14 }}>
         <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
-        <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
+        <AppText style={{ fontFamily: FONT.display, fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
           {(today.total_km + (tracking ? dist * cal : 0)).toFixed(1)} {unit}
         </AppText>
         <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-            <AppText variant="caption" color={colors.profit} style={{ fontWeight: "700" }}>{today.business_km} {unit} business</AppText>
+            <AppText variant="caption" color={colors.profit} style={{ fontFamily: FONT.bold }}>{today.business_km} {unit} business</AppText>
           </View>
           {tracking && dist > 0 ? (
             <View style={{ backgroundColor: colors.profit + "22", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.profit }}>
-              <AppText variant="caption" color={colors.profit} style={{ fontWeight: "700" }}>+{(dist * cal).toFixed(1)} {unit} business · drive in progress</AppText>
+              <AppText variant="caption" color={colors.profit} style={{ fontFamily: FONT.bold }}>+{(dist * cal).toFixed(1)} {unit} business · drive in progress</AppText>
             </View>
           ) : null}
           <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>

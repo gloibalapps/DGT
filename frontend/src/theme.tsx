@@ -52,16 +52,17 @@ const LIGHT: Palette = {
   mode: "light",
 };
 
+// Plus Jakarta Sans — loaded as static weight files (see app/_layout.tsx).
+// Weight is selected by family name so it renders correctly on iOS/Android/web.
 export const FONT = {
-  display: "BarlowCondensed-Bold",
-  displaySemi: "BarlowCondensed-SemiBold",
-  regular: "Inter",
-  medium: "Inter",
-  semibold: "Inter",
-  bold: "Inter",
+  display: "PlusJakartaSans-Bold",
+  displaySemi: "PlusJakartaSans-SemiBold",
+  regular: "PlusJakartaSans-Regular",
+  medium: "PlusJakartaSans-Medium",
+  semibold: "PlusJakartaSans-SemiBold",
+  bold: "PlusJakartaSans-Bold",
 };
 
-// Inter is loaded as a variable font — weight is selected via fontWeight.
 export const WEIGHT: Record<string, "400" | "500" | "600" | "700"> = {
   regular: "400",
   medium: "500",

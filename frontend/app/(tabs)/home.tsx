@@ -211,7 +211,7 @@ export default function Money_() {
             <Pressable key={p.key} testID={`money-period-${p.key}`} onPress={() => setPeriod(p.key)}
               style={{ flex: 1, paddingVertical: 8, borderRadius: 999, alignItems: "center",
                 backgroundColor: active ? colors.accent : "transparent" }}>
-              <AppText variant="caption" style={{ fontWeight: "700" }} color={active ? colors.bg : colors.dim}>{p.label}</AppText>
+              <AppText variant="caption" style={{ fontFamily: FONT.bold }} color={active ? colors.bg : colors.dim}>{p.label}</AppText>
             </Pressable>
           );
         })}

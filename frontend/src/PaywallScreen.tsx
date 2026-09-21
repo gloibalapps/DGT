@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 
-import { useTheme } from "@/src/theme";
+import { useTheme, FONT } from "@/src/theme";
 import { useAuth } from "@/src/auth";
 import { AppText, PrimaryButton, useToast } from "@/src/ui";
 import { useSubscription, Plan } from "@/src/subscription";
@@ -96,7 +96,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
               alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
               <Ionicons name="rocket" size={38} color={colors.bg} />
             </View>
-            <AppText style={{ fontFamily: "BarlowCondensed-Bold", fontSize: 38, color: colors.text }}>
+            <AppText style={{ fontFamily: FONT.display, fontSize: 38, color: colors.text }}>
               GigTax
             </AppText>
             <AppText variant="body" color={colors.dim} style={{ textAlign: "center", marginTop: 6, maxWidth: 300, lineHeight: 21 }}>
@@ -145,7 +145,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
                         <AppText variant="bodySemi" color={colors.text}>{p.title}</AppText>
                         {isYear && savings ? (
                           <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.profit }}>
-                            <AppText variant="caption" color={colors.bg} style={{ fontWeight: "700" }}>SAVE {savings}%</AppText>
+                            <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>SAVE {savings}%</AppText>
                           </View>
                         ) : null}
                       </View>

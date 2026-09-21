@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { Calendar } from "react-native-calendars";
-import { useTheme, FONT, WEIGHT, Palette } from "@/src/theme";
+import { useTheme, FONT, Palette } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { flagUrl } from "@/src/config";
 import { isoToAU } from "@/src/date";
@@ -21,11 +21,8 @@ const FAM: Record<Variant, string> = {
   h1: FONT.bold, h2: FONT.semibold, body: FONT.regular, bodyMed: FONT.medium,
   bodySemi: FONT.semibold, label: FONT.medium, caption: FONT.regular,
 };
-// Inter is variable — weight comes from fontWeight; Barlow display uses its own file.
-const WGT: Partial<Record<Variant, "400" | "500" | "600" | "700">> = {
-  h1: WEIGHT.bold, h2: WEIGHT.semibold, body: WEIGHT.regular, bodyMed: WEIGHT.medium,
-  bodySemi: WEIGHT.semibold, label: WEIGHT.medium, caption: WEIGHT.regular,
-};
+// Plus Jakarta Sans loaded as static per-weight files — weight comes from the
+// family name (FAM), so it renders identically on iOS, Android and web.
 const SIZE: Record<Variant, number> = {
   display: 40, displaySemi: 30, h1: 22, h2: 20, body: 16, bodyMed: 16,
   bodySemi: 16, label: 14, caption: 13,
@@ -40,7 +37,6 @@ export function AppText({ variant = "body", color, style, children, ...rest }:
       style={[
         {
           fontFamily: FAM[variant], fontSize: SIZE[variant], color: color || colors.text,
-          ...(WGT[variant] ? { fontWeight: WGT[variant] } : {}),
         },
         style,
       ]}
@@ -118,7 +114,7 @@ export function ScreenHeader({ title, right, subtitle }:
         ) : null}
         <View style={{ flex: 1 }}>
           {subtitle ? <AppText variant="label" color={colors.dim}>{subtitle}</AppText> : null}
-          <AppText variant="h1" style={{ fontFamily: FONT.displaySemi, fontSize: 30 }}>{title}</AppText>
+          <AppText variant="h1" style={{ fontFamily: FONT.display, fontSize: 30 }}>{title}</AppText>
         </View>
       </View>
       {right}
@@ -217,7 +213,7 @@ export function SegmentedTabs({ options, value, onChange, testIDPrefix }:
             style={{ flex: 1, minHeight: 42, borderRadius: 11, alignItems: "center", justifyContent: "center",
               paddingVertical: 5, paddingHorizontal: 2, backgroundColor: active ? colors.accent : "transparent" }}>
             <AppText variant="caption" numberOfLines={2}
-              style={{ fontWeight: "700", textAlign: "center", fontSize: 12, lineHeight: 15 }}
+              style={{ fontFamily: FONT.bold, textAlign: "center", fontSize: 12, lineHeight: 15 }}
               color={active ? colors.bg : colors.dim}>{o.label}</AppText>
           </Pressable>
         );
