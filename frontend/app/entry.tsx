@@ -13,7 +13,7 @@ import { isValidDate } from "@/src/date";
 import { CATEGORIES, TAX_TREATMENTS, TRIP_TYPES, BUSINESS_PURPOSES, PRIVATE_PURPOSES } from "@/src/config";
 import {
   AppText, Card, Input, Field, ChipRow, PrimaryButton, SecondaryButton,
-  IconButton, Spinner, useToast, DateField,
+  IconButton, Spinner, useToast, DateField, Select,
 } from "@/src/ui";
 import { receiptStash } from "@/src/scanStash";
 
@@ -319,25 +319,30 @@ export default function Entry() {
                 </Field>
               </>
             ) : (
-              <Field label="Amount">
-                <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
-              </Field>
-            )}
-
-            {kind === "shift" && (
-              <Field label="Platform">
-                <ChipRow options={(profile?.platforms?.length ? profile.platforms : ["Other"]).map((p) => ({ key: p, label: p }))}
-                  value={platform} onChange={setPlatform} testIDPrefix="entry-platform" />
-              </Field>
-            )}
-
-            {kind === "expense" && (
+              // Expense field order: Date+Amount → GST → Supplier → Category → Note.
               <>
-                <Field label="Category">
-                  <ChipRow options={CATEGORIES.map((c) => ({ key: c.key, label: c.label }))} value={category} onChange={setCategory} testIDPrefix="entry-category" />
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Field label="Date">
+                      <DateField testID="entry-date" value={dateISO} onChange={setDateISO} maxToday />
+                    </Field>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Field label="Amount">
+                      <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+                    </Field>
+                  </View>
+                </View>
+                <Field label="GST">
+                  <Select testID="entry-treatment" value={treatment} onChange={setTreatment}
+                    options={TAX_TREATMENTS.map((t) => ({ key: t.key, label: t.label, desc: t.desc }))} />
                 </Field>
-                <Field label="Merchant (optional)">
-                  <Input testID="entry-merchant" value={merchant} onChangeText={setMerchant} placeholder="Shell, Linkt…" />
+                <Field label="Supplier (optional)">
+                  <Input testID="entry-merchant" value={merchant} onChangeText={setMerchant} placeholder="Shell, Officeworks…" />
+                </Field>
+                <Field label="Category">
+                  <Select testID="entry-category" value={category} onChange={setCategory}
+                    options={CATEGORIES.map((c) => ({ key: c.key, label: c.label, icon: c.icon }))} />
                 </Field>
                 {category === "fuel" ? (
                   <Field label="Litres (optional)">
@@ -359,13 +364,14 @@ export default function Entry() {
               </>
             )}
 
-            {kind === "expense" && (
-              <Field label="GST treatment">
-                <ChipRow options={TAX_TREATMENTS.map((t) => ({ key: t.key, label: t.label }))} value={treatment} onChange={setTreatment} testIDPrefix="entry-treatment" />
+            {kind === "shift" && (
+              <Field label="Platform">
+                <ChipRow options={(profile?.platforms?.length ? profile.platforms : ["Other"]).map((p) => ({ key: p, label: p }))}
+                  value={platform} onChange={setPlatform} testIDPrefix="entry-platform" />
               </Field>
             )}
 
-            {kind !== "income" && (
+            {(kind === "trip" || kind === "shift") && (
               <Field label="Date">
                 <DateField testID="entry-date" value={dateISO} onChange={setDateISO} maxToday />
               </Field>

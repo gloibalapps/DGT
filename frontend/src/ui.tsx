@@ -419,6 +419,65 @@ export function DateField({ value, onChange, placeholder = "Select date", testID
   );
 }
 
+// Compact dropdown that opens a bottom-sheet list — keeps forms short vs. long
+// pill rows. Used for GST treatment and expense category.
+export function Select({ value, onChange, options, placeholder = "Select", testID }:
+  { value: string; onChange: (k: string) => void;
+    options: readonly { key: string; label: string; desc?: string; icon?: any }[];
+    placeholder?: string; testID?: string }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const sel = options.find((o) => o.key === value);
+  return (
+    <>
+      <Pressable testID={testID} onPress={() => setOpen(true)}
+        style={{
+          backgroundColor: colors.surfaceAlt, borderRadius: 16, paddingHorizontal: 14,
+          paddingVertical: 15, borderWidth: 1, borderColor: colors.border,
+          flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        }}>
+        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+          {sel?.icon ? <Ionicons name={sel.icon} size={18} color={colors.accent} style={{ marginRight: 8 }} /> : null}
+          <AppText variant="body" color={sel ? colors.text : colors.dim} style={{ fontSize: 16 }} numberOfLines={1}>
+            {sel?.label || placeholder}
+          </AppText>
+        </View>
+        <Ionicons name="chevron-down" size={18} color={colors.accent} />
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable testID={testID ? `${testID}-backdrop` : undefined} onPress={() => setOpen(false)}
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
+          <Pressable onPress={() => {}}
+            style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              paddingHorizontal: 12, paddingTop: 8, borderWidth: 1, borderColor: colors.border }}>
+            <View style={{ alignItems: "center", paddingVertical: 6 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            {options.map((o) => {
+              const active = o.key === value;
+              return (
+                <Pressable key={o.key} testID={testID ? `${testID}-opt-${o.key}` : undefined}
+                  onPress={() => { onChange(o.key); setOpen(false); }}
+                  style={{ flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 10,
+                    borderRadius: 14, backgroundColor: active ? colors.surfaceAlt : "transparent" }}>
+                  {o.icon ? <Ionicons name={o.icon} size={20} color={active ? colors.accent : colors.dim} style={{ marginRight: 12 }} /> : null}
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="bodySemi" color={active ? colors.accent : colors.text}>{o.label}</AppText>
+                    {o.desc ? <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>{o.desc}</AppText> : null}
+                  </View>
+                  {active ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
+                </Pressable>
+              );
+            })}
+            <SafeAreaView edges={["bottom"]} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+
 // ---------------------------------------------------------------- misc
 export function Spinner() {
   const { colors } = useTheme();

@@ -114,7 +114,7 @@ export default function Manual() {
       lines: [
         "On the Money tab, tap Add income or Add expense to log an entry.",
         "Tag each expense with a category (fuel, tolls, vehicle, phone, other) and the vehicle it belongs to.",
-        "Scan a receipt with your camera and GigTax reads the amount and merchant for you.",
+        "Scan a receipt with your camera and GigTax reads the amount and supplier for you.",
         "To delete a scanned receipt photo, open the expense, tap \u201CRemove photo\u201D under the image, then Save — the expense stays, the photo goes.",
         ...(isUS ? [] : ["Rideshare (passengers): enter the FULL passenger fare before the platform's commission — GST is worked out on the whole fare. Log the platform's commission separately as an expense so you still claim it (and its GST credit)."]),
         "Tap the History header to expand your entries for the selected period; tap any entry to edit or delete it.",

@@ -25,7 +25,7 @@ const SECTIONS: LegalSection[] = [
   {
     heading: "Receipt images and AI scanning",
     body: [
-      "When you scan a receipt, the image is sent securely to our AI provider (OpenAI) to extract details such as amount, date and merchant. The image and extracted data are stored with your account so you can review them.",
+      "When you scan a receipt, the image is sent securely to our AI provider (OpenAI) to extract details such as amount, date and supplier. The image and extracted data are stored with your account so you can review them.",
     ],
   },
   {

@@ -84,7 +84,7 @@ export default function ScanReceipt() {
               </View>
               <AppText variant="h2" style={{ marginBottom: 6 }}>Snap it, we'll read it</AppText>
               <AppText variant="body" color={colors.dim} style={{ textAlign: "center" }}>
-                We extract amount, date, merchant and category. You review everything before it saves.
+                We extract amount, date, supplier and category. You review everything before it saves.
               </AppText>
             </Card>
             <PrimaryButton testID="scan-camera" label="Take photo" icon="camera-outline" onPress={takePhoto} style={{ marginBottom: 12 }} />
