@@ -289,26 +289,42 @@ export default function Entry() {
                   </View>
                 </Field>
               </>
+            ) : kind === "income" ? (
+              // Income field order: Date → Platform → Amount → GST → Note.
+              <>
+                <Field label="Date">
+                  <DateField testID="entry-date" value={dateISO} onChange={setDateISO} maxToday />
+                </Field>
+                <Field label="Platform">
+                  <ChipRow options={(profile?.platforms?.length ? profile.platforms : ["Other"]).map((p) => ({ key: p, label: p }))}
+                    value={platform} onChange={setPlatform} testIDPrefix="entry-platform" />
+                </Field>
+                <Field label="Amount"
+                  hint={carriesPassengers
+                    ? "Rideshare: enter the FULL passenger fare before the platform's commission — GST is calculated on the whole fare."
+                    : undefined}>
+                  <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+                </Field>
+                {carriesPassengers ? (
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", backgroundColor: colors.surfaceAlt,
+                    borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                    <Ionicons name="information-circle" size={16} color={colors.accent} style={{ marginRight: 8, marginTop: 1 }} />
+                    <AppText variant="caption" color={colors.dim} style={{ flex: 1, lineHeight: 16 }}>
+                      {"Log the platform's commission separately as an expense (category \u201COther\u201D) — it's deductible and, if you're GST-registered, gives you a GST credit."}
+                    </AppText>
+                  </View>
+                ) : null}
+                <Field label="GST treatment">
+                  <ChipRow options={TAX_TREATMENTS.map((t) => ({ key: t.key, label: t.label }))} value={treatment} onChange={setTreatment} testIDPrefix="entry-treatment" />
+                </Field>
+              </>
             ) : (
-              <Field label="Amount"
-                hint={kind === "income" && carriesPassengers
-                  ? "Rideshare: enter the FULL passenger fare before the platform's commission — GST is calculated on the whole fare."
-                  : undefined}>
+              <Field label="Amount">
                 <Input testID="entry-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
               </Field>
             )}
 
-            {kind === "income" && carriesPassengers ? (
-              <View style={{ flexDirection: "row", alignItems: "flex-start", backgroundColor: colors.surfaceAlt,
-                borderRadius: 10, padding: 10, marginBottom: 14 }}>
-                <Ionicons name="information-circle" size={16} color={colors.accent} style={{ marginRight: 8, marginTop: 1 }} />
-                <AppText variant="caption" color={colors.dim} style={{ flex: 1, lineHeight: 16 }}>
-                  {"Log the platform's commission separately as an expense (category \u201COther\u201D) — it's deductible and, if you're GST-registered, gives you a GST credit."}
-                </AppText>
-              </View>
-            ) : null}
-
-            {(kind === "income" || kind === "shift") && (
+            {kind === "shift" && (
               <Field label="Platform">
                 <ChipRow options={(profile?.platforms?.length ? profile.platforms : ["Other"]).map((p) => ({ key: p, label: p }))}
                   value={platform} onChange={setPlatform} testIDPrefix="entry-platform" />
@@ -343,15 +359,17 @@ export default function Entry() {
               </>
             )}
 
-            {(kind === "income" || kind === "expense") && (
+            {kind === "expense" && (
               <Field label="GST treatment">
                 <ChipRow options={TAX_TREATMENTS.map((t) => ({ key: t.key, label: t.label }))} value={treatment} onChange={setTreatment} testIDPrefix="entry-treatment" />
               </Field>
             )}
 
-            <Field label="Date">
-              <DateField testID="entry-date" value={dateISO} onChange={setDateISO} maxToday />
-            </Field>
+            {kind !== "income" && (
+              <Field label="Date">
+                <DateField testID="entry-date" value={dateISO} onChange={setDateISO} maxToday />
+              </Field>
+            )}
             <Field label="Note (optional)">
               <Input testID="entry-note" value={note} onChangeText={setNote} placeholder="Anything to remember" />
             </Field>
