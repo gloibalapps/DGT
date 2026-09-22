@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { View, Pressable, ScrollView, Linking, Platform } from "react-native";
+import { View, Pressable, ScrollView, Linking, Platform, Alert } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -18,7 +18,7 @@ import {
 } from "@/src/config";
 import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
-  PrimaryButton, useToast,
+  PrimaryButton, SecondaryButton, useToast,
 } from "@/src/ui";
 import { connectDrive, type BackupStatus } from "@/src/backup";
 
@@ -34,7 +34,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function Settings() {
   const { colors, mode, toggle } = useTheme();
-  const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle, reloadProfile, reloadVehicles } = useStore();
+  const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle, reloadProfile, reloadVehicles, refresh } = useStore();
   const { user, signIn, signingIn, signOut } = useAuth();
   const { isActive: subActive, managed: subManaged, presentCustomerCenter } = useSubscription();
   const { show } = useToast();
@@ -98,6 +98,31 @@ export default function Settings() {
     try { await api.disconnectBackup(); setBackup({ connected: false }); show("Drive disconnected", "info"); }
     catch { /* ignore */ }
     finally { setBackupBusy(false); }
+  };
+
+  const doRestore = async () => {
+    setBackupBusy(true);
+    try {
+      const r = await api.restoreBackup();
+      const t = r?.total ?? 0;
+      show(t ? `Restored ${t} record${t === 1 ? "" : "s"} from Drive` : "Nothing to restore yet", "success");
+      await reloadVehicles?.();
+      refresh?.();
+      await loadBackup();
+    } catch {
+      show("Restore failed — reconnect Drive and try again", "error");
+    } finally { setBackupBusy(false); }
+  };
+
+  const onRestore = () => {
+    Alert.alert(
+      "Restore from Drive",
+      "Pull your latest Google Drive backup (income, expenses, trips, vehicles & receipts) onto this device. Matching records are updated — nothing is duplicated.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Restore", onPress: doRestore },
+      ],
+    );
   };
 
   useEffect(() => {
@@ -252,6 +277,8 @@ export default function Settings() {
             </View>
             <PrimaryButton testID="backup-now" label={backupBusy ? "Backing up…" : "Back up now"}
               icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 14 }} />
+            <SecondaryButton testID="backup-restore" label="Restore from Drive"
+              icon="cloud-download-outline" onPress={onRestore} disabled={backupBusy} style={{ marginTop: 10 }} />
             <Pressable testID="backup-how" onPress={() => setHowOpen((o) => !o)} hitSlop={6}
               style={{ flexDirection: "row", alignItems: "center", marginTop: 14 }}>
               <Ionicons name="help-circle-outline" size={16} color={colors.dim} style={{ marginRight: 6 }} />
@@ -260,7 +287,7 @@ export default function Settings() {
             </Pressable>
             {howOpen ? (
               <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 18 }}>
-                Your scanned receipts and a CSV of income, expenses & trips are saved to a “GigTax Backups” folder in your Drive. Backs up automatically once a day when you open the app.
+                Your scanned receipts, plus a CSV and a full backup of your income, expenses & trips, are saved to a “GigTax Backups” folder in your Drive. Backs up automatically once a day when you open the app. On a new phone, connect the same Google account and tap “Restore from Drive”.
               </AppText>
             ) : null}
             <Pressable testID="backup-disconnect" onPress={onDisconnectDrive} disabled={backupBusy}

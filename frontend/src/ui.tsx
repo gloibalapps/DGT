@@ -170,14 +170,14 @@ export function PrimaryButton({ label, onPress, icon, disabled, testID, style, s
   );
 }
 
-export function SecondaryButton({ label, onPress, icon, testID, style, tone }:
-  { label: string; onPress: () => void; icon?: any; testID?: string; style?: any; tone?: "default" | "danger" }) {
+export function SecondaryButton({ label, onPress, icon, testID, style, tone, disabled }:
+  { label: string; onPress: () => void; icon?: any; testID?: string; style?: any; tone?: "default" | "danger"; disabled?: boolean }) {
   const { colors } = useTheme();
   const color = tone === "danger" ? colors.loss : colors.accent;
   return (
-    <Pressable testID={testID} onPress={onPress}
+    <Pressable testID={testID} onPress={onPress} disabled={disabled}
       style={({ pressed }) => [styles.btn, {
-        borderWidth: 1, borderColor: color, opacity: pressed ? 0.7 : 1,
+        borderWidth: 1, borderColor: color, opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
         backgroundColor: colors.surfaceAlt,
       }, style]}>
       {icon ? <Ionicons name={icon} size={18} color={color} style={{ marginRight: 8 }} /> : null}

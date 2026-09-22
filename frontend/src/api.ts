@@ -214,6 +214,11 @@ export const api = {
     // Backups can take a while (uploads) — long timeout, no auto-retry.
     return req(`/backups/google-drive?profile_id=${pid}`, { method: "POST" }, 0, 120000);
   },
+  async restoreBackup() {
+    const pid = await getProfileId();
+    // Restore downloads + rewrites records — long timeout, no auto-retry.
+    return req(`/backups/restore?profile_id=${pid}`, { method: "POST" }, 0, 120000);
+  },
   async disconnectBackup() {
     const pid = await getProfileId();
     return req(`/backups/disconnect?profile_id=${pid}`, { method: "POST" });

@@ -499,6 +499,15 @@ async def _drive_upload(token: str, content: bytes, filename: str, mime: str,
     return r.json()
 
 
+async def _drive_download(token: str, file_id: str) -> bytes:
+    async with httpx.AsyncClient(timeout=60) as hc:
+        r = await hc.get(f"{DRIVE_API_URL}/{file_id}", params={"alt": "media"},
+                         headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.content
+
+
+
 def _decode_b64_image(s: str) -> bytes:
     import base64 as _b64
     if s[:5] == "data:" and "," in s[:64]:
@@ -525,6 +534,15 @@ async def backup_profile(profile_id: str) -> dict:
     income = [clean(x) for x in await db.income.find({"profile_id": profile_id}).to_list(10000)]
     expenses = [clean(x) for x in await db.expenses.find({"profile_id": profile_id}).to_list(10000)]
     trips = [clean(x) for x in await db.trips.find({"profile_id": profile_id}).to_list(10000)]
+    vehicles = [clean(x) for x in await db.vehicles.find({"profile_id": profile_id}).to_list(10000)]
+    # Full-fidelity JSON (source of truth for restore — keeps IDs, tax_treatment,
+    # litres, gst, receipt images, etc. that the human-readable CSV drops).
+    backup_json = json.dumps({
+        "version": 1, "exported_at": now_iso(),
+        "income": income, "expenses": expenses, "trips": trips, "vehicles": vehicles,
+    }).encode()
+    json_id = await _drive_find(token, root, "gigtax-data.json")
+    await _drive_upload(token, backup_json, "gigtax-data.json", "application/json", root, json_id)
     # data CSV (overwrite in place)
     csv_bytes = _build_backup_csv(income, expenses, trips)
     csv_id = await _drive_find(token, root, "gigtax-data.csv")
@@ -577,6 +595,49 @@ async def run_backup(profile_id: str = Query(...)):
 async def disconnect_backup(profile_id: str = Query(...)):
     await db.drive_tokens.delete_one({"profile_id": profile_id})
     return {"connected": False}
+
+
+async def restore_profile(profile_id: str) -> dict:
+    """Pull the full-fidelity JSON backup from Drive and merge it into this
+    device's profile. Idempotent — records are upserted by their original id,
+    so restoring twice never duplicates. profile_id is remapped to the current
+    device so data shows up under the signed-in driver."""
+    token = await _drive_access_token(profile_id)
+    root = await _drive_folder(token, "GigTax Backups")
+    fid = await _drive_find(token, root, "gigtax-data.json")
+    if not fid:
+        raise HTTPException(404, "No restorable backup found in Drive. Back up on your old device first.")
+    raw = await _drive_download(token, fid)
+    try:
+        payload = json.loads(raw.decode())
+    except Exception:
+        raise HTTPException(422, "Backup file is unreadable")
+
+    counts = {"income": 0, "expenses": 0, "trips": 0, "vehicles": 0}
+
+    async def _restore(coll, items, key):
+        n = 0
+        for it in items or []:
+            if not isinstance(it, dict) or not it.get("id"):
+                continue
+            doc = dict(it)
+            doc.pop("_id", None)
+            doc["profile_id"] = profile_id  # attach to the current driver
+            await coll.replace_one({"id": doc["id"]}, doc, upsert=True)
+            n += 1
+        counts[key] = n
+
+    await _restore(db.vehicles, payload.get("vehicles"), "vehicles")
+    await _restore(db.income, payload.get("income"), "income")
+    await _restore(db.expenses, payload.get("expenses"), "expenses")
+    await _restore(db.trips, payload.get("trips"), "trips")
+    return {"restored": counts, "exported_at": payload.get("exported_at"),
+            "total": sum(counts.values())}
+
+
+@api_router.post("/backups/restore")
+async def run_restore(profile_id: str = Query(...)):
+    return await restore_profile(profile_id)
 
 
 # ---------------------------------------------------------------------------
