@@ -22,12 +22,12 @@ export default function ScanReceipt() {
       const data = await api.scanReceipt(base64);
       receiptStash.image = base64;
       router.replace({
-        pathname: "/entry" as any,
+        pathname: "/invoice-review" as any,
         params: {
-          type: "expense", fromScan: "1",
           amount: data.amount != null ? String(data.amount) : "",
           date: data.date || "", merchant: data.merchant || "", category: data.category || "other",
           liters: data.liters != null ? String(data.liters) : "",
+          gst: data.gst != null ? String(data.gst) : "",
         },
       });
     } catch (e) {

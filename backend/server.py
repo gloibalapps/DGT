@@ -684,6 +684,7 @@ class Expense(BaseModel):
     tax_treatment: Literal["inclusive", "free", "exempt", "out_of_scope"] = "inclusive"
     note: Optional[str] = None
     liters: Optional[float] = None  # fuel volume (litres), for fuel receipts
+    gst: Optional[float] = None  # GST amount as shown on the invoice; None = "no gst"
     receipt_image: Optional[str] = None  # base64
     created_at: str = Field(default_factory=now_iso)
 
@@ -1178,6 +1179,7 @@ async def scan_receipt(req: ScanRequest):
         '{"amount": number (total incl GST, no currency symbol), '
         '"date": "YYYY-MM-DD" (best guess, today if unclear), '
         '"merchant": string, '
+        '"gst": number|null (the GST/tax amount printed on the invoice; null if the invoice shows NO GST), '
         '"liters": number|null (fuel volume in litres for FUEL receipts, e.g. 42.15; null for non-fuel), '
         '"category": one of "fuel","tolls","vehicle","phone","other"}. '
         "Map petrol/servo/gas -> fuel; car service/tyres/repairs/parts -> vehicle; "
@@ -1216,12 +1218,18 @@ async def scan_receipt(req: ScanRequest):
         liters = round(float(liters), 2) if liters not in (None, "") and cat == "fuel" else None
     except (TypeError, ValueError):
         liters = None
+    gst = data.get("gst")
+    try:
+        gst = round(float(gst), 2) if gst not in (None, "") else None
+    except (TypeError, ValueError):
+        gst = None
     return {
         "amount": data.get("amount"),
         "date": data.get("date") or date.today().isoformat(),
         "merchant": data.get("merchant") or "",
         "category": cat,
         "liters": liters,
+        "gst": gst,
     }
 
 

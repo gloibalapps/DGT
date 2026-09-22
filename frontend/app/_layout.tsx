@@ -39,6 +39,7 @@ function SubGate() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="entry" options={{ presentation: "modal" }} />
           <Stack.Screen name="scan-receipt" options={{ presentation: "modal" }} />
+          <Stack.Screen name="invoice-review" options={{ presentation: "modal" }} />
           <Stack.Screen name="tax-setup" options={{ presentation: "modal" }} />
           <Stack.Screen name="vehicle" options={{ presentation: "modal" }} />
           <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
