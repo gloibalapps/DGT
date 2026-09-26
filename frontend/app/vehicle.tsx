@@ -38,6 +38,8 @@ export default function VehicleSetup() {
   const [recAmount, setRecAmount] = useState(current.recurring_payment ? String(current.recurring_payment.amount) : "");
   const [recFreq, setRecFreq] = useState<string>(current.recurring_payment?.frequency || "weekly");
   const [recAnchor, setRecAnchor] = useState(current.recurring_payment?.anchor_date || "");
+  const [disposed, setDisposed] = useState(!!current.disposal_date);
+  const [disposalDate, setDisposalDate] = useState(current.disposal_date || "");
   const [saving, setSaving] = useState(false);
 
   const num = (s: string) => { const n = parseFloat(s); return isNaN(n) ? null : n; };
@@ -45,6 +47,9 @@ export default function VehicleSetup() {
   const save = async () => {
     if (recEnabled && (!recAmount || !recAnchor)) {
       show("Add the payment amount and start date", "error"); return;
+    }
+    if (disposed && !disposalDate) {
+      show("Pick the disposal / end date", "error"); return;
     }
     setSaving(true);
     const payload: Partial<VehicleT> = {
@@ -61,6 +66,7 @@ export default function VehicleSetup() {
       closing_odometer: num(closeOdo),
       closing_odometer_date: closeOdoDate || null,
       gps_calibration_pct: (() => { const n = num(gpsCal); return n && n >= 50 && n <= 150 ? n : 100; })(),
+      disposal_date: disposed ? disposalDate : null,
       recurring_payment: recEnabled ? {
         amount: parseFloat(recAmount), frequency: recFreq as any,
         anchor_type: "gigstart", anchor_date: recAnchor,
@@ -158,6 +164,33 @@ export default function VehicleSetup() {
               </View>
             ) : null}
           </Card>
+
+          {editing ? (
+            <>
+              <AppText variant="label" color={colors.dim} style={{ marginBottom: 8, marginLeft: 4 }}>VEHICLE STATUS</AppText>
+              <Card style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <AppText variant="bodySemi">{disposed ? "Disposed / ended" : "Active"}</AppText>
+                    <AppText variant="caption" color={colors.dim}>
+                      {disposed
+                        ? "Recurring costs stop on the end date. History stays intact."
+                        : "Mark this car sold, returned or replaced to stop its recurring costs."}
+                    </AppText>
+                  </View>
+                  <Switch testID="veh-disposed-toggle" value={disposed} onValueChange={setDisposed}
+                    trackColor={{ true: colors.accent, false: colors.surfaceAlt }} />
+                </View>
+                {disposed ? (
+                  <View style={{ marginTop: 14 }}>
+                    <Field label="Disposal / end date" hint="Costs stop from this date. A replacement car can start the same day with no overlap.">
+                      <DateField testID="veh-disposal-date" value={disposalDate} onChange={setDisposalDate} maxToday />
+                    </Field>
+                  </View>
+                ) : null}
+              </Card>
+            </>
+          ) : null}
 
           <AppText variant="label" color={colors.dim} style={{ marginBottom: 8, marginLeft: 4 }}>ODOMETER PROTECTION</AppText>
           <Card style={{ marginBottom: 16 }}>

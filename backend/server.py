@@ -669,6 +669,7 @@ class Vehicle(BaseModel):
     closing_odometer: Optional[float] = None
     closing_odometer_date: Optional[str] = None
     gps_calibration_pct: Optional[float] = 100.0  # scales GPS-tracked distance to match this car's odometer
+    disposal_date: Optional[str] = None  # end of active period (sold/returned/replaced); None = still active
     is_active: bool = False
     created_at: str = Field(default_factory=now_iso)
 

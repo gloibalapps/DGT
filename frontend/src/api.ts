@@ -127,6 +127,7 @@ export interface VehicleT {
   closing_odometer?: number | null;
   closing_odometer_date?: string | null;
   gps_calibration_pct?: number | null;
+  disposal_date?: string | null;
   is_active?: boolean;
 }
 

@@ -21,6 +21,7 @@ import {
   PrimaryButton, SecondaryButton, useToast,
 } from "@/src/ui";
 import { connectDrive, type BackupStatus } from "@/src/backup";
+import { isoToAU } from "@/src/date";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const { colors } = useTheme();
@@ -493,23 +494,31 @@ export default function Settings() {
         </AppText>
         {vehicles.map((v) => {
           const active = v.id === activeVehicleId;
+          const disposed = !!v.disposal_date;
           const label = v.registration || v.make_model || "Vehicle";
-          const sub = v.registration && v.make_model ? v.make_model : "Tap to add rego, model & odometer";
+          const sub = disposed
+            ? `Disposed ${isoToAU(v.disposal_date!)} · history kept`
+            : (v.registration && v.make_model ? v.make_model : "Tap to add rego, model & odometer");
           return (
             <View key={v.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10,
-              borderTopWidth: 1, borderTopColor: colors.border }}>
+              borderTopWidth: 1, borderTopColor: colors.border, opacity: disposed ? 0.6 : 1 }}>
               <Pressable testID={`set-vehicle-${v.id}`} onPress={() => router.push(`/vehicle?id=${v.id}` as any)}
                 style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
                   alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                  <Ionicons name="car-sport" size={20} color={colors.accent} />
+                  <Ionicons name="car-sport" size={20} color={disposed ? colors.dim : colors.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <AppText variant="bodySemi">{label}</AppText>
                   <AppText variant="caption" color={colors.dim}>{sub}</AppText>
                 </View>
               </Pressable>
-              {active ? (
+              {disposed ? (
+                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                  backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.loss }}>
+                  <AppText variant="caption" color={colors.loss} style={{ fontFamily: FONT.bold }}>DISPOSED</AppText>
+                </View>
+              ) : active ? (
                 <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
                   <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>ACTIVE</AppText>
                 </View>

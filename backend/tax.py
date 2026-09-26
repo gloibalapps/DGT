@@ -260,7 +260,8 @@ def fmt_period_label(period: str, start: date, end: date, country: str = "AU") -
 # Uses continuous daily proration so adjacent periods sum exactly to the whole
 # with no gaps and no double counting at the boundaries.
 # ---------------------------------------------------------------------------
-def recurring_owed(rec: Optional[dict], start: date, end: date, today: date) -> float:
+def recurring_owed(rec: Optional[dict], start: date, end: date, today: date,
+                   disposal: Optional[date] = None) -> float:
     if not rec or not rec.get("amount") or not rec.get("anchor_date"):
         return 0.0
     freq = rec.get("frequency", "weekly")
@@ -269,12 +270,30 @@ def recurring_owed(rec: Optional[dict], start: date, end: date, today: date) -> 
     anchor = parse_date(rec["anchor_date"])
     # Only count time that has actually elapsed (up to and including today).
     cap = min(end, today + timedelta(days=1))
+    # A disposed vehicle stops charging at its disposal date. The disposal date
+    # is EXCLUSIVE — if V1 ends and V2 starts on the same day, only V2 charges
+    # that day, so two vehicles' recurring costs never overlap on the changeover.
+    if disposal is not None:
+        cap = min(cap, disposal)
     ov_start = max(start, anchor)
     ov_end = cap
     days = (ov_end - ov_start).days
     if days <= 0:
         return 0.0
     return round(daily * days, 2)
+
+
+def _veh_end(v: Optional[dict]) -> Optional[date]:
+    """Parsed disposal/end date for a vehicle, or None if still active."""
+    if not isinstance(v, dict):
+        return None
+    d = v.get("disposal_date")
+    return parse_date(d) if d else None
+
+
+def _veh_disposed_by(v: Optional[dict], on: date) -> bool:
+    end = _veh_end(v)
+    return end is not None and end <= on
 
 
 def next_due_date(rec: Optional[dict], today: date) -> Optional[str]:
@@ -367,7 +386,7 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
         else:
             vehicle_ded += e["amount"] * use
     for v in veh_list:
-        rg = recurring_owed(v.get("recurring_payment"), start, end, today)
+        rg = recurring_owed(v.get("recurring_payment"), start, end, today, _veh_end(v))
         recurring_gross += rg
         recurring_ded += rg * uses[v["id"]]
     fuel_ded = round(fuel_ded, 2)
@@ -410,7 +429,7 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
     # recurring payment carries GST when it's a lease/rental/loan (apportioned per car)
     for v in veh_list:
         if v.get("ownership", profile.get("vehicle_ownership")) in ("lease", "rental", "loan"):
-            rg = recurring_owed(v.get("recurring_payment"), start, end, today)
+            rg = recurring_owed(v.get("recurring_payment"), start, end, today, _veh_end(v))
             one_b_base += rg * uses[v["id"]]
     one_b = round(one_b_base / 11.0, 2)
     net_gst = round(one_a - one_b, 2)
@@ -540,7 +559,7 @@ def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
         else:
             vehicle_ded += e["amount"] * use
     for v in veh_list:
-        rg = recurring_owed(v.get("recurring_payment"), start, end, today)
+        rg = recurring_owed(v.get("recurring_payment"), start, end, today, _veh_end(v))
         recurring_gross += rg
         recurring_ded += rg * uses[v["id"]]
     actual_expense = round(fuel_ded + vehicle_ded + recurring_ded, 2)
@@ -936,13 +955,17 @@ def dashboard(profile: dict, trips, incomes, expenses, today: date,
         [{"recurring_payment": profile.get("recurring_payment")}]
         if profile.get("recurring_payment") else [])
     recs = [v.get("recurring_payment") for v in veh_list if v.get("recurring_payment")]
-    rec_owed = round(sum(recurring_owed(r, q_start, q_end, today) for r in recs), 2)
-    rec_enabled = any(r and r.get("amount") for r in recs)
-    rec_amount = round(sum(float(r.get("amount") or 0) for r in recs), 2) if rec_enabled else None
-    next_dues = [next_due_date(r, today) for r in recs if r]
+    rec_owed = round(sum(recurring_owed(v.get("recurring_payment"), q_start, q_end, today, _veh_end(v))
+                         for v in veh_list), 2)
+    # "Current" per-cycle figure & next due only reflect vehicles still active today.
+    active_recs = [v.get("recurring_payment") for v in veh_list
+                   if v.get("recurring_payment") and not _veh_disposed_by(v, today)]
+    rec_enabled = any(r and r.get("amount") for r in active_recs)
+    rec_amount = round(sum(float(r.get("amount") or 0) for r in active_recs), 2) if rec_enabled else None
+    next_dues = [next_due_date(r, today) for r in active_recs if r]
     next_dues = [d for d in next_dues if d]
     next_due = min(next_dues) if next_dues else None
-    freq = recs[0].get("frequency") if len(recs) == 1 else ("mixed" if len(recs) > 1 else None)
+    freq = active_recs[0].get("frequency") if len(active_recs) == 1 else ("mixed" if len(active_recs) > 1 else None)
 
     # recent activity — merge & sort
     items = []
@@ -1048,7 +1071,7 @@ def money_overview(profile: dict, trips, incomes, expenses, shifts, ref: date,
     }]
 
     def rent_for(s, e):
-        return round(sum(recurring_owed(v.get("recurring_payment"), s, e, ref) for v in veh_list), 2)
+        return round(sum(recurring_owed(v.get("recurring_payment"), s, e, ref, _veh_end(v)) for v in veh_list), 2)
 
     def core(s, e):
         gross = sum(i["amount"] for i in incomes if in_range(i, s, e))
@@ -1420,14 +1443,14 @@ def logbook_summary(profile: dict, trips: List[dict], ref: date,
 
 
 def _fy_vehicle_expenses(expenses: List[dict], fy_start: date, fy_end: date,
-                         recurring_payment: Optional[dict]):
+                         recurring_payment: Optional[dict], disposal: Optional[date] = None):
     cats = {"fuel": 0.0, "vehicle": 0.0, "tolls": 0.0, "phone": 0.0, "other": 0.0}
     for e in expenses:
         d = parse_date(e["date"])
         if fy_start <= d < fy_end:
             c = e.get("category", "other")
             cats[c] = cats.get(c, 0.0) + float(e.get("amount") or 0)
-    recurring = recurring_owed(recurring_payment, fy_start, fy_end, date.today())
+    recurring = recurring_owed(recurring_payment, fy_start, fy_end, date.today(), disposal)
     cats = {k: round(v, 2) for k, v in cats.items()}
     # Eligible for the vehicle-cost pool (running costs apportioned by business use).
     eligible = round(cats["fuel"] + cats["vehicle"] + recurring, 2)
@@ -1462,7 +1485,7 @@ def method_comparison(profile: dict, trips: List[dict], expenses: List[dict],
             pct_source = "fallback"
 
     recurring_payment = (vehicle or {}).get("recurring_payment") if vehicle else profile.get("recurring_payment")
-    cats, recurring, eligible = _fy_vehicle_expenses(expenses, fy_s, fy_e, recurring_payment)
+    cats, recurring, eligible = _fy_vehicle_expenses(expenses, fy_s, fy_e, recurring_payment, _veh_end(vehicle))
     actual_deduction = round(eligible * logbook_pct, 2)  # "logbook" (AU) / "actual" (US)
 
     if us:
