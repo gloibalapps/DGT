@@ -331,6 +331,13 @@ export const api = {
     const pid = await getProfileId();
     return req(`/reports?profile_id=${pid}&period=${period}&ref_date=${refDate}`);
   },
+  async reportAnalytics(start: string, end: string, providers?: string[], vehicleId?: string) {
+    const pid = await getProfileId();
+    const qs = [`profile_id=${pid}`, `start=${start}`, `end=${end}`];
+    if (providers && providers.length) qs.push(`providers=${encodeURIComponent(providers.join(","))}`);
+    if (vehicleId) qs.push(`vehicle_id=${vehicleId}`);
+    return req(`/reports/analytics?${qs.join("&")}`);
+  },
   async exportUrl(period: string, refDate: string) {
     const pid = await getProfileId();
     return `${BASE}/api/export?profile_id=${pid}&period=${period}&ref_date=${refDate}`;

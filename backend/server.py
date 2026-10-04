@@ -1064,6 +1064,20 @@ async def reports(profile_id: str = Query(...),
     return taxlib.compute_report(profile, trips, income, expenses, period, ref, vehicles)
 
 
+@api_router.get("/reports/analytics")
+async def reports_analytics(profile_id: str = Query(...),
+                            start: str = Query(...), end: str = Query(...),
+                            providers: Optional[str] = Query(None),
+                            vehicle_id: Optional[str] = Query(None)):
+    profile, trips, income, expenses, vehicles = await _load_all(profile_id)
+    shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
+    s = taxlib.parse_date(start)
+    e = taxlib.parse_date(end) + timedelta(days=1)  # make end inclusive of the selected day
+    prov = [p for p in providers.split(",") if p] if providers else None
+    return taxlib.compute_analytics(profile, trips, income, expenses, shifts, vehicles,
+                                    s, e, prov, vehicle_id or None)
+
+
 @api_router.get("/dashboard")
 async def dashboard(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)

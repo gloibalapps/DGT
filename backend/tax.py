@@ -505,6 +505,213 @@ def compute_report(profile: dict, trips: List[dict], incomes: List[dict],
     }
 
 
+def _in_range(rec: dict, start: date, end: date) -> bool:
+    d = parse_date(rec["date"])
+    return start <= d < end
+
+
+def compute_analytics(profile: dict, trips: List[dict], incomes: List[dict],
+                      expenses: List[dict], shifts: List[dict], vehicles: List[dict],
+                      start: date, end: date, providers: Optional[List[str]] = None,
+                      vehicle_id: Optional[str] = None) -> Dict[str, Any]:
+    """Comprehensive Reports analytics for an arbitrary [start,end) window with an
+    optional provider (income/shift) and vehicle filter. Totals are computed
+    straight from the underlying records so they reconcile exactly. Tax/GST
+    figures are period estimates, clearly labelled as such on the client."""
+    today = date.today()
+    prov_set = set(providers) if providers else None
+
+    def inc_ok(i):
+        if not _in_range(i, start, end):
+            return False
+        if prov_set and (i.get("platform") or "Other") not in prov_set:
+            return False
+        return True
+
+    def exp_ok(e):
+        if not _in_range(e, start, end):
+            return False
+        if vehicle_id and e.get("vehicle_id") != vehicle_id:
+            return False
+        return True
+
+    def trip_ok(t):
+        if not _in_range(t, start, end):
+            return False
+        if vehicle_id and t.get("vehicle_id") != vehicle_id:
+            return False
+        return True
+
+    def shift_ok(s):
+        if not _in_range(s, start, end):
+            return False
+        if vehicle_id and s.get("vehicle_id") != vehicle_id:
+            return False
+        return True
+
+    inc = [i for i in incomes if inc_ok(i)]
+    exp = [e for e in expenses if exp_ok(e)]
+    trp = [t for t in trips if trip_ok(t)]
+    shf = [s for s in shifts if shift_ok(s)]
+
+    # ---- Income ----
+    gross_income = round(sum(float(i["amount"]) for i in inc), 2)
+    inclusive_income = round(sum(float(i["amount"]) for i in inc
+                                 if i.get("tax_treatment", "inclusive") == "inclusive"), 2)
+    gst_collected = round(inclusive_income / 11.0, 2)
+
+    # ---- Expenses (no provider link in schema) ----
+    expenses_total = round(sum(float(e["amount"]) for e in exp), 2)
+    cat_totals: Dict[str, float] = {}
+    cat_gst: Dict[str, float] = {}
+    for e in exp:
+        c = e.get("category", "other")
+        amt = float(e["amount"])
+        cat_totals[c] = round(cat_totals.get(c, 0.0) + amt, 2)
+        g = 0.0
+        if e.get("tax_treatment", "inclusive") == "inclusive":
+            g = float(e["gst"]) if e.get("gst") not in (None, "") else amt / 11.0
+        cat_gst[c] = round(cat_gst.get(c, 0.0) + g, 2)
+    gst_credits = round(sum(cat_gst.values()), 2)
+
+    # recurring vehicle costs over the window (disposal-aware)
+    veh_list = vehicles or []
+    if vehicle_id:
+        veh_list = [v for v in veh_list if v.get("id") == vehicle_id]
+    recurring_gross = round(sum(recurring_owed(v.get("recurring_payment"), start, end, today, _veh_end(v))
+                                for v in veh_list), 2)
+    # recurring on lease/rental/loan carries GST
+    rec_gst = round(sum(recurring_owed(v.get("recurring_payment"), start, end, today, _veh_end(v)) / 11.0
+                        for v in veh_list
+                        if v.get("ownership") in ("lease", "rental", "loan")
+                        and v.get("recurring_payment")), 2)
+    gst_credits = round(gst_credits + rec_gst, 2)
+
+    # ---- Kilometres ----
+    business_km = round(sum(trip_business_km(t) for t in trp), 2)
+    total_km = round(sum(float(t.get("distance_km") or 0) for t in trp), 2)
+    private_km = round(total_km - business_km, 2)
+    if total_km > 0:
+        business_use = business_km / total_km
+    else:
+        business_use = float(profile.get("business_use_fallback", 100)) / 100.0
+    trips_count = len(trp)
+
+    # ---- Hours ----
+    hours_total = round(sum(float(s.get("hours") or 0) for s in shf), 2)
+    active_by_prov: Dict[str, float] = {}
+    for s in shf:
+        abp = s.get("active_by_platform") or {}
+        for p, h in abp.items():
+            try:
+                active_by_prov[p] = round(active_by_prov.get(p, 0.0) + float(h), 2)
+            except (TypeError, ValueError):
+                pass
+
+    # ---- Deductions / taxable profit (period estimate) ----
+    apportioned = (cat_totals.get("fuel", 0.0) + cat_totals.get("vehicle", 0.0) + recurring_gross) * business_use
+    full_claim = cat_totals.get("tolls", 0.0) + cat_totals.get("phone", 0.0) + cat_totals.get("other", 0.0)
+    total_deductions = round(apportioned + full_claim, 2)
+    taxable_profit = round(gross_income - total_deductions, 2)
+    income_tax_est = au_income_tax(taxable_profit)
+    net_gst = round(gst_collected - gst_credits, 2)
+
+    # ---- Provider performance (income + hours defensible; km/expenses not) ----
+    prov_rows = []
+    by_prov_income: Dict[str, float] = {}
+    by_prov_inc_count: Dict[str, int] = {}
+    for i in inc:
+        p = i.get("platform") or "Other"
+        by_prov_income[p] = round(by_prov_income.get(p, 0.0) + float(i["amount"]), 2)
+        by_prov_inc_count[p] = by_prov_inc_count.get(p, 0) + 1
+    for p, g in by_prov_income.items():
+        hrs = active_by_prov.get(p)
+        prov_rows.append({
+            "provider": p,
+            "gross": g,
+            "count": by_prov_inc_count.get(p, 0),
+            "hours": hrs,  # may be None -> "—" on client
+            "per_hour": round(g / hrs, 2) if hrs else None,
+            "pct_of_income": round((g / gross_income) * 100, 1) if gross_income else 0.0,
+        })
+    prov_rows.sort(key=lambda r: r["gross"], reverse=True)
+
+    # ---- Derived metrics (guarded; None -> "Not enough data" on client) ----
+    def per(n, d):
+        return round(n / d, 2) if d and d > 0 else None
+
+    operating_profit = round(gross_income - expenses_total, 2)
+    metrics = {
+        "cost_per_km": per(expenses_total, total_km),
+        "earnings_per_km": per(gross_income, total_km),
+        "expense_per_business_km": per(expenses_total, business_km),
+        "income_per_business_km": per(gross_income, business_km),
+        "net_per_business_km": per(operating_profit, business_km),
+        "earnings_per_hour": per(gross_income, hours_total),
+        "net_per_hour": per(operating_profit, hours_total),
+        "net_profit_margin": round((operating_profit / gross_income) * 100, 1) if gross_income else None,
+    }
+
+    all_providers = sorted({(i.get("platform") or "Other") for i in incomes})
+
+    return {
+        "start": start.isoformat(),
+        "end": (end - timedelta(days=1)).isoformat(),
+        "currency": "AUD", "symbol": "$", "distance_unit": "km",
+        "providers_applied": providers or [],
+        "vehicle_id": vehicle_id,
+        "all_providers": all_providers,
+        "income": {
+            "gross": gross_income,
+            "inclusive": inclusive_income,
+            "count": len(inc),
+            "by_provider": by_prov_income,
+        },
+        "expenses": {
+            "total": expenses_total,
+            "count": len(exp),
+            "by_category": cat_totals,
+            "gst_by_category": cat_gst,
+            "recurring_gross": recurring_gross,
+        },
+        "gst": {
+            "collected": gst_collected,
+            "credits": gst_credits,
+            "net_payable": net_gst,
+            "inclusive_income": inclusive_income,
+        },
+        "tax": {
+            "gross_income": gross_income,
+            "total_deductions": total_deductions,
+            "taxable_profit": taxable_profit,
+            "income_tax_est": income_tax_est,
+            "business_use_pct": round(business_use * 100, 1),
+            "deduction_breakdown": {
+                "apportioned_running": round(apportioned, 2),
+                "full_claim": round(full_claim, 2),
+                "recurring_gross": recurring_gross,
+            },
+        },
+        "km": {
+            "total": total_km,
+            "business": business_km,
+            "private": private_km,
+            "business_use_pct": round(business_use * 100, 1),
+            "trips": trips_count,
+            "has_data": total_km > 0,
+        },
+        "hours": {"total": hours_total, "active_by_provider": active_by_prov, "has_data": hours_total > 0},
+        "profitability": {
+            "gross_income": gross_income,
+            "expenses": expenses_total,
+            "operating_profit": operating_profit,
+            **metrics,
+        },
+        "providers": prov_rows,
+        "metrics": metrics,
+    }
+
+
 def compute_report_us(profile: dict, trips: List[dict], incomes: List[dict],
                       expenses: List[dict], period: str, ref: date,
                       vehicles: Optional[List[dict]] = None) -> Dict[str, Any]:
