@@ -720,6 +720,8 @@ class Trip(BaseModel):
     odo_start: Optional[float] = None
     odo_end: Optional[float] = None
     note: Optional[str] = None
+    start_time: Optional[str] = None  # ISO — drive start (GPS/auto drives)
+    end_time: Optional[str] = None    # ISO — drive finish
     source: Literal["manual", "gps"] = "manual"
     created_at: str = Field(default_factory=now_iso)
 

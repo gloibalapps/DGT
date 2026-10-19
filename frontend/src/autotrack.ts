@@ -67,8 +67,9 @@ if (Platform.OS !== "web") {
     let buf = await readJSON<Buffer | null>(BUF_KEY, null);
     const pending = await readJSON<PendingDrive[]>(PENDING_KEY, []);
     for (const loc of locs) {
-      const { latitude, longitude } = loc.coords;
+      const { latitude, longitude, accuracy } = loc.coords;
       const ts = loc.timestamp;
+      if (accuracy != null && accuracy > GPS_ACC_MAX_M) continue; // skip junk fix
       if (buf && ts - buf.lastTs > STOP_GAP_MS) {
         if (buf.distance >= MIN_DRIVE_KM) pending.push(finalize(buf));
         buf = null;
@@ -77,6 +78,9 @@ if (Platform.OS !== "web") {
         buf = { lastLat: latitude, lastLon: longitude, lastTs: ts, distance: 0, startTs: ts };
       } else {
         const d = haversine(buf.lastLat, buf.lastLon, latitude, longitude);
+        const dtH = Math.max(0, ts - buf.lastTs) / 3600000;
+        const kmh = dtH > 0 ? d / dtH : Infinity;
+        if (kmh > GPS_MAX_KMH) continue; // teleport glitch — don't move the reference point
         if (d > 0.005) buf.distance += d;
         buf.lastLat = latitude; buf.lastLon = longitude; buf.lastTs = ts;
       }
@@ -202,17 +206,30 @@ const LIVE_KEY = "gigtax.manual.live"; // JSON string
 interface Live { distance: number; lastLat?: number; lastLon?: number; lastTs: number; startTs: number; active: boolean; }
 
 const MANUAL_NOISE_KM = 0.004; // 4 m floor — drop GPS jitter
+const GPS_ACC_MAX_M = 35;      // ignore fixes less accurate than this (metres)
+const GPS_MAX_KMH = 180;       // ignore segments implying an impossible speed (GPS glitch)
 
 // Read-modify-write a single GPS fix into the live drive. Shared by BOTH the
 // background foreground-service task AND the in-app foreground watcher, so the
 // running distance is persisted to storage on EVERY update from either source
-// and can never be lost if the OS kills the app. Sharing lastLat/lastLon means
-// a point is never counted twice regardless of which source ingests it.
-export async function ingestManualPoint(latitude: number, longitude: number, ts: number): Promise<void> {
+// and can never be lost if the OS kills the app.
+//
+// Stability guards (fixes the ±20–100 km back-and-forth jumping):
+//  • drop fixes whose reported accuracy is worse than GPS_ACC_MAX_M — a bad fix
+//    must NEVER become the reference point, or the "return" step spikes too;
+//  • drop segments implying an impossible speed (GPS teleport);
+//  • de-dupe by timestamp so the same fix arriving from both sources (or a
+//    stale racing write) is only ever counted once.
+export async function ingestManualPoint(latitude: number, longitude: number, ts: number, accuracy?: number | null): Promise<void> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
   if (!live || !live.active) return;
+  if (accuracy != null && accuracy > GPS_ACC_MAX_M) return; // junk fix — ignore entirely
+  if (live.lastLat != null && ts <= live.lastTs) return;    // duplicate / stale fix
   if (live.lastLat != null && live.lastLon != null) {
     const d = haversine(live.lastLat, live.lastLon, latitude, longitude);
+    const dtH = Math.max(0, ts - live.lastTs) / 3600000;
+    const kmh = dtH > 0 ? d / dtH : Infinity;
+    if (kmh > GPS_MAX_KMH) return; // teleport glitch — don't move the reference point
     if (d > MANUAL_NOISE_KM) live.distance += d;
   }
   live.lastLat = latitude; live.lastLon = longitude; live.lastTs = ts;
@@ -224,7 +241,7 @@ if (Platform.OS !== "web") {
     if (error) return;
     const locs: Location.LocationObject[] = data?.locations || [];
     for (const loc of locs) {
-      await ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
+      await ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp, loc.coords.accuracy);
     }
   });
 }
@@ -270,12 +287,16 @@ export async function getManualLive(): Promise<{ distanceKm: number; startTs: nu
   return { distanceKm: Math.round(live.distance * 100) / 100, startTs: live.startTs, active: !!live.active };
 }
 
-export async function stopManualDrive(): Promise<{ distanceKm: number; startTs: number }> {
+export async function stopManualDrive(): Promise<{ distanceKm: number; startTs: number; endTs: number }> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
   if (await isManualRunning()) {
     try { await Location.stopLocationUpdatesAsync(MANUAL_TASK); } catch { /* noop */ }
   }
   await writeJSON(LIVE_KEY, null);
   await resumeAutotrackIfEnabled();
-  return { distanceKm: live ? Math.round(live.distance * 100) / 100 : 0, startTs: live ? live.startTs : Date.now() };
+  return {
+    distanceKm: live ? Math.round(live.distance * 100) / 100 : 0,
+    startTs: live ? live.startTs : Date.now(),
+    endTs: live ? live.lastTs : Date.now(),
+  };
 }

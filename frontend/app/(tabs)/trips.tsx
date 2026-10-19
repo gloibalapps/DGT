@@ -38,6 +38,8 @@ export default function Mileage() {
   const [pendingRawKm, setPendingRawKm] = useState<number | null>(null);
   const [odoInput, setOdoInput] = useState("");
   const [pendingDuration, setPendingDuration] = useState(0);
+  const [pendingStartTs, setPendingStartTs] = useState(0);
+  const [pendingEndTs, setPendingEndTs] = useState(0);
   const startTimeRef = useRef<number>(0);
   const [elapsedSec, setElapsedSec] = useState(0);
   const subRef = useRef<Location.LocationSubscription | null>(null);
@@ -85,7 +87,7 @@ export default function Mileage() {
     try {
       subRef.current = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5, timeInterval: 2000 },
-        (loc) => { ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp); },
+        (loc) => { ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp, loc.coords.accuracy); },
       );
     } catch { /* web / no perm — the background task still covers it */ }
   };
@@ -95,6 +97,8 @@ export default function Mileage() {
   };
 
   const startedAtStr = () => new Date(startTimeRef.current).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const hm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const hmISO = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
   const fmtElapsed = (s: number) => {
     const m = Math.floor(s / 60);
     const h = Math.floor(m / 60);
@@ -162,7 +166,10 @@ export default function Mileage() {
     if (km <= 0) { show("No distance recorded", "info"); return; }
     setPendingRawKm(Math.round(raw * 10) / 10);   // raw GPS (uncalibrated) for auto-calibration
     setOdoInput("");
-    setPendingDuration(Math.max(0, Math.round((Date.now() - (res.startTs || startTimeRef.current)) / 60000)));
+    const sTs = res.startTs || startTimeRef.current;
+    const eTs = res.endTs || Date.now();
+    setPendingStartTs(sTs); setPendingEndTs(eTs);
+    setPendingDuration(Math.max(0, Math.round((eTs - sTs) / 60000)));
     setPendingTag(km);
   };
 
@@ -172,7 +179,9 @@ export default function Mileage() {
     const useOdo = !isNaN(odo) && odo > 0;
     const km = useOdo ? Math.round(odo * 10) / 10 : pendingTag;
     try {
-      await api.addTrip({ date: todayISO(), distance_km: km, duration_min: pendingDuration, type, source: "gps", vehicle_id: activeVehicleId });
+      await api.addTrip({ date: todayISO(), distance_km: km, duration_min: pendingDuration, type, source: "gps", vehicle_id: activeVehicleId,
+        start_time: pendingStartTs ? new Date(pendingStartTs).toISOString() : null,
+        end_time: pendingEndTs ? new Date(pendingEndTs).toISOString() : null });
       // Auto-calibrate this vehicle from the odometer vs the raw GPS distance.
       if (useOdo && activeVehicle && pendingRawKm && pendingRawKm > 0) {
         const pct = Math.min(150, Math.max(50, Math.round((odo / pendingRawKm) * 1000) / 10));
@@ -188,7 +197,8 @@ export default function Mileage() {
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
     try {
-      await api.addTrip({ date: d.date, distance_km: Math.round(d.distance_km * cal * 10) / 10, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps", vehicle_id: activeVehicleId });
+      await api.addTrip({ date: d.date, distance_km: Math.round(d.distance_km * cal * 10) / 10, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps", vehicle_id: activeVehicleId,
+        start_time: new Date(d.start_ts).toISOString(), end_time: new Date(d.end_ts).toISOString() });
       await clearPendingDrive(d.id);
       show(`${d.distance_km} km logged`, "success");
       refresh(); load();
@@ -371,7 +381,7 @@ export default function Mileage() {
             <Card key={d.id} testID={`auto-drive-${d.id}`} style={{ marginBottom: 8, borderColor: colors.warm }}>
               <AppText variant="bodySemi" style={{ marginBottom: 2 }}>{d.distance_km} {unit} drive</AppText>
               <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
-                {displayDateShort(d.date)} · detected automatically — business or private?
+                {displayDateShort(d.date)} · {hm(d.start_ts)} – {hm(d.end_ts)} · business or private?
               </AppText>
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <PrimaryButton testID={`auto-business-${d.id}`} label="Business" onPress={() => classifyAuto(d, "business")} style={{ flex: 1 }} />
@@ -414,6 +424,11 @@ export default function Mileage() {
                   <AppText variant="caption" color={colors.dim}>
                     {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
                   </AppText>
+                  {t.start_time && t.end_time ? (
+                    <AppText variant="caption" color={colors.dim}>
+                      {hmISO(t.start_time)} – {hmISO(t.end_time)}
+                    </AppText>
+                  ) : null}
                 </View>
                 <Badge label={typeLabel(t.type, t.business_pct)} color={typeColor(t.type)} bg={colors.surfaceAlt} />
                 <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`trip-del-${t.id}`}
