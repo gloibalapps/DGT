@@ -89,8 +89,10 @@ export default function RootLayout() {
   }, [ready]);
 
   useEffect(() => {
-    syncAutotrack();
-    maybeAutoBackup();
+    // Defer non-UI work so it doesn't compete with the first screen's data load.
+    const t1 = setTimeout(() => { syncAutotrack(); }, 1500);
+    const t2 = setTimeout(() => { maybeAutoBackup(); }, 8000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
   if (!ready) return null;

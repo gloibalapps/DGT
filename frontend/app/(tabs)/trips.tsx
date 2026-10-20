@@ -191,7 +191,7 @@ export default function Mileage() {
       } else {
         show(`${km} ${unit} logged as ${type === "business" ? "business" : "private"}`, "success");
       }
-      setPendingTag(null); setPendingRawKm(null); setOdoInput(""); refresh(); load();
+      setPendingTag(null); setPendingRawKm(null); setOdoInput(""); setHistoryOpen(true); refresh(); load();
     } catch { show("Couldn't save trip — try again", "error"); }
   };
 
@@ -201,7 +201,7 @@ export default function Mileage() {
         start_time: new Date(d.start_ts).toISOString(), end_time: new Date(d.end_ts).toISOString() });
       await clearPendingDrive(d.id);
       show(`${d.distance_km} km logged`, "success");
-      refresh(); load();
+      setHistoryOpen(true); refresh(); load();
     } catch { show("Couldn't save trip — try again", "error"); }
   };
 
@@ -270,7 +270,15 @@ export default function Mileage() {
       {/* ---- Logging controls ---- */}
       {pendingTag != null ? (
         <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-          <AppText variant="h2" style={{ marginBottom: 4 }}>{pendingTag} {unit} drive</AppText>
+          <AppText variant="h2" style={{ marginBottom: 8 }}>{pendingTag} {unit} drive</AppText>
+          <View testID="gps-drive-times" style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+            {[["START", hm(pendingStartTs)], ["FINISH", hm(pendingEndTs)], ["DURATION", fmtElapsed(pendingDuration * 60)]].map(([l, v]) => (
+              <View key={l} style={{ flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10 }}>
+                <AppText variant="label" color={colors.dim}>{l}</AppText>
+                <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{v}</AppText>
+              </View>
+            ))}
+          </View>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
             Was this trip business or private? GPS knows you drove, not why.
           </AppText>
@@ -425,8 +433,8 @@ export default function Mileage() {
                     {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
                   </AppText>
                   {t.start_time && t.end_time ? (
-                    <AppText variant="caption" color={colors.dim}>
-                      {hmISO(t.start_time)} – {hmISO(t.end_time)}
+                    <AppText variant="caption" color={colors.text} style={{ fontVariant: ["tabular-nums"] }}>
+                      Start {hmISO(t.start_time)} · Finish {hmISO(t.end_time)}
                     </AppText>
                   ) : null}
                 </View>

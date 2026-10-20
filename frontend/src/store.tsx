@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { api, ProfileT, VehicleT } from "@/src/api";
+import { storage } from "@/src/utils/storage";
+
+const PROFILE_CACHE = "gigtax.cache.profile";
+const VEHICLES_CACHE = "gigtax.cache.vehicles";
 
 interface Store {
   profile: ProfileT | null;
@@ -45,6 +49,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const p = await api.getProfile();
       if (mounted.current) { setProfile(p); setLoadError(false); }
+      storage.setItem(PROFILE_CACHE, JSON.stringify(p));
     } catch (e) {
       console.log("profile load error", e);
       // Keep any previously loaded profile; flag the error so the UI shows a
@@ -59,6 +64,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const v = await api.listVehicles();
       if (mounted.current) setVehicles(v);
+      storage.setItem(VEHICLES_CACHE, JSON.stringify(v));
     } catch (e) {
       console.log("vehicles load error", e);
     }
@@ -66,6 +72,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     mounted.current = true;
+    // Show the last-known profile/vehicles instantly, then refresh from the server.
+    (async () => {
+      try {
+        const [p, v] = await Promise.all([
+          storage.getItem<string>(PROFILE_CACHE, ""), storage.getItem<string>(VEHICLES_CACHE, ""),
+        ]);
+        if (mounted.current && v) setVehicles((cur) => (cur.length ? cur : JSON.parse(v)));
+        if (mounted.current && p) { setProfile((cur) => cur || JSON.parse(p)); setLoading(false); }
+      } catch { /* cache miss — network load below covers it */ }
+    })();
     reloadProfile();
     reloadVehicles();
     return () => { mounted.current = false; };

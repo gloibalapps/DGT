@@ -60,6 +60,7 @@ export default function Entry() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [tripType, setTripType] = useState<"business" | "personal" | "mixed">("business");
+  const [tripTimes, setTripTimes] = useState<{ start: string; end: string } | null>(null);
   const [purpose, setPurpose] = useState<string>("deliver");
   const [businessPct, setBusinessPct] = useState("50");
   const [fromLabel, setFromLabel] = useState("");
@@ -104,7 +105,7 @@ export default function Entry() {
         } else {
           const list = await api.listTrips();
           const it = list.find((x) => x.id === params.id);
-          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateISO(it.date); setNote(it.note || ""); setTripType(it.type); setPurpose(it.purpose || (it.type === "personal" ? "personal_other" : "deliver")); if (it.business_pct != null) setBusinessPct(String(it.business_pct)); setFromLabel(it.from_label || ""); setToLabel(it.to_label || ""); }
+          if (it) { setDistance(String(it.distance_km)); setMinutes(it.duration_min ? String(it.duration_min) : ""); setDateISO(it.date); setNote(it.note || ""); setTripType(it.type); setPurpose(it.purpose || (it.type === "personal" ? "personal_other" : "deliver")); if (it.business_pct != null) setBusinessPct(String(it.business_pct)); setFromLabel(it.from_label || ""); setToLabel(it.to_label || ""); if (it.start_time && it.end_time) setTripTimes({ start: it.start_time, end: it.end_time }); }
         }
       } finally { setLoading(false); }
     })();
@@ -208,6 +209,13 @@ export default function Entry() {
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {kind === "trip" ? (
               <>
+                {tripTimes ? (
+                  <Field label="Drive times (from GPS)">
+                    <AppText testID="entry-trip-times" variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>
+                      Start {new Date(tripTimes.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · Finish {new Date(tripTimes.end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </AppText>
+                  </Field>
+                ) : null}
                 <Field label="Distance (km)">
                   <Input testID="entry-distance" value={distance} onChangeText={setDistance} keyboardType="decimal-pad" placeholder="12.4" />
                 </Field>

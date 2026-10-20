@@ -92,20 +92,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token) {
           setAuthToken(token);
           if (rawUser) {
+            // Fast open: trust the cached session immediately and validate it in
+            // the background, instead of holding the splash on a network call.
             const u = JSON.parse(rawUser) as AuthUser;
             setAuthProfileId(u.user_id);
             setUser(u);
+            setLoading(false);
           }
           try {
             const me = await api.authMe();
             setAuthProfileId(me.user.user_id);
             setUser(me.user);
             await storage.setItem(USER_KEY, JSON.stringify(me.user));
-          } catch {
-            // token invalid/expired -> clear
-            await storage.secureRemove(TOKEN_KEY);
-            await storage.removeItem(USER_KEY);
-            setAuthToken(null); setAuthProfileId(null); setUser(null);
+          } catch (e: any) {
+            // Only a real 401 means the session is gone — never sign the driver
+            // out just because they opened the app with weak/no signal.
+            if (/^401/.test(e?.message || "") || !rawUser) {
+              await storage.secureRemove(TOKEN_KEY);
+              await storage.removeItem(USER_KEY);
+              setAuthToken(null); setAuthProfileId(null); setUser(null);
+            }
           }
         }
       } finally {
@@ -208,6 +214,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try { await api.authLogout(); } catch { /* noop */ }
     await storage.secureRemove(TOKEN_KEY);
     await storage.removeItem(USER_KEY);
+    await storage.removeItem("gigtax.cache.profile");
+    await storage.removeItem("gigtax.cache.vehicles");
     setAuthToken(null);
     setAuthProfileId(null);
     setUser(null);

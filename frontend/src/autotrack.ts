@@ -16,6 +16,17 @@ const BUF_KEY = "gigtax.autotrack.buffer"; // JSON string
 const PENDING_KEY = "gigtax.autotrack.pending"; // JSON string (array)
 const STOP_GAP_MS = 5 * 60 * 1000; // 5 min stationary => drive ended
 const MIN_DRIVE_KM = 0.3; // ignore trivial GPS jitter drives
+const GPS_ACC_MAX_M = 40;     // manual: ignore fixes less accurate than this (metres)
+const AUTO_ACC_MAX_M = 60;    // auto: slightly looser (sparser background fixes)
+const GPS_MAX_KMH = 180;      // ignore segments implying an impossible speed (GPS glitch)
+const MIN_GAP_MS = 1000;      // accept at most one fix per second (two sources → one)
+
+// Movement must beat the fix's own uncertainty before it counts, otherwise
+// standing still at lights / in a car park slowly "walks" the distance up.
+function moveFloorKm(accuracy?: number | null): number {
+  const acc = accuracy != null && accuracy > 0 ? accuracy : 10;
+  return Math.max(8, Math.min(25, acc * 0.6)) / 1000;
+}
 
 export interface PendingDrive {
   id: string;
@@ -69,7 +80,7 @@ if (Platform.OS !== "web") {
     for (const loc of locs) {
       const { latitude, longitude, accuracy } = loc.coords;
       const ts = loc.timestamp;
-      if (accuracy != null && accuracy > GPS_ACC_MAX_M) continue; // skip junk fix
+      if (accuracy != null && accuracy > AUTO_ACC_MAX_M) continue; // skip junk fix
       if (buf && ts - buf.lastTs > STOP_GAP_MS) {
         if (buf.distance >= MIN_DRIVE_KM) pending.push(finalize(buf));
         buf = null;
@@ -81,7 +92,10 @@ if (Platform.OS !== "web") {
         const dtH = Math.max(0, ts - buf.lastTs) / 3600000;
         const kmh = dtH > 0 ? d / dtH : Infinity;
         if (kmh > GPS_MAX_KMH) continue; // teleport glitch — don't move the reference point
-        if (d > 0.005) buf.distance += d;
+        // Below the jitter floor: keep the OLD reference so slow creeping still
+        // accumulates once it adds up (moving the reference would lose it).
+        if (d < moveFloorKm(accuracy)) continue; // stationary → stop-gap closes the drive
+        buf.distance += d;
         buf.lastLat = latitude; buf.lastLon = longitude; buf.lastTs = ts;
       }
     }
@@ -114,10 +128,12 @@ export async function enableAutotrack(): Promise<EnableResult> {
 
   if (!(await isRunning())) {
     await Location.startLocationUpdatesAsync(AUTOTRACK_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      distanceInterval: 50,
-      deferredUpdatesInterval: 30000,
-      pausesUpdatesAutomatically: true,
+      // High (GPS) accuracy — Balanced uses cell/Wi-Fi fixes (~100 m) which
+      // were being rejected as junk, so auto drives came out short or missing.
+      accuracy: Location.Accuracy.High,
+      distanceInterval: 25,
+      deferredUpdatesInterval: 15000,
+      pausesUpdatesAutomatically: false,
       activityType: Location.ActivityType.AutomotiveNavigation,
       showsBackgroundLocationIndicator: false,
       foregroundService: {
@@ -205,9 +221,6 @@ const LIVE_KEY = "gigtax.manual.live"; // JSON string
 
 interface Live { distance: number; lastLat?: number; lastLon?: number; lastTs: number; startTs: number; active: boolean; }
 
-const MANUAL_NOISE_KM = 0.004; // 4 m floor — drop GPS jitter
-const GPS_ACC_MAX_M = 35;      // ignore fixes less accurate than this (metres)
-const GPS_MAX_KMH = 180;       // ignore segments implying an impossible speed (GPS glitch)
 
 // Read-modify-write a single GPS fix into the live drive. Shared by BOTH the
 // background foreground-service task AND the in-app foreground watcher, so the
@@ -220,18 +233,32 @@ const GPS_MAX_KMH = 180;       // ignore segments implying an impossible speed (
 //  • drop segments implying an impossible speed (GPS teleport);
 //  • de-dupe by timestamp so the same fix arriving from both sources (or a
 //    stale racing write) is only ever counted once.
-export async function ingestManualPoint(latitude: number, longitude: number, ts: number, accuracy?: number | null): Promise<void> {
+// Serialise every write: the foreground watcher and the background task can
+// fire at the same moment, and two overlapping read-modify-writes would lose
+// or double-count distance.
+let ingestChain: Promise<void> = Promise.resolve();
+export function ingestManualPoint(latitude: number, longitude: number, ts: number, accuracy?: number | null): Promise<void> {
+  ingestChain = ingestChain.then(() => ingestOne(latitude, longitude, ts, accuracy)).catch(() => {});
+  return ingestChain;
+}
+
+async function ingestOne(latitude: number, longitude: number, ts: number, accuracy?: number | null): Promise<void> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
   if (!live || !live.active) return;
   if (accuracy != null && accuracy > GPS_ACC_MAX_M) return; // junk fix — ignore entirely
-  if (live.lastLat != null && ts <= live.lastTs) return;    // duplicate / stale fix
-  if (live.lastLat != null && live.lastLon != null) {
-    const d = haversine(live.lastLat, live.lastLon, latitude, longitude);
-    const dtH = Math.max(0, ts - live.lastTs) / 3600000;
-    const kmh = dtH > 0 ? d / dtH : Infinity;
-    if (kmh > GPS_MAX_KMH) return; // teleport glitch — don't move the reference point
-    if (d > MANUAL_NOISE_KM) live.distance += d;
+  if (live.lastLat == null || live.lastLon == null) {
+    live.lastLat = latitude; live.lastLon = longitude; live.lastTs = ts;
+    await writeJSON(LIVE_KEY, live);
+    return;
   }
+  if (ts - live.lastTs < MIN_GAP_MS) return; // duplicate / stale / same fix from the other source
+  const d = haversine(live.lastLat, live.lastLon, latitude, longitude);
+  const dtH = (ts - live.lastTs) / 3600000;
+  if (d / dtH > GPS_MAX_KMH) return; // teleport glitch — don't move the reference point
+  // Too small to be real movement: keep the reference where it is so slow
+  // traffic still adds up once it clears the floor (nothing is lost).
+  if (d < moveFloorKm(accuracy)) return;
+  live.distance += d;
   live.lastLat = latitude; live.lastLon = longitude; live.lastTs = ts;
   await writeJSON(LIVE_KEY, live);
 }
@@ -262,7 +289,7 @@ export async function startManualDrive(): Promise<EnableResult> {
   if (!bg.granted) return { ok: false, reason: "permission", canAskAgain: bg.canAskAgain };
 
   await pauseAutotrackForManual(); // don't double-count the same drive
-  await writeJSON(LIVE_KEY, { distance: 0, lastTs: Date.now(), startTs: Date.now(), active: true } as Live);
+  await writeJSON(LIVE_KEY, { distance: 0, lastTs: 0, startTs: Date.now(), active: true } as Live);
   if (!(await isManualRunning())) {
     await Location.startLocationUpdatesAsync(MANUAL_TASK, {
       accuracy: Location.Accuracy.BestForNavigation,
@@ -297,6 +324,6 @@ export async function stopManualDrive(): Promise<{ distanceKm: number; startTs: 
   return {
     distanceKm: live ? Math.round(live.distance * 100) / 100 : 0,
     startTs: live ? live.startTs : Date.now(),
-    endTs: live ? live.lastTs : Date.now(),
+    endTs: Date.now(), // finish = when the driver tapped End drive
   };
 }

@@ -169,6 +169,7 @@ export interface TripT {
   from_label?: string | null; to_label?: string | null;
   odo_start?: number | null; odo_end?: number | null;
   note?: string | null; source?: string;
+  start_time?: string | null; end_time?: string | null;
 }
 export interface IncomeT {
   id: string; profile_id: string; date: string; amount: number;
