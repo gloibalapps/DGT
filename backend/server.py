@@ -931,6 +931,17 @@ async def list_trips(profile_id: str = Query(...)):
 @api_router.post("/trips")
 async def add_trip(payload: dict):
     obj = Trip(**payload)
+    # Block the same physical drive being logged twice (manual GPS shift +
+    # auto-detect, double taps): reject any trip whose time window overlaps an
+    # existing timed trip for this driver. ISO-UTC strings compare correctly.
+    if obj.start_time and obj.end_time:
+        clash = await db.trips.find_one({
+            "profile_id": obj.profile_id,
+            "start_time": {"$ne": None, "$lt": obj.end_time},
+            "end_time": {"$ne": None, "$gt": obj.start_time},
+        })
+        if clash:
+            raise HTTPException(409, "overlaps an existing trip")
     await db.trips.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 

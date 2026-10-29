@@ -10,7 +10,7 @@ import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
-import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint } from "@/src/autotrack";
+import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
   EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney, Input,
@@ -42,6 +42,7 @@ export default function Mileage() {
   const [pendingEndTs, setPendingEndTs] = useState(0);
   const startTimeRef = useRef<number>(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [savingTrip, setSavingTrip] = useState(false);
   const subRef = useRef<Location.LocationSubscription | null>(null);
 
   const activeVehicle = vehicles.find((v) => v.id === activeVehicleId);
@@ -82,12 +83,16 @@ export default function Mileage() {
   // Foreground GPS watcher — persists every fix straight to storage (via the
   // shared ingest) so distance is NEVER only in memory. Belt-and-suspenders
   // alongside the background foreground-service task for aggressive OEMs.
+  // Fallback only: if the background drive service is running it is the SINGLE
+  // source of GPS points. Feeding a second stream of slightly different fixes
+  // made the distance zig-zag and inflate several times over.
   const startForegroundWatch = async () => {
     if (subRef.current) return;
+    if (await isManualRunning()) return;
     try {
       subRef.current = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5, timeInterval: 2000 },
-        (loc) => { ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp, loc.coords.accuracy); },
+        (loc) => { ingestManualPoint(loc.coords.latitude, loc.coords.longitude, loc.timestamp, loc.coords.accuracy, loc.coords.speed); },
       );
     } catch { /* web / no perm — the background task still covers it */ }
   };
@@ -174,7 +179,8 @@ export default function Mileage() {
   };
 
   const saveGpsTrip = async (type: "business" | "personal") => {
-    if (pendingTag == null) return;
+    if (pendingTag == null || savingTrip) return;
+    setSavingTrip(true);
     const odo = parseFloat(odoInput);
     const useOdo = !isNaN(odo) && odo > 0;
     const km = useOdo ? Math.round(odo * 10) / 10 : pendingTag;
@@ -192,17 +198,30 @@ export default function Mileage() {
         show(`${km} ${unit} logged as ${type === "business" ? "business" : "private"}`, "success");
       }
       setPendingTag(null); setPendingRawKm(null); setOdoInput(""); setHistoryOpen(true); refresh(); load();
-    } catch { show("Couldn't save trip — try again", "error"); }
+    } catch (e: any) {
+      if (/^409/.test(e?.message || "")) {
+        show("This drive overlaps a trip already logged — not saved twice", "info");
+        setPendingTag(null); setPendingRawKm(null); setOdoInput(""); setHistoryOpen(true); load();
+      } else show("Couldn't save trip — try again", "error");
+    } finally { setSavingTrip(false); }
   };
 
   const classifyAuto = async (d: PendingDrive, type: "business" | "personal") => {
+    if (savingTrip) return;
+    setSavingTrip(true);
     try {
       await api.addTrip({ date: d.date, distance_km: Math.round(d.distance_km * cal * 10) / 10, duration_min: Math.max(0, Math.round((d.end_ts - d.start_ts) / 60000)), type, source: "gps", vehicle_id: activeVehicleId,
         start_time: new Date(d.start_ts).toISOString(), end_time: new Date(d.end_ts).toISOString() });
       await clearPendingDrive(d.id);
       show(`${d.distance_km} km logged`, "success");
       setHistoryOpen(true); refresh(); load();
-    } catch { show("Couldn't save trip — try again", "error"); }
+    } catch (e: any) {
+      if (/^409/.test(e?.message || "")) {
+        await clearPendingDrive(d.id);
+        show("Already logged — this drive overlaps an existing trip", "info");
+        load();
+      } else show("Couldn't save trip — try again", "error");
+    } finally { setSavingTrip(false); }
   };
 
   const del = async (id: string) => {
@@ -288,8 +307,8 @@ export default function Mileage() {
           <Input testID="gps-odo" value={odoInput} onChangeText={setOdoInput} keyboardType="decimal-pad"
             placeholder={`${pendingTag} ${unit}`} style={{ marginBottom: 12 }} />
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <PrimaryButton testID="gps-tag-business" label="Business" onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
-            <SecondaryButton testID="gps-tag-personal" label="Private" onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
+            <PrimaryButton testID="gps-tag-business" label="Business" disabled={savingTrip} onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
+            <SecondaryButton testID="gps-tag-personal" label="Private" disabled={savingTrip} onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
           </View>
         </Card>
       ) : tracking ? (
@@ -392,8 +411,8 @@ export default function Mileage() {
                 {displayDateShort(d.date)} · {hm(d.start_ts)} – {hm(d.end_ts)} · business or private?
               </AppText>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <PrimaryButton testID={`auto-business-${d.id}`} label="Business" onPress={() => classifyAuto(d, "business")} style={{ flex: 1 }} />
-                <SecondaryButton testID={`auto-personal-${d.id}`} label="Private" onPress={() => classifyAuto(d, "personal")} style={{ flex: 1 }} />
+                <PrimaryButton testID={`auto-business-${d.id}`} label="Business" disabled={savingTrip} onPress={() => classifyAuto(d, "business")} style={{ flex: 1 }} />
+                <SecondaryButton testID={`auto-personal-${d.id}`} label="Private" disabled={savingTrip} onPress={() => classifyAuto(d, "personal")} style={{ flex: 1 }} />
               </View>
             </Card>
           ))}

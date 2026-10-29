@@ -96,3 +96,10 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - Fast app open: cached session trusted instantly (validated in background; only a real 401 signs out), profile/vehicles cached locally, auto-track sync & Drive auto-backup deferred after first screen.
 - GPS km accuracy: auto-detect now uses High (GPS) accuracy instead of Balanced (whose ~100 m fixes were being rejected); stationary jitter floor scales with fix accuracy and keeps the reference point so slow traffic still counts; writes serialized (one fix/sec max) so foreground+background never double-count/lose distance.
 - Start/Finish/Duration shown on the post-drive card, saved with the trip, shown in History (auto-expands after save) and in the trip edit screen.
+
+## Update — GPS overcount fix (250 km drive showed 1297 km)
+- Root causes: foreground watcher + background service fed two streams of slightly different fixes (zig-zag inflation); position jitter while parked/driving counted as distance; auto-detect could run during a manual shift.
+- Fix: background service is the single GPS source (watcher only as fallback); each step capped by the phone's Doppler speed (avg speed × time ×1.05) and standing still (<3.6 km/h) ignored; stricter fallback when no speed; fixes sorted & serialized; whole-drive cap of 130 km/h average; auto-detect never runs during a manual shift; pending drives de-duped.
+- Simulation (4 h @60 km/h + 8 h parked, 25–30 m jitter): old logic 873 km vs truth 240 km → new 238 km.
+- Backend POST /api/trips returns 409 if the trip's start/end overlaps an existing timed trip (user chose "Block overlapping trips"); app shows a message. Save buttons disabled while saving.
+- Crash hardening: expo-router ErrorBoundary exported from _layout; background tasks wrapped in try/catch.

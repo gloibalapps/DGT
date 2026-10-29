@@ -17,6 +17,9 @@ import LoginScreen from "@/src/LoginScreen";
 import { syncAutotrack } from "@/src/autotrack";
 import { maybeAutoBackup } from "@/src/backup";
 
+// Any screen error shows a recoverable "Try again" screen instead of closing the app.
+export { ErrorBoundary } from "expo-router";
+
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
