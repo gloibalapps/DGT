@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { api, ProfileT, VehicleT } from "@/src/api";
 import { storage } from "@/src/utils/storage";
+import { AppState } from "react-native";
+import { maybeAutoBackup } from "@/src/backup";
 
 const PROFILE_CACHE = "gigtax.cache.profile";
 const VEHICLES_CACHE = "gigtax.cache.vehicles";
@@ -86,6 +88,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     reloadVehicles();
     return () => { mounted.current = false; };
   }, [reloadProfile, reloadVehicles]);
+
+  // Daily Drive auto-backup: runs once signed in (this provider only mounts
+  // after login) and again whenever the app comes back to the foreground.
+  useEffect(() => {
+    const t = setTimeout(() => { maybeAutoBackup(); }, 5000);
+    const sub = AppState.addEventListener("change", (s) => { if (s === "active") maybeAutoBackup(); });
+    return () => { clearTimeout(t); sub.remove(); };
+  }, []);
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 

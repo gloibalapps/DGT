@@ -103,3 +103,9 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - Simulation (4 h @60 km/h + 8 h parked, 25–30 m jitter): old logic 873 km vs truth 240 km → new 238 km.
 - Backend POST /api/trips returns 409 if the trip's start/end overlaps an existing timed trip (user chose "Block overlapping trips"); app shows a message. Save buttons disabled while saving.
 - Crash hardening: expo-router ErrorBoundary exported from _layout; background tasks wrapped in try/catch.
+
+## Update — Drive backup reliability
+- POST /api/backups/google-drive now starts a background job and returns {"state":"running"}; /backups/status reports backup_state (idle/running/done/error) + last_error. App polls until done and shows the real reason on failure.
+- Receipts already uploaded are skipped (drive_tokens.uploaded_receipts) and new ones upload 4 at a time → no more request timeouts.
+- Daily auto-backup now runs after sign-in and whenever the app returns to the foreground (previously only fired before login, so it never ran).
+- Clear 503 if DRIVE_ENCRYPTION_KEY missing on the server.

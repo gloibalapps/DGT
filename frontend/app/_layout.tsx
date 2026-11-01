@@ -15,7 +15,6 @@ import { SubscriptionProvider, useSubscription } from "@/src/subscription";
 import PaywallScreen from "@/src/PaywallScreen";
 import LoginScreen from "@/src/LoginScreen";
 import { syncAutotrack } from "@/src/autotrack";
-import { maybeAutoBackup } from "@/src/backup";
 
 // Any screen error shows a recoverable "Try again" screen instead of closing the app.
 export { ErrorBoundary } from "expo-router";
@@ -94,8 +93,7 @@ export default function RootLayout() {
   useEffect(() => {
     // Defer non-UI work so it doesn't compete with the first screen's data load.
     const t1 = setTimeout(() => { syncAutotrack(); }, 1500);
-    const t2 = setTimeout(() => { maybeAutoBackup(); }, 8000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    return () => clearTimeout(t1);
   }, []);
 
   if (!ready) return null;

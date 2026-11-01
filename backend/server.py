@@ -6,6 +6,7 @@ import time
 import json
 import logging
 import httpx
+import asyncio
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional, Literal, Annotated, Dict
@@ -409,6 +410,7 @@ def _dec(v: str) -> str: return _fernet.decrypt(v.encode()).decode()
 
 async def _save_drive_tokens(profile_id: str, tokjson: dict, email: str):
     if not _fernet:
+        logger.error("Drive connect: DRIVE_ENCRYPTION_KEY is not set — tokens not saved")
         return
     upd = {
         "profile_id": profile_id, "email": email,
@@ -437,7 +439,7 @@ async def _drive_access_token(profile_id: str) -> str:
     if r.status_code != 200:
         if r.status_code == 400 and r.json().get("error") == "invalid_grant":
             await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": {"needs_reauth": True}})
-        raise HTTPException(502, "Could not refresh Google token")
+        raise HTTPException(502, "Google Drive access expired — tap Connect Google Drive again")
     new = r.json()
     await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": {
         "access_token": _enc(new["access_token"]),
@@ -547,27 +549,40 @@ async def backup_profile(profile_id: str) -> dict:
     csv_bytes = _build_backup_csv(income, expenses, trips)
     csv_id = await _drive_find(token, root, "gigtax-data.csv")
     await _drive_upload(token, csv_bytes, "gigtax-data.csv", "text/csv", root, csv_id)
-    # receipt images organised into month subfolders
-    receipts = 0
+    # receipt images organised into month subfolders. Receipts already uploaded
+    # are skipped (tracked per profile), so daily backups stay fast.
+    row = await db.drive_tokens.find_one({"profile_id": profile_id}, {"uploaded_receipts": 1})
+    done_ids = set((row or {}).get("uploaded_receipts") or [])
+    todo = [e for e in expenses if e.get("receipt_image") and str(e.get("id")) not in done_ids]
     month_folders: dict = {}
-    for e in expenses:
-        img = e.get("receipt_image")
-        if not img:
-            continue
+    for e in todo:
         month = (e.get("date") or "")[:7] or "undated"
         if month not in month_folders:
             month_folders[month] = await _drive_folder(token, month, root)
+    sem = asyncio.Semaphore(4)
+    uploaded: list = []
+
+    async def _one(e):
         try:
-            data = _decode_b64_image(img)
+            data = _decode_b64_image(e["receipt_image"])
         except Exception:
-            continue
+            return
+        month = (e.get("date") or "")[:7] or "undated"
         fname = f"receipt-{e.get('date', '')}-{str(e.get('id', ''))[:8]}.jpg"
-        fid = await _drive_find(token, month_folders[month], fname)
-        await _drive_upload(token, data, fname, "image/jpeg", month_folders[month], fid)
-        receipts += 1
+        async with sem:
+            fid = await _drive_find(token, month_folders[month], fname)
+            await _drive_upload(token, data, fname, "image/jpeg", month_folders[month], fid)
+        uploaded.append(str(e.get("id")))
+
+    await asyncio.gather(*[_one(e) for e in todo])
+    if uploaded:
+        await db.drive_tokens.update_one({"profile_id": profile_id},
+                                         {"$addToSet": {"uploaded_receipts": {"$each": uploaded}}})
+    receipts = len(done_ids & {str(e.get("id")) for e in expenses}) + len(uploaded)
     ts = now_iso()
     await db.drive_tokens.update_one({"profile_id": profile_id},
-                                     {"$set": {"last_backup_at": ts, "last_backup_count": receipts}})
+                                     {"$set": {"last_backup_at": ts, "last_backup_count": receipts,
+                                               "backup_state": "done", "last_error": None}})
     return {"backed_up_at": ts, "receipts": receipts,
             "records": len(income) + len(expenses) + len(trips)}
 
@@ -583,12 +598,48 @@ async def backup_status(profile_id: str = Query(...)):
         "email": row.get("email"),
         "last_backup_at": row.get("last_backup_at"),
         "last_backup_count": row.get("last_backup_count"),
+        "backup_state": row.get("backup_state") or "idle",   # idle | running | done | error
+        "last_error": row.get("last_error"),
     }
+
+
+def _backup_error_text(e: Exception) -> str:
+    if isinstance(e, HTTPException):
+        return str(e.detail)
+    if isinstance(e, httpx.HTTPStatusError):
+        try:
+            msg = e.response.json().get("error", {}).get("message")
+        except Exception:
+            msg = None
+        return f"Google Drive error {e.response.status_code}" + (f": {msg}" if msg else "")
+    return "Backup failed — check your connection and try again"
+
+
+async def _backup_job(profile_id: str):
+    try:
+        await backup_profile(profile_id)
+    except Exception as e:  # recorded so the app can show the real reason
+        logger.exception("drive backup failed for %s", profile_id)
+        await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": {
+            "backup_state": "error", "last_error": _backup_error_text(e), "backup_started_at": None}})
 
 
 @api_router.post("/backups/google-drive")
 async def run_backup(profile_id: str = Query(...)):
-    return await backup_profile(profile_id)
+    """Starts the backup in the background and returns immediately (large
+    receipt sets used to exceed the request timeout). Poll /backups/status."""
+    if not _fernet:
+        raise HTTPException(503, "Backups aren't configured on the server (DRIVE_ENCRYPTION_KEY missing)")
+    row = await db.drive_tokens.find_one({"profile_id": profile_id})
+    if not row or not row.get("refresh_token"):
+        raise HTTPException(409, "Google Drive not connected")
+    started = row.get("backup_started_at") or 0
+    if row.get("backup_state") == "running" and time.time() - started < 600:
+        return {"state": "running"}
+    await db.drive_tokens.update_one({"profile_id": profile_id}, {"$set": {
+        "backup_state": "running", "backup_started_at": time.time(), "last_error": None}})
+    asyncio.create_task(_backup_job(profile_id))
+    return {"state": "running"}
 
 
 @api_router.post("/backups/disconnect")

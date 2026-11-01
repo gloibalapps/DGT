@@ -20,7 +20,7 @@ import {
   Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
   PrimaryButton, SecondaryButton, useToast,
 } from "@/src/ui";
-import { connectDrive, type BackupStatus } from "@/src/backup";
+import { connectDrive, runBackupAndWait, backupErrorText, type BackupStatus } from "@/src/backup";
 import { isoToAU } from "@/src/date";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -87,10 +87,14 @@ export default function Settings() {
   const onBackupNow = async () => {
     setBackupBusy(true);
     try {
-      const r = await api.runBackup();
-      show(`Backed up ${r.receipts} receipt${r.receipts === 1 ? "" : "s"} + data to Drive`, "success");
+      const r = await runBackupAndWait();
+      const n = r.last_backup_count ?? 0;
+      show(`Backed up ${n} receipt${n === 1 ? "" : "s"} + all data to Drive`, "success");
+      setBackup(r);
+    } catch (e) {
+      show(backupErrorText(e), "error");
       await loadBackup();
-    } catch { show("Backup failed — reconnect Drive and try again", "error"); }
+    }
     finally { setBackupBusy(false); }
   };
 
@@ -276,7 +280,12 @@ export default function Settings() {
                 </AppText>
               </View>
             </View>
-            <PrimaryButton testID="backup-now" label={backupBusy ? "Backing up…" : "Back up now"}
+            {backup.backup_state === "error" && backup.last_error ? (
+              <AppText testID="backup-error" variant="caption" color={colors.loss} style={{ marginTop: 10 }}>
+                Last backup failed: {backup.last_error}
+              </AppText>
+            ) : null}
+            <PrimaryButton testID="backup-now" label={backupBusy || backup.backup_state === "running" ? "Backing up…" : "Back up now"}
               icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 14 }} />
             <SecondaryButton testID="backup-restore" label="Restore from Drive"
               icon="cloud-download-outline" onPress={onRestore} disabled={backupBusy} style={{ marginTop: 10 }} />
