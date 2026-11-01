@@ -1,10 +1,10 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { View, Pressable, ScrollView, Linking, Platform, Alert } from "react-native";
+import { View, Pressable, Linking, Platform, Alert } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 
-import { useTheme, FONT } from "@/src/theme";
+import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { useAuth } from "@/src/auth";
 import { useSubscription } from "@/src/subscription";
@@ -14,24 +14,14 @@ import {
 } from "@/src/autotrack";
 import * as IntentLauncher from "expo-intent-launcher";
 import {
-  WORK_TYPES, platformsForWorkType, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, WEEK_DAYS, flagUrl,
+  WORK_TYPES, platformsForWorkType, US_STATES, US_NO_INCOME_TAX_STATES, COUNTRIES, WEEK_DAYS,
 } from "@/src/config";
 import {
-  Screen, ScreenHeader, Card, AppText, Spinner, ChipRow, Input, Field,
+  Screen, ScreenHeader, Card, AppText, Spinner, Input, Field, Select, SegmentedTabs, ListCard, ListRow, Toggle,
   PrimaryButton, SecondaryButton, useToast,
 } from "@/src/ui";
 import { connectDrive, runBackupAndWait, backupErrorText, type BackupStatus } from "@/src/backup";
 import { isoToAU } from "@/src/date";
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ marginBottom: 18 }}>
-      <AppText variant="label" color={colors.dim} style={{ marginBottom: 8, marginLeft: 4 }}>{title.toUpperCase()}</AppText>
-      <Card>{children}</Card>
-    </View>
-  );
-}
 
 export default function Settings() {
   const { colors, mode, toggle } = useTheme();
@@ -177,17 +167,34 @@ export default function Settings() {
 
   const taxComplete = !!profile.legal_name && (profile.registration_status === "registered" || profile.registration_status === "not_registered");
 
+  const workOptions = WORK_TYPES.map((w) => ({ key: w.key, label: w.label.replace(/^Carry /, "").replace(/^Deliver /, "") }));
+  const setWorkType = (k: string) => {
+    if (k === profile.work_type) return;
+    const allowed = platformsForWorkType(k as any).map((p) => p.name);
+    const dropped = profile.platforms.filter((p) => !allowed.includes(p));
+    const apply = () => updateProfile({ work_type: k as any, platforms: profile.platforms.filter((p) => allowed.includes(p)) });
+    if (dropped.length === 0) return apply();
+    if (Platform.OS === "web") { apply(); return; }
+    Alert.alert("Change work type?", `${dropped.join(", ")} will be turned off because it doesn't fit this work type.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Change", onPress: apply },
+    ]);
+  };
+  const lastBackup = backup?.last_backup_at
+    ? new Date(backup.last_backup_at).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
+    : null;
+
   return (
-    <Screen header={<ScreenHeader subtitle="Account & settings" title="Profile" />} scroll>
+    <Screen header={<ScreenHeader title="Profile" />} scroll>
       {/* Account */}
       {user ? (
-        <Section title="Account">
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <ListCard label="Account">
+          <View style={{ flexDirection: "row", alignItems: "center", minHeight: 64, paddingVertical: 12 }}>
             {user.picture ? (
-              <Image source={{ uri: user.picture }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }} contentFit="cover" />
+              <Image source={{ uri: user.picture }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} contentFit="cover" />
             ) : (
-              <View style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="person" size={22} color={colors.dim} />
+              <View style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="person-outline" size={20} color={colors.dim} />
               </View>
             )}
             <View style={{ flex: 1 }}>
@@ -195,452 +202,194 @@ export default function Settings() {
               <AppText variant="caption" color={colors.dim}>{user.email}</AppText>
             </View>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10 }}>
-            <Ionicons name="cloud-done-outline" size={15} color={colors.profit} style={{ marginRight: 6 }} />
-            <AppText variant="caption" color={colors.dim}>Your data syncs securely across your phones.</AppText>
-          </View>
-          <Pressable testID="set-signout" onPress={signOut}
-            style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
-              paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
-            <Ionicons name="log-out-outline" size={18} color={colors.loss} style={{ marginRight: 8 }} />
-            <AppText variant="bodySemi" color={colors.loss}>Sign out</AppText>
-          </Pressable>
-        </Section>
+          <ListRow icon="cloud-done-outline" iconColor={colors.profit} label="Your data syncs securely across your phones" />
+          <ListRow testID="set-signout" icon="log-out-outline" iconColor={colors.dim} label="Sign out" onPress={signOut} />
+        </ListCard>
       ) : (
-        <Section title="Account">
-          <AppText variant="bodySemi">Sign in to sync &amp; back up</AppText>
-          <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>
-            Sign in with Google to keep your data safe and sync it across your phones. You can keep using the app without signing in.
-          </AppText>
-          <Pressable testID="set-signin" onPress={signIn} disabled={signingIn}
-            style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
-              paddingVertical: 12, borderRadius: 16, backgroundColor: colors.accent, opacity: signingIn ? 0.6 : 1 }}>
-            <Ionicons name="logo-google" size={18} color="#F1F5F9" style={{ marginRight: 8 }} />
-            <AppText variant="bodySemi" color="#F1F5F9">{signingIn ? "Signing in…" : "Sign in with Google"}</AppText>
-          </Pressable>
-        </Section>
+        <ListCard label="Account">
+          <ListRow testID="set-signin" icon="logo-google" label={signingIn ? "Signing in…" : "Sign in with Google"}
+            sub="Keep your data safe and synced across your phones" onPress={signIn} />
+        </ListCard>
       )}
 
       {/* Subscription */}
-      <Section title="Subscription">
-        <Pressable testID="set-subscription" onPress={() => router.push("/paywall" as any)}
-          style={{ flexDirection: "row", alignItems: "center" }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-            alignItems: "center", justifyContent: "center", marginRight: 12, overflow: "hidden" }}>
-            <Image source={require("@/assets/images/logo-light.png")}
-              style={{ width: 40, height: 40 }} contentFit="cover" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">{subActive ? "GigTax" : "Subscribe to GigTax"}</AppText>
-            <AppText variant="caption" color={colors.dim}>
-              {subActive ? "Your subscription is active" : "14-day free trial · cancel anytime"}
-            </AppText>
-          </View>
-          {subActive ? (
-            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
-              <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>ACTIVE</AppText>
-            </View>
-          ) : (
-            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
-          )}
-        </Pressable>
-
-        {/* Customer Center — manage / cancel / restore (native build only) */}
+      <ListCard label="Subscription">
+        <ListRow testID="set-subscription" icon="star-outline" label={subActive ? "GigTax" : "Subscribe to GigTax"}
+          sub={subActive ? "Your subscription is active" : "14-day free trial · cancel anytime"}
+          value={subActive ? "Active" : undefined} valueColor={colors.profit}
+          onPress={() => router.push("/paywall" as any)} />
         {subActive && subManaged ? (
-          <Pressable testID="set-manage-subscription" onPress={() => void presentCustomerCenter()}
-            style={{ flexDirection: "row", alignItems: "center", marginTop: 14,
-              borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14 }}>
-            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-              alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-              <Ionicons name="settings-outline" size={20} color={colors.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi">Manage subscription</AppText>
-              <AppText variant="caption" color={colors.dim}>Change plan, restore or cancel</AppText>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
-          </Pressable>
+          <ListRow testID="set-manage-subscription" icon="settings-outline" label="Manage subscription"
+            sub="Change plan, restore or cancel" onPress={() => void presentCustomerCenter()} />
         ) : null}
-      </Section>
+      </ListCard>
 
       {/* Backups — Google Drive */}
-      <Section title="Backups">
-        {backup?.connected ? (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-                alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                <Ionicons name="cloud-done" size={20} color={colors.profit} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText variant="bodySemi">Google Drive connected</AppText>
-                <AppText variant="caption" color={colors.dim} numberOfLines={1}>
-                  {backup.email || "Your Drive"}
-                  {backup.last_backup_at ? ` · last backup ${new Date(backup.last_backup_at).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : " · not backed up yet"}
-                </AppText>
-              </View>
-            </View>
-            {backup.backup_state === "error" && backup.last_error ? (
-              <AppText testID="backup-error" variant="caption" color={colors.loss} style={{ marginTop: 10 }}>
-                Last backup failed: {backup.last_error}
-              </AppText>
-            ) : null}
+      {backup?.connected ? (
+        <ListCard label="Backups">
+          <ListRow icon="cloud-done-outline" iconColor={colors.profit} label="Google Drive connected"
+            sub={`${backup.email || "Your Drive"} · ${lastBackup ? `last backup ${lastBackup}` : "not backed up yet"}`} />
+          {backup.backup_state === "error" && backup.last_error ? (
+            <ListRow testID="backup-error" icon="alert-circle-outline" iconColor={colors.loss} label={`Last backup failed: ${backup.last_error}`} />
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 12, paddingVertical: 12 }}>
             <PrimaryButton testID="backup-now" label={backupBusy || backup.backup_state === "running" ? "Backing up…" : "Back up now"}
-              icon="cloud-upload" onPress={onBackupNow} disabled={backupBusy} style={{ marginTop: 14 }} />
-            <SecondaryButton testID="backup-restore" label="Restore from Drive"
-              icon="cloud-download-outline" onPress={onRestore} disabled={backupBusy} style={{ marginTop: 10 }} />
-            <Pressable testID="backup-how" onPress={() => setHowOpen((o) => !o)} hitSlop={6}
-              style={{ flexDirection: "row", alignItems: "center", marginTop: 14 }}>
-              <Ionicons name="help-circle-outline" size={16} color={colors.dim} style={{ marginRight: 6 }} />
-              <AppText variant="caption" color={colors.dim} style={{ flex: 1 }}>How backups work</AppText>
-              <Ionicons name={howOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.dim} />
-            </Pressable>
-            {howOpen ? (
-              <AppText variant="caption" color={colors.dim} style={{ marginTop: 8, lineHeight: 18 }}>
-                Your scanned receipts, plus a CSV and a full backup of your income, expenses & trips, are saved to a “GigTax Backups” folder in your Drive. Backs up automatically once a day when you open the app. On a new phone, connect the same Google account and tap “Restore from Drive”.
-              </AppText>
-            ) : null}
-            <Pressable testID="backup-disconnect" onPress={onDisconnectDrive} disabled={backupBusy}
-              hitSlop={8} style={{ marginTop: 14, alignItems: "center" }}>
-              <AppText variant="caption" color={colors.loss}>Disconnect Google Drive</AppText>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-                alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                <Ionicons name="cloud-outline" size={20} color={colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText variant="bodySemi">Back up to Google Drive</AppText>
-                <AppText variant="caption" color={colors.dim}>
-                  {backup?.needs_reauth ? "Reconnect needed — please connect again" : "Keep your receipts & records safe in your own Drive"}
-                </AppText>
-              </View>
-            </View>
-            <PrimaryButton testID="backup-connect" label={backupBusy ? "Connecting…" : "Connect Google Drive"}
-              icon="logo-google" onPress={onConnectDrive} disabled={backupBusy} style={{ marginTop: 12 }} />
-          </>
-        )}
-      </Section>
-
-      {/* Help & user guide */}
-      <Section title="Help">
-        <Pressable testID="set-manual" onPress={() => router.push("/manual" as any)}
-          style={{ flexDirection: "row", alignItems: "center" }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-            <Ionicons name="book" size={20} color={colors.accent} />
+              onPress={onBackupNow} disabled={backupBusy} style={{ flex: 1 }} />
+            <SecondaryButton testID="backup-restore" label="Restore" onPress={onRestore} disabled={backupBusy} style={{ flex: 1 }} />
           </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">User guide</AppText>
-            <AppText variant="caption" color={colors.dim}>How to log trips, expenses & read your tax reports</AppText>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
-        </Pressable>
-        <Pressable testID="set-privacy" onPress={() => router.push("/privacy" as any)}
-          style={{ flexDirection: "row", alignItems: "center", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-            <Ionicons name="shield-checkmark" size={20} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">Privacy Policy</AppText>
-            <AppText variant="caption" color={colors.dim}>How we handle your data</AppText>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
-        </Pressable>
-        <Pressable testID="set-terms" onPress={() => router.push("/terms" as any)}
-          style={{ flexDirection: "row", alignItems: "center", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-            alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-            <Ionicons name="document-text" size={20} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">Terms of Service</AppText>
-            <AppText variant="caption" color={colors.dim}>The rules for using GigTax</AppText>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.dim} />
-        </Pressable>
-      </Section>
-      <Section title="Driver">
-        <Field label="Your name" hint="Shown on your dashboard">
-          <Input testID="set-driver-name" value={name} onChangeText={setName}
-            placeholder="e.g. Alex" returnKeyType="done"
-            onBlur={() => updateProfile({ driver_name: name.trim() || null })}
-            onSubmitEditing={() => updateProfile({ driver_name: name.trim() || null })} />
-        </Field>
-      </Section>
-
-      {/* Appearance */}
-      <Section title="Appearance">
-        <Pressable testID="theme-toggle" onPress={toggle}
-          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name={mode === "dark" ? "moon" : "sunny"} size={20} color={colors.accent} style={{ marginRight: 10 }} />
-            <AppText variant="bodyMed">{mode === "dark" ? "Dark" : "Light"} theme</AppText>
-          </View>
-          <View style={{
-            width: 48, height: 28, borderRadius: 999, padding: 3,
-            backgroundColor: mode === "dark" ? colors.surfaceAlt : colors.accent,
-            alignItems: mode === "dark" ? "flex-start" : "flex-end",
-          }}>
-            <View style={{ width: 22, height: 22, borderRadius: 999, backgroundColor: "#fff" }} />
-          </View>
-        </Pressable>
-      </Section>
-
-      {/* Automatic drive detection */}
-      <Section title="Automatic tracking">
-        <Pressable testID="autotrack-toggle" onPress={toggleAuto}
-          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <AppText variant="bodyMed">Detect drives automatically</AppText>
-            <AppText variant="caption" color={colors.dim}>
-              Off by default. When on, GigTax logs each drive in the background and asks you to tag it Business or Personal later — no start/stop needed.
-            </AppText>
-          </View>
-          <View style={{
-            width: 48, height: 28, borderRadius: 999, padding: 3,
-            backgroundColor: autoOn ? colors.accent : colors.surfaceAlt,
-            alignItems: autoOn ? "flex-end" : "flex-start",
-          }}>
-            <View style={{ width: 22, height: 22, borderRadius: 999, backgroundColor: "#fff" }} />
-          </View>
-        </Pressable>
-        {Platform.OS === "android" ? (
-          <Pressable testID="battery-optimization" onPress={openBatterySettings}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-              marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <AppText variant="bodyMed">Battery &amp; background tracking</AppText>
-              <AppText variant="caption" color={colors.dim}>
-                Some phones (Blackview, Xiaomi, Oppo, Samsung…) close apps in the background and can stop drive tracking. Tap to allow GigTax to run without battery limits.
-              </AppText>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.dim} />
+          <ListRow testID="backup-how" label="How backups work" trailingIcon={howOpen ? "chevron-up" : "chevron-down"}
+            onPress={() => setHowOpen((o) => !o)}
+            sub={howOpen ? "Receipts, a CSV and a full backup of your income, expenses & trips go to a “GigTax Backups” folder in your Drive — automatically once a day. On a new phone, connect the same Google account and tap Restore." : undefined} />
+          <Pressable testID="backup-disconnect" onPress={onDisconnectDrive} disabled={backupBusy}
+            style={{ minHeight: 48, justifyContent: "center", borderTopWidth: 1, borderTopColor: colors.divider }}>
+            <AppText variant="body" color={colors.loss}>Disconnect Google Drive</AppText>
           </Pressable>
-        ) : null}
-      </Section>
+        </ListCard>
+      ) : (
+        <ListCard label="Backups">
+          <ListRow icon="cloud-outline" label="Back up to Google Drive"
+            sub={backup?.needs_reauth ? "Reconnect needed — please connect again" : "Keep your receipts & records safe in your own Drive"} />
+          <View style={{ paddingVertical: 12 }}>
+            <PrimaryButton testID="backup-connect" label={backupBusy ? "Connecting…" : "Connect Google Drive"}
+              onPress={onConnectDrive} disabled={backupBusy} />
+          </View>
+        </ListCard>
+      )}
 
-      {/* Country & region */}
-      <Section title="Country">
-        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
-          Tax rules differ by country. Switching updates your reports, mileage rates and currency.
-        </AppText>
-        {COUNTRIES.map((c) => {
-          const active = c.code === profile.country;
+      {/* Driver */}
+      <ListCard label="Driver">
+        <View style={{ paddingTop: 12 }}>
+          <Field label="Your name" hint="Shown on your dashboard">
+            <Input testID="set-driver-name" value={name} onChangeText={setName}
+              placeholder="e.g. Alex" returnKeyType="done"
+              onBlur={() => updateProfile({ driver_name: name.trim() || null })}
+              onSubmitEditing={() => updateProfile({ driver_name: name.trim() || null })} />
+          </Field>
+        </View>
+      </ListCard>
+
+      {/* Work type */}
+      <AppText variant="section" style={{ marginBottom: 8, marginLeft: 4 }}>Work type</AppText>
+      <View style={{ marginHorizontal: -20, marginBottom: 16 }}>
+        <SegmentedTabs options={workOptions} value={profile.work_type} onChange={setWorkType} testIDPrefix="set-worktype" />
+      </View>
+
+      {/* Platforms */}
+      <ListCard label="Platforms">
+        {platformsForWorkType(profile.work_type).map((p) => {
+          const on = profile.platforms.includes(p.name);
           return (
-            <Pressable key={c.code} testID={`set-country-${c.code}`}
-              disabled={!c.active}
-              onPress={() => {
-                if (c.code === profile.country) return;
-                updateProfile({ country: c.code as any, region: c.code === "AU" ? (profile.region || "NSW") : (c.code === "US" ? (profile.region || "CA") : null) } as any);
-                show(`Switched to ${c.name}`, "success");
-              }}
-              style={{ marginBottom: 8, opacity: c.active ? 1 : 0.4 }}>
-              <View style={{
-                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-                backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 10,
-                borderWidth: 1, borderColor: active ? colors.accent : colors.border,
-              }}>
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                  <Image source={{ uri: flagUrl(c.code, 160) }}
-                    style={{ width: 40, height: 27, borderRadius: 5, marginRight: 12, borderWidth: 1, borderColor: colors.border }}
-                    contentFit="cover" />
-                  <View style={{ flex: 1 }}>
-                    <AppText variant="bodySemi">{c.name}</AppText>
-                    <AppText variant="caption" color={colors.dim}>{c.currency} · {c.distanceUnit}{c.active ? "" : " · coming soon"}</AppText>
-                  </View>
-                </View>
-                {active ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} /> : null}
-              </View>
-            </Pressable>
+            <ListRow key={p.name} label={p.name}
+              right={<Toggle testID={`set-platform-${p.name}`} value={on} onChange={() => {
+                const next = on ? profile.platforms.filter((x) => x !== p.name) : [...profile.platforms, p.name];
+                updateProfile({ platforms: next });
+              }} />} />
           );
         })}
-        {profile.country === "US" ? (
-          <View style={{ marginTop: 8 }}>
-            <AppText variant="label" color={colors.dim} style={{ marginBottom: 8 }}>STATE</AppText>
-            <ChipRow options={US_STATES.map((s) => ({ key: s, label: s }))} value={profile.region || "CA"}
-              onChange={(r) => updateProfile({ region: r })} testIDPrefix="set-usstate" />
-            <AppText variant="caption" color={colors.dim} style={{ marginTop: 8 }}>
-              {US_NO_INCOME_TAX_STATES.includes(profile.region || "")
-                ? `${profile.region} has no state income tax. Reports estimate federal tax only.`
-                : "Used for future state income-tax guidance. Reports currently estimate federal tax only."}
-            </AppText>
-          </View>
+      </ListCard>
+
+      {/* Tracking */}
+      <ListCard label="Tracking">
+        <ListRow label="Detect drives automatically" sub="Logs each drive in the background; tag it Business or Private later."
+          right={<Toggle testID="autotrack-toggle" value={autoOn} onChange={toggleAuto} />} />
+        {Platform.OS === "android" ? (
+          <ListRow testID="battery-optimization" label="Battery & background tracking"
+            sub="Allow GigTax to run without battery limits so tracking isn't stopped." onPress={openBatterySettings} />
         ) : null}
-      </Section>
+        <ListRow label="Business use (this FY)" sub="From your tagged trips — read-only" value={bizPct == null ? "—" : `${bizPct}%`} />
+      </ListCard>
 
-      {/* Week start */}
-      <Section title="Your week">
-        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 8 }}>
-          Which day your driving week starts — used for your Weekly total, weekly goal and insights.
-        </AppText>
-        <ChipRow options={WEEK_DAYS.map((d) => ({ key: String(d.key), label: d.label }))}
-          value={String(profile.week_start ?? 0)}
-          onChange={(k) => updateProfile({ week_start: Number(k) } as any)} testIDPrefix="set-weekstart" />
-      </Section>
+      {/* Tax */}
+      <ListCard label="Tax">
+        <ListRow testID="set-tax-setup" icon={taxComplete ? "checkmark-circle" : "alert-circle-outline"}
+          iconColor={taxComplete ? colors.profit : colors.warm} label="Tax setup"
+          sub={taxComplete ? "Complete — registration, method & details on file" : "Add legal name, registration status and more"}
+          onPress={() => router.push("/tax-setup" as any)} />
+        <ListRow icon={profile.country === "US" ? "git-compare-outline" : "lock-closed-outline"} iconColor={colors.dim}
+          label={profile.country === "US" ? "Standard mileage vs actual" : "Logbook method"}
+          sub={profile.country === "US"
+            ? "Compares the IRS standard mileage rate (72.5¢/mi Jan–Jun 2026, 76¢ from 1 Jul) against actual expenses and uses the larger deduction."
+            : "Cents-per-km is capped at 5,000 business km/year (88c/km FY25-26, 91c from 1 Jul 2026) — full-time drivers exceed it in weeks."} />
+      </ListCard>
 
-      {/* Business use % read only */}
-      <Section title="Business-use %">
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flex: 1 }}>
-            <AppText variant="body" color={colors.dim}>Calculated this financial year (read-only)</AppText>
-            <AppText variant="caption" color={colors.dim}>Derived from your tagged trips — a real logbook, not a guess.</AppText>
-          </View>
-          <AppText style={{ fontFamily: FONT.display, fontSize: 34, color: colors.accent, fontVariant: ["tabular-nums"] }}>
-            {bizPct == null ? "—" : `${bizPct}%`}
-          </AppText>
-        </View>
-      </Section>
-
-      {/* Vehicles — manage all cars here */}
-      <Section title="Vehicles">
-        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
-          Add each car you drive for. Trips, expenses, odometer and recurring payments are tracked per vehicle.
-        </AppText>
+      {/* Vehicles */}
+      <ListCard label="Vehicles">
         {vehicles.map((v) => {
           const active = v.id === activeVehicleId;
           const disposed = !!v.disposal_date;
-          const label = v.registration || v.make_model || "Vehicle";
-          const sub = disposed
-            ? `Disposed ${isoToAU(v.disposal_date!)} · history kept`
-            : (v.registration && v.make_model ? v.make_model : "Tap to add rego, model & odometer");
           return (
-            <View key={v.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10,
-              borderTopWidth: 1, borderTopColor: colors.border, opacity: disposed ? 0.6 : 1 }}>
-              <Pressable testID={`set-vehicle-${v.id}`} onPress={() => router.push(`/vehicle?id=${v.id}` as any)}
-                style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-                  alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                  <Ionicons name="car-sport" size={20} color={disposed ? colors.dim : colors.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodySemi">{label}</AppText>
-                  <AppText variant="caption" color={colors.dim}>{sub}</AppText>
-                </View>
-              </Pressable>
-              {disposed ? (
-                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                  backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.loss }}>
-                  <AppText variant="caption" color={colors.loss} style={{ fontFamily: FONT.bold }}>DISPOSED</AppText>
-                </View>
-              ) : active ? (
-                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.profit }}>
-                  <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>ACTIVE</AppText>
-                </View>
-              ) : (
-                <Pressable testID={`set-vehicle-activate-${v.id}`} onPress={() => v.id && setActiveVehicle(v.id)} hitSlop={8}>
-                  <AppText variant="caption" color={colors.accent}>Set active</AppText>
+            <ListRow key={v.id} testID={`set-vehicle-${v.id}`} icon="car-outline" iconColor={disposed ? colors.dim : colors.accent}
+              label={v.registration || v.make_model || "Vehicle"}
+              sub={disposed ? `Disposed ${isoToAU(v.disposal_date!)} · history kept`
+                : (v.registration && v.make_model ? v.make_model : "Tap to add rego, model & odometer")}
+              value={disposed ? "Disposed" : active ? "Active" : undefined}
+              valueColor={disposed ? colors.dim : colors.profit}
+              right={!disposed && !active ? (
+                <Pressable testID={`set-vehicle-activate-${v.id}`} onPress={() => v.id && setActiveVehicle(v.id)}
+                  style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 4 }}>
+                  <AppText variant="bodySemi" color={colors.accent}>Set active</AppText>
                 </Pressable>
-              )}
-            </View>
+              ) : undefined}
+              onPress={() => router.push(`/vehicle?id=${v.id}` as any)} />
           );
         })}
-        <PrimaryButton testID="set-add-vehicle" label="Add vehicle" icon="add" onPress={() => router.push("/vehicle" as any)} style={{ marginTop: 12 }} />
-      </Section>
+        <ListRow testID="set-add-vehicle" icon="add" label="Add vehicle" onPress={() => router.push("/vehicle" as any)} />
+      </ListCard>
 
-      {/* Deduction method */}
-      <Section title="Deduction method">
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Ionicons name={profile.country === "US" ? "git-compare" : "lock-closed"} size={16} color={colors.dim} style={{ marginRight: 8 }} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodyMed">{profile.country === "US" ? "Standard mileage vs actual" : "Logbook method"}</AppText>
-            <AppText variant="caption" color={colors.dim}>
-              {profile.country === "US"
-                ? "United States — GigTax compares the IRS standard mileage rate (72.5¢/mi Jan–Jun 2026, 76¢ from 1 Jul) against your actual expenses and recommends the larger deduction on Schedule C."
-                : "Australia uses the logbook method. Cents-per-km is capped at 5,000 business km/year (88c/km FY25-26, 91c from 1 Jul 2026) — not offered, since full-time drivers exceed the cap in weeks."}
-            </AppText>
-          </View>
+      {/* Region & preferences */}
+      <ListCard label="Region & preferences">
+        <View style={{ paddingVertical: 12 }}>
+          <Field label="Country" hint="Switching updates your reports, mileage rates and currency.">
+            <Select testID="set-country" title="Country" value={profile.country}
+              options={COUNTRIES.filter((c) => c.active).map((c) => ({ key: c.code, label: c.name, desc: `${c.currency} · ${c.distanceUnit}` }))}
+              onChange={(code) => {
+                if (code === profile.country) return;
+                updateProfile({ country: code as any, region: code === "AU" ? (profile.region || "NSW") : (code === "US" ? (profile.region || "CA") : null) } as any);
+                show(`Switched to ${COUNTRIES.find((c) => c.code === code)?.name}`, "success");
+              }} />
+          </Field>
+          {profile.country === "US" ? (
+            <Field label="State" hint={US_NO_INCOME_TAX_STATES.includes(profile.region || "")
+              ? `${profile.region} has no state income tax. Reports estimate federal tax only.`
+              : "Reports currently estimate federal tax only."}>
+              <Select testID="set-usstate" title="State" value={profile.region || "CA"}
+                options={US_STATES.map((s) => ({ key: s, label: s }))} onChange={(r) => updateProfile({ region: r })} />
+            </Field>
+          ) : null}
+          <Field label="Week starts on" hint="Used for your weekly total, goal and insights.">
+            <Select testID="set-weekstart" title="Week starts on" value={String(profile.week_start ?? 0)}
+              options={WEEK_DAYS.map((d) => ({ key: String(d.key), label: d.label }))}
+              onChange={(k) => updateProfile({ week_start: Number(k) } as any)} />
+          </Field>
         </View>
-      </Section>
+        <ListRow label="Dark theme" right={<Toggle testID="theme-toggle" value={mode === "dark"} onChange={toggle} />} />
+      </ListCard>
 
-      {/* Work type */}
-      <Section title="Work type">
-        {WORK_TYPES.map((w) => {
-          const active = w.key === profile.work_type;
-          return (
-            <Pressable key={w.key} testID={`set-worktype-${w.key}`} onPress={() => {
-                const allowed = platformsForWorkType(w.key).map((p) => p.name);
-                updateProfile({
-                  work_type: w.key as any,
-                  platforms: profile.platforms.filter((p) => allowed.includes(p)),
-                });
-              }}
-              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
-              <Ionicons name={active ? "radio-button-on" : "radio-button-off"} size={20}
-                color={active ? colors.accent : colors.dim} style={{ marginRight: 10 }} />
-              <AppText variant="bodyMed" style={{ flex: 1 }}>{w.label}</AppText>
-            </Pressable>
-          );
-        })}
-      </Section>
-
-      {/* Platforms */}
-      <Section title="Platforms">
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {platformsForWorkType(profile.work_type).map((p) => {
-            const active = profile.platforms.includes(p.name);
-            return (
-              <Pressable key={p.name} testID={`set-platform-${p.name}`}
-                onPress={() => {
-                  const next = active ? profile.platforms.filter((x) => x !== p.name) : [...profile.platforms, p.name];
-                  updateProfile({ platforms: next });
-                }}
-                style={{
-                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                  backgroundColor: active ? colors.accent : colors.surfaceAlt,
-                  borderWidth: 1, borderColor: active ? colors.accent : colors.border,
-                }}>
-                <AppText variant="label" color={active ? colors.bg : colors.dim}>{p.name}</AppText>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Section>
-
-      {/* Tax setup */}
-      <Pressable testID="set-tax-setup" onPress={() => router.push("/tax-setup" as any)} style={{ marginBottom: 30 }}>
-        <Card style={{ flexDirection: "row", alignItems: "center", borderColor: taxComplete ? colors.profit : colors.warm }}>
-          <Ionicons name={taxComplete ? "shield-checkmark" : "shield-outline"} size={22}
-            color={taxComplete ? colors.profit : colors.warm} style={{ marginRight: 12 }} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodySemi">Tax setup</AppText>
-            <AppText variant="caption" color={colors.dim}>
-              {taxComplete ? "Complete — registration, method & details on file." : "Add legal name, registration status and more."}
-            </AppText>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.dim} />
-        </Card>
-      </Pressable>
+      {/* Help */}
+      <ListCard label="Help">
+        <ListRow testID="set-manual" icon="book-outline" label="User guide" onPress={() => router.push("/manual" as any)} />
+        <ListRow testID="set-privacy" icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => router.push("/privacy" as any)} />
+        <ListRow testID="set-terms" icon="document-text-outline" label="Terms of Service" onPress={() => router.push("/terms" as any)} />
+      </ListCard>
 
       {/* Delete account — App Store / Play requirement */}
       <View style={{ marginBottom: 40 }}>
         {!confirmDelete ? (
           <Pressable testID="set-delete-account" onPress={() => setConfirmDelete(true)}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center",
-              paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
-            <Ionicons name="trash-outline" size={18} color={colors.loss} style={{ marginRight: 8 }} />
+            style={{ minHeight: 48, alignItems: "center", justifyContent: "center" }}>
             <AppText variant="bodySemi" color={colors.loss}>Delete account</AppText>
           </Pressable>
         ) : (
-          <Card style={{ borderColor: colors.loss, borderWidth: 1 }}>
+          <Card>
             <AppText variant="bodySemi">Delete your account?</AppText>
             <AppText variant="caption" color={colors.dim} style={{ marginTop: 6, lineHeight: 18 }}>
-              This permanently erases your profile, trips, income, expenses, vehicles and logged hours, and disconnects any backup. This can't be undone.
+              This permanently erases your profile, trips, income, expenses, vehicles and logged hours, and disconnects any backup. This can&apos;t be undone.
             </AppText>
             <Pressable testID="set-delete-confirm" onPress={doDeleteAccount} disabled={deleting}
-              style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                paddingVertical: 13, borderRadius: 16, backgroundColor: colors.loss, opacity: deleting ? 0.6 : 1 }}>
-              <Ionicons name="trash" size={18} color="#fff" style={{ marginRight: 8 }} />
-              <AppText variant="bodySemi" color="#fff">{deleting ? "Deleting…" : "Delete permanently"}</AppText>
+              style={{ minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 8, opacity: deleting ? 0.6 : 1 }}>
+              <AppText variant="bodySemi" color={colors.loss}>{deleting ? "Deleting…" : "Delete permanently"}</AppText>
             </Pressable>
-            <Pressable testID="set-delete-cancel" onPress={() => setConfirmDelete(false)} disabled={deleting}
-              hitSlop={8} style={{ marginTop: 12, alignItems: "center" }}>
-              <AppText variant="caption" color={colors.dim}>Cancel</AppText>
-            </Pressable>
+            <SecondaryButton testID="set-delete-cancel" label="Cancel" onPress={() => setConfirmDelete(false)} disabled={deleting} />
           </Card>
         )}
       </View>

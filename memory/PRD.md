@@ -109,3 +109,10 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - Receipts already uploaded are skipped (drive_tokens.uploaded_receipts) and new ones upload 4 at a time → no more request timeouts.
 - Daily auto-backup now runs after sign-in and whenever the app returns to the foreground (previously only fired before login, so it never ran).
 - Clear 503 if DRIVE_ENCRYPTION_KEY missing on the server.
+
+## Update — Full light redesign (Phases 1–5) + Sign in with Apple
+- Tokens: Inter (static 400/500/600/700), bg #F6F7FA, white cards #E2E6EE border, radius 20/12, primary #0B6FD6, loss #C2403A, success #15803D. Light is default (theme key v2); dark still available via Profile toggle.
+- Shared components in src/ui.tsx: ScreenHeader (title + country badge), Select (44px dropdown), UnderlineTabs, HeroCard, ListCard/ListRow, SectionLabel, Toggle, solid Primary/white Secondary buttons; GradientCard now = white card. 72px tab bar with line icons.
+- Reports (4 tabs Overview/Income/Expenses/Tax), Money, Mileage, Profile, Ask rebuilt with these patterns. No calculation/route changes.
+- Net profit check: Net profit = income − deductions; deductions include auto-calculated vehicle rental/lease (not part of entered expenses). Hero now shows "Income · Deductions" + "Includes vehicle rental/lease $X".
+- Sign in with Apple: POST /api/auth/apple (verifies identity token vs Apple JWKS; APPLE_AUDIENCES env; links only Apple-verified email). iOS-only button on login. app.json ios.usesAppleSignIn + plugin.

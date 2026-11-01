@@ -256,6 +256,10 @@ async def _login_google_user(email: str, name, picture) -> str:
             "user_id": user_id, "email": email, "name": name,
             "picture": picture, "created_at": now_iso(),
         })
+    return await _new_session(user_id)
+
+
+async def _new_session(user_id: str) -> str:
     session_token = uuid.uuid4().hex
     await db.user_sessions.insert_one({
         "session_token": session_token, "user_id": user_id,
@@ -263,6 +267,56 @@ async def _login_google_user(email: str, name, picture) -> str:
         "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
     })
     return session_token
+
+
+# ---------------------------------------------------------------- Sign in with Apple (iOS)
+APPLE_AUDIENCES = [a.strip() for a in os.environ.get("APPLE_AUDIENCES", "").split(",") if a.strip()]
+_apple_jwks = None
+
+
+@api_router.post("/auth/apple")
+async def auth_apple(payload: dict = Body(...)):
+    """Verify an Apple identityToken (RS256 vs Apple JWKS, issuer + audience +
+    expiry) and issue the same session token the Google flow uses. Users are
+    keyed by Apple `sub`; if Apple shares an email that already has an account
+    (e.g. from Google sign-in) the Apple ID is linked to that account so the
+    driver sees the same data."""
+    global _apple_jwks
+    import jwt as pyjwt
+    token = (payload or {}).get("identity_token")
+    if not token:
+        raise HTTPException(400, "identity_token required")
+    if not APPLE_AUDIENCES:
+        raise HTTPException(500, "Apple sign-in not configured")
+    try:
+        if _apple_jwks is None:
+            _apple_jwks = pyjwt.PyJWKClient("https://appleid.apple.com/auth/keys")
+        key = await asyncio.to_thread(lambda: _apple_jwks.get_signing_key_from_jwt(token).key)
+        claims = pyjwt.decode(token, key, algorithms=["RS256"], audience=APPLE_AUDIENCES,
+                              issuer="https://appleid.apple.com")
+    except Exception as e:
+        logger.warning("apple token rejected: %s", e)
+        raise HTTPException(401, "Invalid Apple sign-in")
+    sub = claims["sub"]
+    # Only trust Apple's own verified email — never an email sent by the client
+    # (that would let anyone link their Apple ID to someone else's account).
+    verified = str(claims.get("email_verified", "")).lower() == "true"
+    email = claims.get("email") if verified else None
+    name = (payload.get("full_name") or "").strip() or None
+    user = await db.users.find_one({"apple_sub": sub}, {"_id": 0})
+    if not user and email:
+        user = await db.users.find_one({"email": email}, {"_id": 0})
+        if user:
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"apple_sub": sub}})
+    if user:
+        user_id = user["user_id"]
+        if name and not user.get("name"):
+            await db.users.update_one({"user_id": user_id}, {"$set": {"name": name}})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({"user_id": user_id, "apple_sub": sub, "email": email or f"{sub}@appleid.private",
+                                   "name": name, "picture": None, "created_at": now_iso()})
+    return {"session_token": await _new_session(user_id), "user_id": user_id}
 
 
 @api_router.get("/auth/google/start")

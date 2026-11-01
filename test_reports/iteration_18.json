@@ -1,0 +1,50 @@
+{
+  "summary": "Iter18: testing of the light 'Reports redesign' restyle and the Sign in with Apple backend. Backend: 21/21 pytest pass (new test_iter18_restyle_apple.py with 13 tests, plus test_iter17_regression.py with 8). POST /api/auth/apple returns 401 {detail:'Invalid Apple sign-in'} for an invalid token and 400 for a missing or empty token. /api/reports/analytics (with and without the providers filter), /api/money for all periods, /api/reports and /api/auth/me with the seeded token all return 200. Frontend at 390x844 with the seeded ui_tester session: every requested flow works and no red screen or console error appeared on any screen. (1) Reports: the Period sheet opens and switching to Last quarter reloads the data (range 01/07-30/09, rental $4,600 vs $6,200 for FY to date). The Provider sheet lists All/DiDi/Uber and DiDi filters income to $229.18. The rtab-overview/income/expenses/tax tabs switch content. hero-net-profit shows '-$6,077.19 | Income $629.18 · Deductions $6,706.37 | Includes vehicle rental/lease $6,200.00'. The GST card renders. row-income-tax opens the Tax tab. row-income-all opens the drill-down and drill-close closes it. exp-cat-fuel opens its drill-down. (2) Money: money-period changes the period (Weekly to Financial Year changes the hero). money-hero renders. ledger-add-income, expense-add and hours-add open /entry?type=income|expense|shift. expense-scan opens /scan-receipt and money-insights opens /insights. detail-performance, detail-tax, detail-deductions and ledger-history-toggle expand and collapse; they work as an accordion, only one open at a time. (3) Mileage: vehicle-select sheet opens and closes. gps-start shows the 'needs a device build' toast as expected on web. trips-add opens /entry?type=trip. mileage-history-toggle expands. mileage-today shows one decimal (15.6 km). (4) Profile: the list cards render. set-worktype-* writes work_type to the backend. set-platform-* adds and removes platforms. autotrack-toggle exists. set-tax-setup opens /tax-setup. set-country and set-weekstart sheets work (Mon-Sun). theme-toggle switches dark and light. set-delete-account shows confirm and cancel; set-delete-cancel restores the button and deletion was NOT confirmed. (5) Ask: header 'Ask', 4 suggestion rows, ask-input and ask-send present; the AI answered 'Can I claim my phone bill?' correctly. (6) Bottom nav: all 5 tabs navigate; the bar is 72px tall with tab buttons 78x49. The login screen shows Google only on web. Colors match the spec and Inter is applied. No deprecated Expo packages (expo-av, expo-barcode-scanner, expo-background-fetch) found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/apple", "issue": "SECURITY: `email = claims.get('email') or payload.get('email')` falls back to the client-supplied email when the verified token has no email claim. That email is then used to link to an existing account (`db.users.find_one({'email': email})`) and sets apple_sub on that account. Anyone with a valid Apple token for their own Apple ID could post someone else's email and take over that account. Only link on `claims['email']`, ideally only when `claims.get('email_verified')` is true; never use payload.email for lookup or linking. Reference: /app/backend/server.py:301-307", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/profile", "issue": "Sending week_start: null returns an HTTP 500 (pydantic ValidationError raised inside the handler, int_type) instead of a 422/400. The seeded profile originally had week_start None, so a GET-then-PUT round-trip of the profile would also 500. Reference: server.py save_profile ~L1004 (Profile model week_start: int)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Mileage today card", "issue": "'Private km' row shows the raw value (e.g. '3.21 km', '0 km') while 'Business km' uses toFixed(1) ('12.3 km', '0.0 km'). The formatting is inconsistent. Reference: app/(tabs)/trips.tsx:329", "testID": "mileage-today", "priority": "low"},
+      {"component": "Ask suggestions", "issue": "Duplicate testIDs: two suggestions start with 'Can I clai', so both render testID 'ask-suggestion-Can I clai'. Use the index or a slug. Reference: app/(tabs)/ask.tsx:92", "testID": "ask-suggestion-*", "priority": "low"},
+      {"component": "Money hero", "issue": "Keep rate can show odd values such as 'Keep rate -965.9%' (FY, take-home -6077 on gross 629). Consider hiding it or capping it when take-home is negative.", "testID": "money-hero", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Select bottom sheet (ui.tsx Select)", "issues": ["On web, SafeAreaView edges=['bottom'] gives no padding, so the last option sits flush against the screen's bottom edge (seen in the Vehicle, Week start and Period sheets). Add paddingBottom of at least 16-24px.", "The Period sheet (11 options) exceeds the 460px maxHeight; 'Previous FY' is cut off and 'Custom' needs a scroll, with no visual cue that the list scrolls."]},
+      {"screen": "Ask", "issues": ["The multiline TextInput renders about 62px tall on web (textarea default rows) while the send button is 44px and bottom-aligned, so they look misaligned.", "Placeholder grammar: 'Ask a ATO tax question…' should be 'Ask an ATO tax question…'."]},
+      {"screen": "Mileage", "issues": ["vehicle-select is shown even when only one vehicle exists, labelled with the generic 'Vehicle'. Its sheet has a single option, which adds little value."]},
+      {"screen": "Profile", "issues": ["Switching work type (e.g. passengers to delivery) silently removes platforms not valid for the new type. Switching back does not restore them (Uber/DiDi were lost and had to be restored via the API). This logic predates the restyle, but an accidental tap on the new segmented control causes data loss. Consider a confirm step or keeping the previous selections."]}
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' on web, plus the known 'props.pointerEvents is deprecated' warning from react-native-web. Non-blocking."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter18_restyle_apple.py", "/app/backend/tests/test_iter17_regression.py", "/app/test_reports/pytest/pytest_iter18.xml"],
+  "action_items": [
+    "HIGH: In /api/auth/apple, stop using the client payload email for account lookup and linking; use only the verified claims['email'] (and require email_verified).",
+    "Make PUT /api/profile accept week_start null (Optional[int] or coerce to 0) instead of returning a 500.",
+    "trips.tsx:329: format Private km with toFixed(1) to match Business km.",
+    "ask.tsx:92: make ask-suggestion testIDs unique.",
+    "ui.tsx Select: add bottom padding to the sheet and a scroll cue for long lists.",
+    "Ask input: make the empty multiline height match the 44px send button on web (e.g. numberOfLines={1} / rows) and fix 'a ATO' to 'an ATO'.",
+    "Optional: confirm before a work-type switch removes platforms; review the Keep rate display when take-home is negative."
+  ],
+  "critical_code_review_comments": [
+    "reports.tsx: load() runs on mount from both useEffect and useFocusEffect, so data loads twice on the first visit (harmless but wasteful).",
+    "reports.tsx: currency symbol is hardcoded to '$' (fine for AU/US only).",
+    "Apple sign-in: the frontend gates on Platform.OS==='ios' plus isAvailableAsync. APPLE_AUDIENCES includes the bundle id and host.exp.Exponent. PyJWKClient verifies RS256, issuer, audience and expiry. Looks correct apart from the email-linking issue."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter18_restyle_apple.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% of requested flows functional; minor UI/design issues only"},
+  "seed_data_creation": "No permanent seed data. Two TEST trips (2026-11-01) were created and then deleted. The ui_tester profile was changed by the Profile tests and restored via PUT /api/profile: work_type passengers, platforms ['Uber','DiDi'], theme light. week_start was set to 0 (Mon) instead of the original null because null returns a 500; this has the same effect.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login on web: set localStorage gigtax.session_token=JSON.stringify('ui-tester-token'), gigtax.user=JSON.stringify(JSON.stringify(user)), gigtax.profile_id=JSON.stringify('ui_tester'), then go to /home. Select sheets expose `${testID}-opt-${key}` and `${testID}-backdrop`. Money ExpandRows are an accordion (one open at a time). The container date is Nov 2026; seed data is in Jul 2026, so use FY to date or Financial Year to see it. Restore the profile after Profile tests: a work-type change wipes platforms.",
+  "rca_of_issue": ""
+}

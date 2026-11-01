@@ -1,21 +1,22 @@
 import { Tabs } from "expo-router";
+import { Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, FONT } from "@/src/theme";
 
-const ICONS: Record<string, { on: any; off: any }> = {
-  home: { on: "wallet", off: "wallet-outline" },
-  trips: { on: "car-sport", off: "car-sport-outline" },
-  reports: { on: "bar-chart", off: "bar-chart-outline" },
-  ask: { on: "sparkles", off: "sparkles-outline" },
-  settings: { on: "person-circle", off: "person-circle-outline" },
+// Line icons only; the active tab is shown by colour + weight.
+const ICONS: Record<string, any> = {
+  home: "wallet-outline",
+  trips: "car-outline",
+  reports: "bar-chart-outline",
+  ask: "chatbubble-ellipses-outline",
+  settings: "person-circle-outline",
 };
 
 export default function TabsLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  // Add the device's bottom inset (Android system nav bar / iOS home indicator)
-  // so the tab bar is never hidden behind the OS navigation.
+  // 72px bar plus the device's bottom inset (Android nav bar / iOS home indicator).
   const bottomInset = insets.bottom;
   return (
     <Tabs
@@ -27,15 +28,16 @@ export default function TabsLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 60 + bottomInset,
-          paddingTop: 6,
-          paddingBottom: Math.max(bottomInset, 10),
+          height: 72 + bottomInset,
+          paddingTop: 10,
+          paddingBottom: Math.max(bottomInset, 12),
+          elevation: 0,
+          shadowOpacity: 0,
         },
-        tabBarLabelStyle: { fontFamily: FONT.medium, fontSize: 11 },
-        tabBarIcon: ({ focused, color, size }) => {
-          const set = ICONS[route.name] || ICONS.home;
-          return <Ionicons name={focused ? set.on : set.off} size={size} color={color} />;
-        },
+        tabBarLabel: ({ focused, color, children }) => (
+          <Text style={{ fontFamily: focused ? FONT.semibold : FONT.regular, fontSize: 11, color, marginTop: 2 }}>{children}</Text>
+        ),
+        tabBarIcon: ({ color }) => <Ionicons name={ICONS[route.name] || ICONS.home} size={24} color={color} />,
       })}
     >
       <Tabs.Screen name="home" options={{ title: "Money", tabBarButtonTestID: "tab-home" }} />

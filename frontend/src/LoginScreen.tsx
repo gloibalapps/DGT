@@ -1,16 +1,25 @@
-import React from "react";
-import { View, ActivityIndicator } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, ActivityIndicator, Platform } from "react-native";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useAuth } from "@/src/auth";
-import { AppText, PrimaryButton } from "@/src/ui";
+import { AppText, PrimaryButton, useToast } from "@/src/ui";
 
 export default function LoginScreen() {
   const { colors } = useTheme();
-  const { signIn, signingIn } = useAuth();
+  const { signIn, signInApple, signingIn } = useAuth();
+  const { show } = useToast();
+  // Apple requires "Sign in with Apple" alongside Google on iPhone.
+  const [appleOk, setAppleOk] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    AppleAuthentication.isAvailableAsync().then(setAppleOk).catch(() => setAppleOk(false));
+  }, []);
+  const onApple = () => signInApple().catch(() => show("Apple sign-in failed — please try again", "error"));
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -44,10 +53,22 @@ export default function LoginScreen() {
               <ActivityIndicator color={colors.accent} />
             </View>
           ) : (
-            <PrimaryButton testID="login-google" label="Continue with Google" icon="logo-google" onPress={signIn} />
+            <View style={{ gap: 12 }}>
+              {appleOk ? (
+                <AppleAuthentication.AppleAuthenticationButton
+                  testID="login-apple"
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={12}
+                  style={{ height: 48, width: "100%" }}
+                  onPress={onApple}
+                />
+              ) : null}
+              <PrimaryButton testID="login-google" label="Continue with Google" icon="logo-google" onPress={signIn} />
+            </View>
           )}
           <AppText variant="caption" color={colors.dim} style={{ textAlign: "center", marginTop: 14, lineHeight: 16 }}>
-            We only use your Google account to sign you in and sync your data securely.
+            We only use your account to sign you in and sync your data securely.
           </AppText>
         </View>
       </SafeAreaView>

@@ -7,7 +7,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { ThemeProvider } from "@/src/theme";
+import { StatusBar } from "expo-status-bar";
+import { ThemeProvider, useTheme } from "@/src/theme";
 import { AppProvider } from "@/src/store";
 import { ToastProvider } from "@/src/ui";
 import { AuthProvider, useAuth } from "@/src/auth";
@@ -26,6 +27,11 @@ SplashScreen.preventAutoHideAsync();
 // OFF for now — RevenueCat integration deferred at user's request.
 const SUB_GATE_ENABLED = false;
 
+function ThemedStatusBar() {
+  const { mode } = useTheme();
+  return <StatusBar style={mode === "light" ? "dark" : "light"} />;
+}
+
 function SubGate() {
   const { loading, managed, isActive } = useSubscription();
   if (loading) return null;
@@ -35,6 +41,7 @@ function SubGate() {
   return (
     <AppProvider>
       <View style={{ flex: 1 }}>
+        <ThemedStatusBar />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />
@@ -78,10 +85,10 @@ function AuthGate() {
 export default function RootLayout() {
   const [iconsLoaded, iconErr] = useIconFonts();
   const [fontsLoaded, fontErr] = useFonts({
-    "PlusJakartaSans-Regular": require("../assets/fonts/PlusJakartaSans-Regular.ttf"),
-    "PlusJakartaSans-Medium": require("../assets/fonts/PlusJakartaSans-Medium.ttf"),
-    "PlusJakartaSans-SemiBold": require("../assets/fonts/PlusJakartaSans-SemiBold.ttf"),
-    "PlusJakartaSans-Bold": require("../assets/fonts/PlusJakartaSans-Bold.ttf"),
+    "Inter-Regular": require("../assets/fonts/Inter-Regular.ttf"),
+    "Inter-Medium": require("../assets/fonts/Inter-Medium.ttf"),
+    "Inter-SemiBold": require("../assets/fonts/Inter-SemiBold.ttf"),
+    "Inter-Bold": require("../assets/fonts/Inter-Bold.ttf"),
   });
 
   const ready = (iconsLoaded || iconErr) && (fontsLoaded || fontErr);

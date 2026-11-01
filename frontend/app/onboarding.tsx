@@ -3,7 +3,6 @@ import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
@@ -95,8 +94,7 @@ export default function Onboarding() {
         {/* route-line progress signature */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
           <View style={{ height: 4, backgroundColor: colors.surfaceAlt, borderRadius: 999, overflow: "hidden" }}>
-            <LinearGradient colors={colors.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={{ height: 4, width: `${((step + 1) / total) * 100}%` }} />
+            <View style={{ height: 4, width: `${((step + 1) / total) * 100}%`, backgroundColor: colors.accent }} />
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
             <AppText variant="label" color={colors.dim}>Step {step + 1} of {total}</AppText>

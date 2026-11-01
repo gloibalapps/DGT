@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Pressable, Linking, RefreshControl, Animated, Easing, Alert, Platform } from "react-native";
+import { View, Linking, RefreshControl, Animated, Easing, Alert, Platform } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Location from "expo-location";
 
@@ -12,8 +11,8 @@ import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
 import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning } from "@/src/autotrack";
 import {
-  Screen, ScreenHeader, Card, AppText, IconButton, Spinner,
-  EmptyState, PrimaryButton, SecondaryButton, Badge, useToast, fmtMoney, Input,
+  Screen, ScreenHeader, Card, AppText, IconButton, Spinner, Field, Select, HeroCard, ListCard, ListRow, SectionLabel,
+  EmptyState, PrimaryButton, SecondaryButton, useToast, fmtMoney, Input,
 } from "@/src/ui";
 
 const BATTERY_PROMPT_KEY = "gigtax.battery_prompt_seen";
@@ -243,7 +242,7 @@ export default function Mileage() {
   // Load failed (e.g. transient network/auth) — show a retry instead of crashing.
   if (!tm || !tm.today) {
     return (
-      <Screen header={<ScreenHeader subtitle="GPS → Logbook → Deduction" title="Tax Mileage" />}>
+      <Screen header={<ScreenHeader title="Mileage" />}>
         <EmptyState icon="cloud-offline-outline" title="Couldn't load mileage"
           subtitle="Check your connection and try again." />
         <PrimaryButton testID="mileage-retry" label="Retry" icon="refresh"
@@ -258,159 +257,99 @@ export default function Mileage() {
 
   return (
     <Screen
-      header={<ScreenHeader subtitle="GPS → Logbook → Deduction" title="Tax Mileage" />}
+      header={<ScreenHeader title="Mileage" />}
       scroll
       refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent}
         onRefresh={() => { setRefreshing(true); load(); }} />}
     >
-      {/* ---- Vehicle switcher ---- */}
+      {/* ---- Vehicle ---- */}
       {vehicles.length > 0 ? (
-        <View style={{ marginBottom: 14 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <AppText variant="label" color={colors.dim}>YOUR VEHICLES</AppText>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {vehicles.map((v) => {
-              const active = v.id === activeVehicleId;
-              return (
-                <Pressable key={v.id} testID={`vehicle-chip-${v.id}`} onPress={() => v.id && setActiveVehicle(v.id)}
-                  style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, height: 40, borderRadius: 999,
-                    backgroundColor: active ? colors.accent : colors.surfaceAlt,
-                    borderWidth: 1, borderColor: active ? colors.accent : colors.border }}>
-                  <Ionicons name="car-sport" size={15} color={active ? colors.bg : colors.dim} style={{ marginRight: 6 }} />
-                  <AppText variant="bodyMed" color={active ? colors.bg : colors.text}>{v.registration || v.make_model || "Vehicle"}</AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+        <Select testID="vehicle-select" title="Vehicle" value={activeVehicleId || ""}
+          onChange={(id) => setActiveVehicle(id)} style={{ marginBottom: 16 }}
+          options={vehicles.filter((v) => !!v.id).map((v) => ({
+            key: v.id as string, label: v.registration || v.make_model || "Vehicle", icon: "car-outline",
+            desc: v.disposal_date ? "Disposed — history kept" : (v.registration && v.make_model ? v.make_model : undefined),
+          }))} />
       ) : null}
 
       {/* ---- Logging controls ---- */}
       {pendingTag != null ? (
-        <Card style={{ marginBottom: 14, borderColor: colors.accent }}>
-          <AppText variant="h2" style={{ marginBottom: 8 }}>{pendingTag} {unit} drive</AppText>
-          <View testID="gps-drive-times" style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-            {[["START", hm(pendingStartTs)], ["FINISH", hm(pendingEndTs)], ["DURATION", fmtElapsed(pendingDuration * 60)]].map(([l, v]) => (
-              <View key={l} style={{ flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10 }}>
-                <AppText variant="label" color={colors.dim}>{l}</AppText>
-                <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{v}</AppText>
-              </View>
-            ))}
+        <Card style={{ marginBottom: 16, padding: 20 }}>
+          <AppText variant="label" color={colors.dim}>Drive finished</AppText>
+          <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 4 }}>
+            <AppText style={{ fontFamily: FONT.bold, fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>{pendingTag}</AppText>
+            <AppText variant="bodySemi" color={colors.dim} style={{ marginLeft: 6 }}>{unit}</AppText>
           </View>
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
-            Was this trip business or private? GPS knows you drove, not why.
+          <AppText testID="gps-drive-times" variant="caption" color={colors.dim} style={{ fontVariant: ["tabular-nums"], marginBottom: 12 }}>
+            Start {hm(pendingStartTs)} · Finish {hm(pendingEndTs)} · {fmtElapsed(pendingDuration * 60)}
           </AppText>
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 6 }}>
-            On your odometer? (optional) — logs the exact distance and auto-calibrates {activeVehicle?.make_model || "this car"} for next time.
-          </AppText>
-          <Input testID="gps-odo" value={odoInput} onChangeText={setOdoInput} keyboardType="decimal-pad"
-            placeholder={`${pendingTag} ${unit}`} style={{ marginBottom: 12 }} />
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <Field label="Odometer distance (optional)"
+            hint={`Logs the exact distance and auto-calibrates ${activeVehicle?.make_model || "this car"} for next time.`}>
+            <Input testID="gps-odo" value={odoInput} onChangeText={setOdoInput} keyboardType="decimal-pad"
+              placeholder={`${pendingTag} ${unit}`} />
+          </Field>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>Was this drive business or private?</AppText>
+          <View style={{ flexDirection: "row", gap: 12 }}>
             <PrimaryButton testID="gps-tag-business" label="Business" disabled={savingTrip} onPress={() => saveGpsTrip("business")} style={{ flex: 1 }} />
             <SecondaryButton testID="gps-tag-personal" label="Private" disabled={savingTrip} onPress={() => saveGpsTrip("personal")} style={{ flex: 1 }} />
           </View>
         </Card>
       ) : tracking ? (
-        <Card style={{ marginBottom: 14, borderColor: colors.profit, alignItems: "center" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+        <Card testID="gps-live-card" style={{ marginBottom: 16, padding: 20, paddingBottom: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <PulsingDot color={colors.profit} />
-            <AppText variant="label" color={colors.profit}>GPS TRACKING ACTIVE</AppText>
+            <AppText variant="label" color={colors.dim}>GPS tracking active</AppText>
           </View>
-          {dist <= 0 ? (
-            <View style={{ alignSelf: "stretch", height: 40, borderRadius: 12, backgroundColor: colors.surfaceAlt,
-              alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-              <AppText variant="caption" color={colors.dim}>Acquiring GPS…</AppText>
-            </View>
-          ) : null}
-          <AppText style={{ fontFamily: FONT.display, fontSize: 46, color: colors.text, fontVariant: ["tabular-nums"], letterSpacing: 0.3 }}>
-            {(dist * cal).toFixed(1)}
-          </AppText>
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 2 }}>{unit} this drive</AppText>
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: activeVehicle ? 2 : 12 }}>
-            Started {startedAtStr()} · {fmtElapsed(elapsedSec)}
-          </AppText>
-          {activeVehicle ? (
-            <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
-              {activeVehicle.registration || activeVehicle.make_model || "Vehicle"} · Business
+          <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 4 }}>
+            <AppText style={{ fontFamily: FONT.bold, fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
+              {dist > 0 ? (dist * cal).toFixed(1) : "0.0"}
             </AppText>
-          ) : null}
-          <SecondaryButton testID="gps-stop" label="End drive" icon="stop-circle-outline" tone="danger"
-            onPress={stopShift} style={{ alignSelf: "stretch" }} />
+            <AppText variant="bodySemi" color={colors.dim} style={{ marginLeft: 6 }}>{unit}</AppText>
+          </View>
+          <AppText variant="caption" color={colors.dim} style={{ fontVariant: ["tabular-nums"] }}>
+            {dist <= 0 ? "Acquiring GPS… · " : ""}Started {startedAtStr()} · {fmtElapsed(elapsedSec)}
+            {activeVehicle ? ` · ${activeVehicle.registration || activeVehicle.make_model || "Vehicle"}` : ""}
+          </AppText>
+          <SecondaryButton testID="gps-stop" label="End drive" tone="danger" onPress={stopShift} style={{ marginTop: 8 }} />
         </Card>
       ) : (
-        <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-          <PrimaryButton testID="trips-add" label="Add trip" icon="add" style={{ flex: 1 }}
-            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip" } })} />
-          <SecondaryButton testID="gps-start" label="GPS shift" icon="radio-outline" style={{ flex: 1 }}
+        <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+          <PrimaryButton testID="gps-start" label="GPS drive" icon="navigate-outline" style={{ flex: 1 }}
             onPress={startShift} />
+          <SecondaryButton testID="trips-add" label="Add trip" icon="add" style={{ flex: 1 }}
+            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip" } })} />
         </View>
       )}
 
       {/* ---- Today ---- */}
-      <Card style={{ marginBottom: 14 }}>
-        <AppText variant="label" color={colors.dim} style={{ marginBottom: 10 }}>TODAY</AppText>
-        <AppText style={{ fontFamily: FONT.display, fontSize: 40, color: colors.text, fontVariant: ["tabular-nums"] }}>
-          {(today.total_km + (tracking ? dist * cal : 0)).toFixed(1)} {unit}
-        </AppText>
-        <AppText variant="caption" color={colors.dim}>Total driven{tracking ? " · incl. live drive" : ""}</AppText>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-            <AppText variant="caption" color={colors.profit} style={{ fontFamily: FONT.bold }}>{today.business_km} {unit} business</AppText>
-          </View>
-          {tracking && dist > 0 ? (
-            <View style={{ backgroundColor: colors.profit + "22", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.profit }}>
-              <AppText variant="caption" color={colors.profit} style={{ fontFamily: FONT.bold }}>+{(dist * cal).toFixed(1)} {unit} business · drive in progress</AppText>
-            </View>
-          ) : null}
-          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-            <AppText variant="caption" color={colors.dim}>{today.private_km} {unit} private</AppText>
-          </View>
-          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-            <AppText variant="caption" color={colors.dim}>{today.business_pct}% business</AppText>
-          </View>
-          {today.per_business_km != null ? (
-            <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-              <AppText variant="caption" color={colors.accent}>{fmtMoney(today.per_business_km)}/business {unit}</AppText>
-            </View>
-          ) : null}
-        </View>
-      </Card>
+      <HeroCard testID="mileage-today" label={`Today${tracking ? " · incl. live drive" : ""}`}
+        value={0} display={(today.total_km + (tracking ? dist * cal : 0)).toFixed(1)} unit={unit} />
+      <ListCard>
+        <ListRow label={`Business ${unit}`} value={`${(today.business_km + (tracking ? dist * cal : 0)).toFixed(1)} ${unit}`} />
+        <ListRow label={`Private ${unit}`} value={`${Number(today.private_km).toFixed(1)} ${unit}`} />
+        <ListRow label="Business use" value={`${today.business_pct}%`} />
+        {today.per_business_km != null ? <ListRow label={`Earned / business ${unit}`} value={fmtMoney(today.per_business_km)} /> : null}
+      </ListCard>
 
-      {/* ---- Odometer reconciliation (read-only; manage the car in Settings) ---- */}
+      {/* ---- Odometer reconciliation (read-only; manage the car in Profile) ---- */}
       {odo?.has_odometer ? (
-        <Card style={{ marginBottom: 14, borderColor: odo?.warning ? colors.warm : colors.border }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-              <Ionicons name="speedometer-outline" size={22} color={colors.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodySemi">Odometer check</AppText>
-              <AppText variant="caption" color={colors.dim}>Odometer {odo.odometer_km} {unit} · GPS {odo.gps_km} {unit}</AppText>
-            </View>
-          </View>
-          {odo?.warning ? (
-            <View style={{ flexDirection: "row", marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: 10, padding: 10 }}>
-              <Ionicons name="warning-outline" size={16} color={colors.warm} style={{ marginRight: 8, marginTop: 1 }} />
-              <AppText variant="caption" color={colors.warm} style={{ flex: 1, lineHeight: 16 }}>{odo.warning}</AppText>
-            </View>
-          ) : null}
-        </Card>
+        <ListCard label="Odometer check">
+          <ListRow icon="speedometer-outline" label="Odometer vs GPS" value={`${odo.odometer_km} / ${odo.gps_km} ${unit}`} />
+          {odo?.warning ? <ListRow icon="warning-outline" iconColor={colors.warm} label={odo.warning} /> : null}
+        </ListCard>
       ) : null}
 
       {/* ---- Auto-detected drives ---- */}
       {autoDrives.length > 0 && (
-        <View style={{ marginBottom: 14 }}>
-          <AppText variant="label" color={colors.warm} style={{ marginBottom: 8, marginLeft: 4 }}>
-            {autoDrives.length} AUTO-DETECTED DRIVE{autoDrives.length > 1 ? "S" : ""} TO CLASSIFY
-          </AppText>
+        <View style={{ marginBottom: 16 }}>
+          <SectionLabel text={`${autoDrives.length} detected drive${autoDrives.length > 1 ? "s" : ""} to classify`} style={{ marginLeft: 4 }} />
           {autoDrives.map((d) => (
-            <Card key={d.id} testID={`auto-drive-${d.id}`} style={{ marginBottom: 8, borderColor: colors.warm }}>
-              <AppText variant="bodySemi" style={{ marginBottom: 2 }}>{d.distance_km} {unit} drive</AppText>
-              <AppText variant="caption" color={colors.dim} style={{ marginBottom: 10 }}>
-                {displayDateShort(d.date)} · {hm(d.start_ts)} – {hm(d.end_ts)} · business or private?
+            <Card key={d.id} testID={`auto-drive-${d.id}`} style={{ marginBottom: 12 }}>
+              <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{d.distance_km} {unit}</AppText>
+              <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12, fontVariant: ["tabular-nums"] }}>
+                {displayDateShort(d.date)} · Start {hm(d.start_ts)} · Finish {hm(d.end_ts)}
               </AppText>
-              <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flexDirection: "row", gap: 12 }}>
                 <PrimaryButton testID={`auto-business-${d.id}`} label="Business" disabled={savingTrip} onPress={() => classifyAuto(d, "business")} style={{ flex: 1 }} />
                 <SecondaryButton testID={`auto-personal-${d.id}`} label="Private" disabled={savingTrip} onPress={() => classifyAuto(d, "personal")} style={{ flex: 1 }} />
               </View>
@@ -419,52 +358,21 @@ export default function Mileage() {
         </View>
       )}
 
-      {/* ---- History (tap to expand) ---- */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <Pressable testID="mileage-history-toggle" onPress={() => setHistoryOpen((o) => !o)} hitSlop={8}
-          style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-          <AppText variant="h2">History</AppText>
-          {trips.length > 0 ? (
-            <AppText variant="caption" color={colors.dim} style={{ marginLeft: 8 }}>
-              {trips.length} trip{trips.length > 1 ? "s" : ""}
-            </AppText>
-          ) : null}
-          <Ionicons name={historyOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.dim} style={{ marginLeft: 6 }} />
-        </Pressable>
-        {trips.length > 0 ? (
-          <Pressable testID="mileage-export" onPress={exportReport} hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="download-outline" size={16} color={colors.accent} style={{ marginRight: 4 }} />
-            <AppText variant="caption" color={colors.accent}>Motor vehicle report</AppText>
-          </Pressable>
-        ) : null}
-      </View>
-      {historyOpen ? (
-        trips.length === 0 ? (
-          <EmptyState icon="car-sport-outline" title="No trips recorded" subtitle="Add a trip or start a GPS shift to build your logbook." />
-        ) : (
-          trips.map((t) => (
-            <Pressable key={t.id} testID={`trip-${t.id}`}
-              onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip", id: t.id } })}>
-              <Card style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, paddingVertical: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodySemi" style={{ fontVariant: ["tabular-nums"] }}>{t.distance_km} {unit}</AppText>
-                  <AppText variant="caption" color={colors.dim}>
-                    {displayDateShort(t.date)}{t.source === "gps" ? " · GPS" : ""}{t.note ? ` · ${t.note}` : ""}
-                  </AppText>
-                  {t.start_time && t.end_time ? (
-                    <AppText variant="caption" color={colors.text} style={{ fontVariant: ["tabular-nums"] }}>
-                      Start {hmISO(t.start_time)} · Finish {hmISO(t.end_time)}
-                    </AppText>
-                  ) : null}
-                </View>
-                <Badge label={typeLabel(t.type, t.business_pct)} color={typeColor(t.type)} bg={colors.surfaceAlt} />
-                <IconButton icon="trash-outline" size={18} color={colors.dim} testID={`trip-del-${t.id}`}
-                  onPress={() => del(t.id)} />
-              </Card>
-            </Pressable>
-          ))
-        )
-      ) : null}
+      {/* ---- History ---- */}
+      <ListCard label="History">
+        <ListRow testID="mileage-history-toggle" strong label={`${trips.length} trip${trips.length === 1 ? "" : "s"}`}
+          onPress={() => setHistoryOpen((o) => !o)} trailingIcon={historyOpen ? "chevron-up" : "chevron-down"} />
+        {historyOpen && trips.length === 0 ? <ListRow label="No trips recorded" sub="Add a trip or start a GPS drive to build your logbook." /> : null}
+        {historyOpen ? trips.map((t) => (
+          <ListRow key={t.id} testID={`trip-${t.id}`}
+            label={`${t.distance_km} ${unit}`}
+            sub={`${displayDateShort(t.date)}${t.start_time && t.end_time ? ` · Start ${hmISO(t.start_time)} · Finish ${hmISO(t.end_time)}` : ""}${t.source === "gps" ? " · GPS" : ""}${t.note ? ` · ${t.note}` : ""}`}
+            value={typeLabel(t.type, t.business_pct)} valueColor={typeColor(t.type)}
+            onPress={() => router.push({ pathname: "/entry" as any, params: { type: "trip", id: t.id } })}
+            right={<IconButton icon="trash-outline" size={18} color={colors.dim} testID={`trip-del-${t.id}`} onPress={() => del(t.id)} />} />
+        )) : null}
+        {trips.length > 0 ? <ListRow testID="mileage-export" icon="download-outline" label="Motor vehicle report" onPress={exportReport} /> : null}
+      </ListCard>
     </Screen>
   );
 }

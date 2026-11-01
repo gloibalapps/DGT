@@ -94,7 +94,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
           <View style={{ alignItems: "center", marginTop: gate ? 8 : 0 }}>
             <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: colors.accent,
               alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-              <Ionicons name="rocket" size={38} color={colors.bg} />
+              <Ionicons name="rocket" size={38} color="#FFFFFF" />
             </View>
             <AppText style={{ fontFamily: FONT.display, fontSize: 38, color: colors.text }}>
               GigTax
@@ -145,7 +145,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
                         <AppText variant="bodySemi" color={colors.text}>{p.title}</AppText>
                         {isYear && savings ? (
                           <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.profit }}>
-                            <AppText variant="caption" color={colors.bg} style={{ fontFamily: FONT.bold }}>SAVE {savings}%</AppText>
+                            <AppText variant="caption" color="#FFFFFF" style={{ fontFamily: FONT.bold }}>SAVE {savings}%</AppText>
                           </View>
                         ) : null}
                       </View>

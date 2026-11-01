@@ -3,24 +3,20 @@ import { View, ScrollView, Pressable, Modal } from "react-native";
 import { useFocusEffect } from "expo-router";
 
 import { useTheme } from "@/src/theme";
-import { useStore } from "@/src/store";
 import { api, IncomeT, ExpenseT } from "@/src/api";
 import { CATEGORIES } from "@/src/config";
 import { isoToAU } from "@/src/date";
 import { RANGE_OPTIONS, rangeFor, type RangeKey } from "@/src/reportRange";
 import {
-  Screen, ScreenHeader, Card, AppText, Money, Spinner, ChipRow, DateField, useToast, fmtMoney,
+  Screen, ScreenHeader, AppText, Money, Spinner, DateField, useToast, fmtMoney,
+  Select, UnderlineTabs, HeroCard, ListCard, ListRow,
 } from "@/src/ui";
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "income", label: "Income" },
   { key: "expenses", label: "Expenses" },
-  { key: "providers", label: "Providers" },
-  { key: "profit", label: "Profitability" },
-  { key: "gst", label: "GST" },
   { key: "tax", label: "Tax" },
-  { key: "km", label: "Kilometres" },
 ];
 
 const CAT_LABEL: Record<string, string> = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
@@ -31,7 +27,7 @@ export default function Reports() {
   const [rangeKey, setRangeKey] = useState<RangeKey>("fy_to_date");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [providers, setProviders] = useState<string[]>([]);
+  const [provider, setProvider] = useState("all");
   const [tab, setTab] = useState("overview");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +36,7 @@ export default function Reports() {
   const [drill, setDrill] = useState<{ title: string; rows: { label: string; sub?: string; amount: number }[] } | null>(null);
 
   const { start, end } = useMemo(() => rangeFor(rangeKey, customStart, customEnd), [rangeKey, customStart, customEnd]);
+  const providers = useMemo(() => (provider === "all" ? [] : [provider]), [provider]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,262 +73,167 @@ export default function Reports() {
     setDrill({ title: `${CAT_LABEL[cat] || cat} transactions`, rows });
   };
 
-  const toggleProvider = (p: string) => {
-    setProviders((cur) => cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]);
-  };
+  const providerOptions = [
+    { key: "all", label: "All providers" },
+    ...((data?.all_providers || []) as string[]).map((p) => ({ key: p, label: p })),
+  ];
+  const signColor = (n: number) => (n < 0 ? colors.loss : colors.text);
 
   return (
     <Screen>
-      <View style={{ paddingBottom: 8 }}>
-        <ScreenHeader subtitle="Analytics & tax figures" title="Reports" />
-        {/* Date range */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }} style={{ maxHeight: 44, marginBottom: 8 }}>
-          {RANGE_OPTIONS.map((o) => {
-            const active = o.key === rangeKey;
-            return (
-              <Pressable key={o.key} testID={`range-${o.key}`} onPress={() => setRangeKey(o.key)}
-                style={{ height: 34, paddingHorizontal: 14, borderRadius: 999, alignItems: "center", justifyContent: "center",
-                  backgroundColor: active ? colors.accent : colors.surfaceAlt, borderWidth: 1, borderColor: active ? colors.accent : colors.border }}>
-                <AppText variant="bodyMed" color={active ? colors.bg : colors.dim}>{o.label}</AppText>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-        {rangeKey === "custom" ? (
-          <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 16, marginBottom: 6 }}>
-            <View style={{ flex: 1 }}><DateField testID="range-custom-start" value={customStart} onChange={setCustomStart} maxToday /></View>
-            <View style={{ flex: 1 }}><DateField testID="range-custom-end" value={customEnd} onChange={setCustomEnd} maxToday /></View>
-          </View>
-        ) : null}
-        {/* Provider multi-select */}
-        {data?.all_providers?.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }} style={{ maxHeight: 44 }}>
-            <Pressable testID="prov-all" onPress={() => setProviders([])}
-              style={chip(colors, providers.length === 0)}>
-              <AppText variant="bodyMed" color={providers.length === 0 ? colors.bg : colors.dim}>All providers</AppText>
-            </Pressable>
-            {data.all_providers.map((p: string) => {
-              const on = providers.includes(p);
-              return (
-                <Pressable key={p} testID={`prov-${p}`} onPress={() => toggleProvider(p)} style={chip(colors, on)}>
-                  <AppText variant="bodyMed" color={on ? colors.bg : colors.dim}>{p}</AppText>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        ) : null}
-        {/* Sub-tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }} style={{ maxHeight: 44, marginTop: 8 }}>
-          {TABS.map((t) => {
-            const active = t.key === tab;
-            return (
-              <Pressable key={t.key} testID={`rtab-${t.key}`} onPress={() => setTab(t.key)} style={chip(colors, active)}>
-                <AppText variant="bodyMed" color={active ? colors.bg : colors.dim}>{t.label}</AppText>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+      <ScreenHeader title="Reports" />
+      <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: 20, marginBottom: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Select testID="range-select" title="Period" value={rangeKey} onChange={(k) => setRangeKey(k as RangeKey)}
+            options={RANGE_OPTIONS} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Select testID="provider-select" title="Provider" value={provider} onChange={setProvider}
+            options={providerOptions} />
+        </View>
       </View>
+      {rangeKey === "custom" ? (
+        <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: 20, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}><DateField testID="range-custom-start" value={customStart} onChange={setCustomStart} maxToday /></View>
+          <View style={{ flex: 1 }}><DateField testID="range-custom-end" value={customEnd} onChange={setCustomEnd} maxToday /></View>
+        </View>
+      ) : null}
+      <UnderlineTabs options={TABS} value={tab} onChange={setTab} testIDPrefix="rtab" />
 
       {loading || !data ? <Spinner /> : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
-          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 12, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+          <AppText testID="report-range" variant="caption" color={colors.dim} style={{ marginBottom: 16 }}>
             {isoToAU(data.start)} – {isoToAU(data.end)}
           </AppText>
 
           {tab === "overview" ? (
             <>
-              <Card style={{ marginBottom: 14 }}>
-                <AppText variant="label" color={colors.dim}>NET PROFIT (EST.)</AppText>
-                <Money value={data.tax.taxable_profit} symbol={sym} size={44} color={data.tax.taxable_profit >= 0 ? colors.profit : colors.loss} />
-                <AppText variant="caption" color={colors.dim}>Gross income {money(data.income.gross)} · expenses {money(data.expenses.total)}</AppText>
-              </Card>
-              <Grid>
-                <Stat c={colors} label="Gross income" value={money(data.income.gross)} onPress={drillIncome} />
-                <Stat c={colors} label="Total expenses" value={money(data.expenses.total)} />
-                <Stat c={colors} label="GST collected" value={money(data.gst.collected)} />
-                <Stat c={colors} label="GST credits" value={money(data.gst.credits)} />
-                <Stat c={colors} label="Net GST (est.)" value={money(data.gst.net_payable)} />
-                <Stat c={colors} label="Income tax (est.)" value={money(data.tax.income_tax_est)} />
-                <Stat c={colors} label="Total km" value={numOr(data.km.total, "km")} />
-                <Stat c={colors} label="Business km" value={numOr(data.km.business, "km")} />
-                <Stat c={colors} label="Cost / km" value={perOr(data.metrics.cost_per_km, sym)} />
-                <Stat c={colors} label="Earnings / km" value={perOr(data.metrics.earnings_per_km, sym)} />
-                <Stat c={colors} label="Earnings / hour" value={perOr(data.metrics.earnings_per_hour, sym)} />
-                <Stat c={colors} label="Trips" value={String(data.km.trips)} />
-              </Grid>
+              <HeroCard testID="hero-net-profit" label="Net profit (est.)" value={data.tax.taxable_profit} symbol={sym}
+                valueColor={signColor(data.tax.taxable_profit)}>
+                <AppText variant="caption" color={colors.dim} style={{ fontVariant: ["tabular-nums"] }}>
+                  Income {money(data.tax.gross_income)} · Deductions {money(data.tax.total_deductions)}
+                </AppText>
+                {data.expenses.recurring_gross > 0 ? (
+                  <AppText variant="caption" color={colors.dim} style={{ marginTop: 2 }}>
+                    Includes vehicle rental/lease {money(data.expenses.recurring_gross)}
+                  </AppText>
+                ) : null}
+              </HeroCard>
+              <ListCard label="GST">
+                <ListRow label="GST collected" value={money(data.gst.collected)} />
+                <ListRow label="GST credits" value={money(data.gst.credits)} />
+                <ListRow label={data.gst.net_payable >= 0 ? "Net GST payable" : "Net GST refund"}
+                  value={money(Math.abs(data.gst.net_payable))} strong />
+              </ListCard>
+              <ListCard>
+                <ListRow testID="row-income-tax" label="Income tax (est.)" value={money(data.tax.income_tax_est)}
+                  strong onPress={() => setTab("tax")} />
+              </ListCard>
+              <ListCard label="Kilometres & performance">
+                <ListRow label="Total km" value={numOr(data.km.total, "km")} />
+                <ListRow label="Business km" value={numOr(data.km.business, "km")} />
+                <ListRow label="Trips" value={String(data.km.trips)} />
+                <ListRow label="Earnings / km" value={perOr(data.metrics.earnings_per_km, sym)} />
+                <ListRow label="Cost / km" value={perOr(data.metrics.cost_per_km, sym)} />
+                <ListRow label="Earnings / hour" value={perOr(data.metrics.earnings_per_hour, sym)} />
+              </ListCard>
             </>
           ) : null}
 
           {tab === "income" ? (
             <>
-              <Card style={{ marginBottom: 14 }}>
-                <Pressable onPress={drillIncome}>
-                  <AppText variant="label" color={colors.dim}>TOTAL INCOME</AppText>
-                  <Money value={data.income.gross} symbol={sym} size={40} />
-                  <AppText variant="caption" color={colors.accent}>{data.income.count} transactions · tap to view</AppText>
-                </Pressable>
-              </Card>
-              <SectionTitle c={colors} text="By provider" />
-              <Card>
-                {Object.keys(data.income.by_provider).length === 0 ? <Empty c={colors} /> :
-                  Object.entries(data.income.by_provider).map(([p, v]: any, i) => (
-                    <Row key={p} c={colors} first={i === 0} label={p} value={money(v)} />
+              <HeroCard label="Total income" value={data.income.gross} symbol={sym}>
+                <AppText variant="caption" color={colors.dim}>{data.income.count} transactions</AppText>
+              </HeroCard>
+              <ListCard>
+                <ListRow testID="row-income-all" label="View all transactions" onPress={drillIncome} />
+              </ListCard>
+              <ListCard label="By provider">
+                {data.providers.length === 0 ? <ListRow label="Not enough data for this period" /> :
+                  data.providers.map((r: any) => (
+                    <ListRow key={r.provider} label={r.provider} value={money(r.gross)}
+                      sub={`${r.pct_of_income}% of income · ${r.hours != null ? `${r.hours}h · ${perOr(r.per_hour, sym)}/h` : "hours not logged"}`} />
                   ))}
-              </Card>
-              <NotEnough c={colors} text="Base / tips / bonuses breakdown isn't recorded in GigTax yet, so income is shown as a single provider total." />
+              </ListCard>
+              <Helper c={colors} text="Base / tips / bonuses aren't recorded separately, so income is shown as a provider total." />
             </>
           ) : null}
 
           {tab === "expenses" ? (
             <>
-              <Card style={{ marginBottom: 14 }}>
-                <AppText variant="label" color={colors.dim}>TOTAL EXPENSES</AppText>
-                <Money value={data.expenses.total} symbol={sym} size={40} />
-                <AppText variant="caption" color={colors.dim}>{data.expenses.count} transactions · tap a category</AppText>
-              </Card>
-              <Card>
-                {Object.keys(data.expenses.by_category).length === 0 ? <Empty c={colors} /> :
-                  Object.entries(data.expenses.by_category).map(([cat, v]: any, i) => (
-                    <Pressable key={cat} testID={`exp-cat-${cat}`} onPress={() => drillExpenseCat(cat)}>
-                      <Row c={colors} first={i === 0} label={CAT_LABEL[cat] || cat}
-                        value={money(v)} sub={`GST ${money(data.expenses.gst_by_category[cat] || 0)}`} chevron />
-                    </Pressable>
-                  ))}
+              <HeroCard label="Total expenses" value={data.expenses.total + (data.expenses.recurring_gross || 0)} symbol={sym}>
+                <AppText variant="caption" color={colors.dim} style={{ fontVariant: ["tabular-nums"] }}>
+                  Entered {money(data.expenses.total)}{data.expenses.recurring_gross > 0 ? ` · Vehicle rental/lease ${money(data.expenses.recurring_gross)}` : ""}
+                </AppText>
+              </HeroCard>
+              <ListCard label="By category">
+                {Object.keys(data.expenses.by_category).length === 0 && !(data.expenses.recurring_gross > 0)
+                  ? <ListRow label="Not enough data for this period" /> : null}
+                {Object.entries(data.expenses.by_category).map(([cat, v]: any) => (
+                  <ListRow key={cat} testID={`exp-cat-${cat}`} label={CAT_LABEL[cat] || cat} value={money(v)}
+                    sub={`GST ${money(data.expenses.gst_by_category[cat] || 0)}`} onPress={() => drillExpenseCat(cat)} />
+                ))}
                 {data.expenses.recurring_gross > 0 ? (
-                  <Row c={colors} first={false} label="Rental / lease / finance" value={money(data.expenses.recurring_gross)} sub="auto-calculated" />
+                  <ListRow label="Rental / lease / finance" value={money(data.expenses.recurring_gross)} sub="Auto-calculated from your vehicles" />
                 ) : null}
-              </Card>
-            </>
-          ) : null}
-
-          {tab === "providers" ? (
-            <>
-              <SectionTitle c={colors} text="Provider performance" />
-              {data.providers.length === 0 ? <Card><Empty c={colors} /></Card> : (
-                <Card>
-                  {data.providers.map((r: any, i: number) => {
-                    const pctW = data.income.gross > 0 ? Math.max(4, Math.round((r.gross / data.income.gross) * 100)) : 0;
-                    return (
-                      <View key={r.provider} style={{ paddingVertical: 12, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border }}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                          <AppText variant="bodySemi">{r.provider}</AppText>
-                          <Money value={r.gross} symbol={sym} size={18} />
-                        </View>
-                        <View style={{ height: 6, borderRadius: 999, backgroundColor: colors.surfaceAlt, marginVertical: 6 }}>
-                          <View style={{ width: `${pctW}%`, height: 6, borderRadius: 999, backgroundColor: colors.accent }} />
-                        </View>
-                        <AppText variant="caption" color={colors.dim}>
-                          {r.pct_of_income}% of income · {r.hours != null ? `${r.hours}h · ${perOr(r.per_hour, sym)}/h` : "hours not logged"}
-                        </AppText>
-                      </View>
-                    );
-                  })}
-                </Card>
-              )}
-              <NotEnough c={colors} text="Per-provider km & expenses aren't tracked (expenses/trips aren't tagged to a platform), so only income & hours are shown." />
-            </>
-          ) : null}
-
-          {tab === "profit" ? (
-            <Card>
-              <AppText variant="label" color={colors.dim}>OPERATING PROFIT</AppText>
-              <Money value={data.profitability.operating_profit} symbol={sym} size={40}
-                color={data.profitability.operating_profit >= 0 ? colors.profit : colors.loss} />
-              <View style={{ marginTop: 8 }}>
-                <Row c={colors} first label="Net profit margin" value={data.metrics.net_profit_margin == null ? "Not enough data" : `${data.metrics.net_profit_margin}%`} />
-                <Row c={colors} first={false} label="Gross $/hour" value={perOr(data.metrics.earnings_per_hour, sym)} />
-                <Row c={colors} first={false} label="Net $/hour" value={perOr(data.metrics.net_per_hour, sym)} />
-                <Row c={colors} first={false} label="Gross $/km" value={perOr(data.metrics.earnings_per_km, sym)} />
-                <Row c={colors} first={false} label="Net $/km" value={perOr(data.metrics.net_per_business_km, sym)} />
-                <Row c={colors} first={false} label="Expense $/km" value={perOr(data.metrics.cost_per_km, sym)} />
-              </View>
-            </Card>
-          ) : null}
-
-          {tab === "gst" ? (
-            <>
-              <Card style={{ marginBottom: 14 }}>
-                <AppText variant="label" color={colors.dim}>NET GST (EST.)</AppText>
-                <Money value={data.gst.net_payable} symbol={sym} size={40} color={data.gst.net_payable >= 0 ? colors.loss : colors.profit} />
-                <AppText variant="caption" color={colors.dim}>{data.gst.net_payable >= 0 ? "Estimated payable" : "Estimated refund"}</AppText>
-              </Card>
-              <Card>
-                <Row c={colors} first label="GST-inclusive income" value={money(data.gst.inclusive_income)} />
-                <Row c={colors} first={false} label="GST collected (1A)" value={money(data.gst.collected)} />
-                <Row c={colors} first={false} label="GST credits (1B)" value={money(data.gst.credits)} />
-                <Row c={colors} first={false} label="Net GST" value={money(data.gst.net_payable)} />
-              </Card>
-              <NotEnough c={colors} text="Estimate from records entered in GigTax — not a lodged BAS." />
+              </ListCard>
             </>
           ) : null}
 
           {tab === "tax" ? (
             <>
-              <Card style={{ marginBottom: 14 }}>
-                <Row c={colors} first label="Gross business income" value={money(data.tax.gross_income)} />
-                <Row c={colors} first={false} label="Allowable expenses" value={`– ${money(data.tax.total_deductions)}`} />
-                <Row c={colors} first={false} label="Taxable profit (est.)" value={money(data.tax.taxable_profit)} strong />
-              </Card>
-              <Card>
-                <AppText variant="label" color={colors.dim}>ESTIMATED INCOME TAX</AppText>
-                <Money value={data.tax.income_tax_est} symbol={sym} size={40} color={colors.loss} />
-                <AppText variant="caption" color={colors.dim} style={{ marginTop: 4 }}>
-                  Business-use {data.tax.business_use_pct}% · running costs apportioned {money(data.tax.deduction_breakdown.apportioned_running)}, full-claim {money(data.tax.deduction_breakdown.full_claim)}
-                </AppText>
-              </Card>
-              <NotEnough c={colors} text="Estimate only — uses your recorded income & expenses for this period." />
+              <HeroCard label="Estimated income tax" value={data.tax.income_tax_est} symbol={sym}>
+                <AppText variant="caption" color={colors.dim}>Business use {data.tax.business_use_pct}%</AppText>
+              </HeroCard>
+              <ListCard label="Taxable profit">
+                <ListRow label="Gross business income" value={money(data.tax.gross_income)} />
+                <ListRow label="Vehicle running (apportioned)" value={`– ${money(data.tax.deduction_breakdown.apportioned_running)}`} />
+                <ListRow label="Other expenses (full claim)" value={`– ${money(data.tax.deduction_breakdown.full_claim)}`} />
+                <ListRow label="Taxable profit (est.)" value={money(data.tax.taxable_profit)} valueColor={signColor(data.tax.taxable_profit)} strong />
+              </ListCard>
+              <ListCard label="GST (BAS estimate)">
+                <ListRow label="GST-inclusive income" value={money(data.gst.inclusive_income)} />
+                <ListRow label="GST collected (1A)" value={money(data.gst.collected)} />
+                <ListRow label="GST credits (1B)" value={money(data.gst.credits)} />
+                <ListRow label="Net GST" value={money(data.gst.net_payable)} strong />
+              </ListCard>
+              <ListCard label="Profitability">
+                <ListRow label="Operating profit" value={money(data.profitability.operating_profit)} valueColor={signColor(data.profitability.operating_profit)} />
+                <ListRow label="Net profit margin" value={data.metrics.net_profit_margin == null ? "Not enough data" : `${data.metrics.net_profit_margin}%`} />
+                <ListRow label="Net $ / hour" value={perOr(data.metrics.net_per_hour, sym)} />
+                <ListRow label="Net $ / business km" value={perOr(data.metrics.net_per_business_km, sym)} />
+                <ListRow label="Private km" value={numOr(data.km.private, "km")} />
+              </ListCard>
+              <Helper c={colors} text="Estimate from records entered in the app — not a lodged return or BAS." />
             </>
-          ) : null}
-
-          {tab === "km" ? (
-            !data.km.has_data ? <Card><Empty c={colors} /></Card> : (
-              <>
-                <Card style={{ marginBottom: 14 }}>
-                  <AppText variant="label" color={colors.dim}>BUSINESS KILOMETRES</AppText>
-                  <Money value={data.km.business} symbol="" size={44} />
-                  <AppText variant="caption" color={colors.dim}>{data.km.business_use_pct}% business use · {data.km.trips} trips</AppText>
-                </Card>
-                <Card>
-                  <Row c={colors} first label="Total km" value={`${data.km.total} km`} />
-                  <Row c={colors} first={false} label="Business km" value={`${data.km.business} km`} />
-                  <Row c={colors} first={false} label="Private km" value={`${data.km.private} km`} />
-                  <Row c={colors} first={false} label="Income / business km" value={perOr(data.metrics.income_per_business_km, sym)} />
-                  <Row c={colors} first={false} label="Expense / business km" value={perOr(data.metrics.expense_per_business_km, sym)} />
-                </Card>
-              </>
-            )
           ) : null}
         </ScrollView>
       )}
 
-      {/* Drill-down modal */}
+      {/* Drill-down sheet */}
       <Modal visible={!!drill} transparent animationType="slide" onRequestClose={() => setDrill(null)}>
-        <Pressable onPress={() => setDrill(null)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "80%", borderWidth: 1, borderColor: colors.border }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16 }}>
+        <Pressable onPress={() => setDrill(null)} style={{ flex: 1, backgroundColor: "rgba(15,23,42,0.4)", justifyContent: "flex-end" }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "80%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20 }}>
               <AppText variant="h2">{drill?.title}</AppText>
-              <Pressable testID="drill-close" onPress={() => setDrill(null)} hitSlop={10}>
+              <Pressable testID="drill-close" onPress={() => setDrill(null)} hitSlop={10} style={{ minHeight: 44, justifyContent: "center" }}>
                 <AppText variant="bodySemi" color={colors.accent}>Done</AppText>
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-              {drill?.rows.length === 0 ? <Empty c={colors} /> : drill?.rows.map((r, i) => (
-                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border }}>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}>
+              {drill?.rows.length === 0 ? <AppText variant="body" color={colors.dim}>Not enough data for this period.</AppText> : drill?.rows.map((r, i) => (
+                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 48, paddingVertical: 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.divider }}>
                   <View style={{ flex: 1 }}>
-                    <AppText variant="bodyMed" numberOfLines={1}>{r.label}</AppText>
+                    <AppText variant="body" color={colors.rowLabel} numberOfLines={1}>{r.label}</AppText>
                     {r.sub ? <AppText variant="caption" color={colors.dim}>{r.sub}</AppText> : null}
                   </View>
-                  <Money value={r.amount} symbol={sym} size={16} />
+                  <Money value={r.amount} symbol={sym} size={15} />
                 </View>
               ))}
               {drill && drill.rows.length > 0 ? (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 14, borderTopWidth: 2, borderTopColor: colors.border, marginTop: 4 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", minHeight: 48, alignItems: "center", borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4 }}>
                   <AppText variant="bodySemi">Total</AppText>
-                  <Money value={drill.rows.reduce((s, r) => s + r.amount, 0)} symbol={sym} size={18} />
+                  <Money value={drill.rows.reduce((s, r) => s + r.amount, 0)} symbol={sym} size={15} />
                 </View>
               ) : null}
             </ScrollView>
@@ -342,53 +244,8 @@ export default function Reports() {
   );
 }
 
-function chip(colors: any, active: boolean) {
-  return {
-    height: 34, paddingHorizontal: 14, borderRadius: 999, alignItems: "center" as const, justifyContent: "center" as const,
-    backgroundColor: active ? colors.accent : colors.surfaceAlt, borderWidth: 1, borderColor: active ? colors.accent : colors.border,
-  };
-}
-
-function Grid({ children }: { children: React.ReactNode }) {
-  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>{children}</View>;
-}
-
-function Stat({ c, label, value, onPress }: { c: any; label: string; value: string; onPress?: () => void }) {
-  const Inner = (
-    <Card style={{ flex: 1, minWidth: "45%" }}>
-      <AppText variant="caption" color={c.dim}>{label}</AppText>
-      <AppText variant="h2" style={{ marginTop: 4 }} numberOfLines={1}>{value}</AppText>
-      {onPress ? <AppText variant="caption" color={c.accent} style={{ marginTop: 2 }}>Tap to view</AppText> : null}
-    </Card>
-  );
-  if (onPress) return <Pressable onPress={onPress} style={{ flexBasis: "47%", flexGrow: 1 }}>{Inner}</Pressable>;
-  return <View style={{ flexBasis: "47%", flexGrow: 1 }}>{Inner}</View>;
-}
-
-function Row({ c, label, value, sub, first, strong, chevron }:
-  { c: any; label: string; value: string; sub?: string; first: boolean; strong?: boolean; chevron?: boolean }) {
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, borderTopWidth: first ? 0 : 1, borderTopColor: c.border }}>
-      <View style={{ flex: 1 }}>
-        <AppText variant={strong ? "bodySemi" : "bodyMed"}>{label}</AppText>
-        {sub ? <AppText variant="caption" color={c.dim}>{sub}</AppText> : null}
-      </View>
-      <AppText variant={strong ? "bodySemi" : "bodyMed"} color={strong ? c.text : c.dim}>{value}</AppText>
-      {chevron ? <AppText variant="bodyMed" color={c.accent} style={{ marginLeft: 8 }}>›</AppText> : null}
-    </View>
-  );
-}
-
-function SectionTitle({ c, text }: { c: any; text: string }) {
-  return <AppText variant="label" color={c.dim} style={{ marginBottom: 8, marginLeft: 4, marginTop: 4 }}>{text.toUpperCase()}</AppText>;
-}
-
-function Empty({ c }: { c: any }) {
-  return <AppText variant="bodyMed" color={c.dim} style={{ paddingVertical: 8 }}>Not enough data for this period.</AppText>;
-}
-
-function NotEnough({ c, text }: { c: any; text: string }) {
-  return <AppText variant="caption" color={c.dim} style={{ marginTop: 10, lineHeight: 16 }}>{text}</AppText>;
+function Helper({ c, text }: { c: any; text: string }) {
+  return <AppText variant="caption" color={c.dim} style={{ marginTop: -4, marginBottom: 16, lineHeight: 18, paddingHorizontal: 4 }}>{text}</AppText>;
 }
 
 function numOr(n: number, unit: string) { return n > 0 ? `${n} ${unit}` : "Not enough data"; }

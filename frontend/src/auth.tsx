@@ -19,12 +19,13 @@ interface AuthCtx {
   loading: boolean;
   signingIn: boolean;
   signIn: () => Promise<void>;
+  signInApple: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx>({
   user: null, loading: true, signingIn: false,
-  signIn: async () => {}, signOut: async () => {},
+  signIn: async () => {}, signInApple: async () => {}, signOut: async () => {},
 });
 
 function parseToken(url: string): string | null {
@@ -94,10 +95,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (rawUser) {
             // Fast open: trust the cached session immediately and validate it in
             // the background, instead of holding the splash on a network call.
-            const u = JSON.parse(rawUser) as AuthUser;
-            setAuthProfileId(u.user_id);
-            setUser(u);
-            setLoading(false);
+            let u: AuthUser | null = null;
+            try { u = (typeof rawUser === "string" ? JSON.parse(rawUser) : rawUser) as AuthUser; } catch { u = null; }
+            if (u?.user_id) {
+              setAuthProfileId(u.user_id);
+              setUser(u);
+              setLoading(false);
+            }
           }
           try {
             const me = await api.authMe();
@@ -210,6 +214,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [completeWithToken]);
 
+  // iOS: native Sign in with Apple → backend verifies the identity token.
+  const signInApple = useCallback(async () => {
+    const AppleAuthentication = await import("expo-apple-authentication");
+    setSigningIn(true);
+    try {
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!cred.identityToken) throw new Error("No identity token from Apple");
+      const fullName = [cred.fullName?.givenName, cred.fullName?.familyName].filter(Boolean).join(" ");
+      const r = await fetch(`${BACKEND}/api/auth/apple`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity_token: cred.identityToken, full_name: fullName || null, email: cred.email || null }),
+      });
+      if (!r.ok) throw new Error(`Apple sign-in failed (${r.status})`);
+      const j = await r.json();
+      await completeWithToken(j.session_token);
+    } catch (e: any) {
+      if (e?.code !== "ERR_REQUEST_CANCELED") throw e;
+    } finally {
+      setSigningIn(false);
+    }
+  }, [completeWithToken]);
+
   const signOut = useCallback(async () => {
     try { await api.authLogout(); } catch { /* noop */ }
     await storage.secureRemove(TOKEN_KEY);
@@ -222,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, loading, signingIn, signIn, signOut }}>
+    <Ctx.Provider value={{ user, loading, signingIn, signIn, signInApple, signOut }}>
       {children}
     </Ctx.Provider>
   );

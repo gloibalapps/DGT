@@ -16,8 +16,11 @@
         "NSPhotoLibraryUsageDescription": "Pick receipt photos to log expenses",
         "NSLocationWhenInUseUsageDescription": "Track business drives for your logbook",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Track drives automatically in the background",
-        "UIBackgroundModes": ["location"]
-      }
+        "UIBackgroundModes": [
+          "location"
+        ]
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -73,7 +76,8 @@
         {
           "cameraPermission": "Scan receipts to log deductible expenses"
         }
-      ]
+      ],
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true
