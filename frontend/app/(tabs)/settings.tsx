@@ -183,6 +183,11 @@ export default function Settings() {
   const lastBackup = backup?.last_backup_at
     ? new Date(backup.last_backup_at).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
     : null;
+  // Warn when the last Drive backup is over 3 days old (or never ran).
+  const backupAgeDays = backup?.last_backup_at
+    ? Math.floor((Date.now() - new Date(backup.last_backup_at).getTime()) / 86400000) : null;
+  const backupStale = !!backup?.connected && backup.backup_state !== "running" && !backupBusy
+    && (backupAgeDays == null || backupAgeDays > 3);
 
   return (
     <Screen header={<ScreenHeader title="Profile" />} scroll>
@@ -229,6 +234,11 @@ export default function Settings() {
         <ListCard label="Backups">
           <ListRow icon="cloud-done-outline" iconColor={colors.profit} label="Google Drive connected"
             sub={`${backup.email || "Your Drive"} · ${lastBackup ? `last backup ${lastBackup}` : "not backed up yet"}`} />
+          {backupStale ? (
+            <ListRow testID="backup-stale-warning" icon="warning-outline" iconColor={colors.warm}
+              label={backup.last_backup_at ? `Last backup was ${backupAgeDays} days ago` : "No backup yet"}
+              sub="Tap Back up now to keep your receipts & records safe." />
+          ) : null}
           {backup.backup_state === "error" && backup.last_error ? (
             <ListRow testID="backup-error" icon="alert-circle-outline" iconColor={colors.loss} label={`Last backup failed: ${backup.last_error}`} />
           ) : null}

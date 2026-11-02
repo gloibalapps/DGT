@@ -116,3 +116,6 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 - Reports (4 tabs Overview/Income/Expenses/Tax), Money, Mileage, Profile, Ask rebuilt with these patterns. No calculation/route changes.
 - Net profit check: Net profit = income − deductions; deductions include auto-calculated vehicle rental/lease (not part of entered expenses). Hero now shows "Income · Deductions" + "Includes vehicle rental/lease $X".
 - Sign in with Apple: POST /api/auth/apple (verifies identity token vs Apple JWKS; APPLE_AUDIENCES env; links only Apple-verified email). iOS-only button on login. app.json ios.usesAppleSignIn + plugin.
+
+## Update — Backup reminder
+- Profile → Backups shows an amber warning row when Drive is connected and the last backup is >3 days old (or never ran); hidden while a backup is running.
