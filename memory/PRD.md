@@ -137,3 +137,9 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 
 ## Update — Delivery jobs (all food apps)
 - 'Uber Eats jobs' → 'Delivery jobs'. Each job has a platform (Uber Eats, DoorDash, Menulog, HungryPanda); 'Food app for new jobs' setting; voice detects platform names. Duplicates are per platform. Guarantee/export use Uber Eats jobs only; daily income mismatch is checked per day per food app. Module auto-on when any food platform is selected (Profile toggle overrides).
+
+## Faster Receipt Loading (Jun 2026)
+- GET /api/expenses omits receipt_image, adds has_receipt flag
+- GET /api/expenses/{id}?profile_id= returns full expense incl. photo (used by edit screen)
+- Edit screen only re-sends photo when added/changed/removed
+- Fixed Android build: expo-speech-recognition pinned to 3.1.3 (SDK 54 compatible)

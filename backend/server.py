@@ -1169,7 +1169,24 @@ async def delete_income(item_id: str):
 # Expenses
 @api_router.get("/expenses")
 async def list_expenses(profile_id: str = Query(...)):
-    return await _list("expenses", profile_id)
+    # Receipt photos are large base64 blobs — leave them out of the list and
+    # just flag which expenses have one. The photo loads via GET /expenses/{id}.
+    docs = await db.expenses.aggregate([
+        {"$match": {"profile_id": profile_id}},
+        {"$sort": {"date": -1}},
+        {"$limit": 2000},
+        {"$addFields": {"has_receipt": {"$gt": [{"$strLenBytes": {"$ifNull": ["$receipt_image", ""]}}, 0]}}},
+        {"$project": {"receipt_image": 0}},
+    ]).to_list(2000)
+    return [clean(d) for d in docs]
+
+
+@api_router.get("/expenses/{item_id}")
+async def get_expense(item_id: str, profile_id: str = Query(...)):
+    doc = await db.expenses.find_one({"id": item_id, "profile_id": profile_id})
+    if not doc:
+        raise HTTPException(404, "expense not found")
+    return clean(doc)
 
 
 @api_router.post("/expenses")

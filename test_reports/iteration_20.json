@@ -1,0 +1,36 @@
+{
+  "summary": "Tested the Faster Receipt Loading change on the backend and frontend. Backend: 27/27 pass (10 new tests in test_receipt_loading.py plus the 17 regression tests in test_gigtax_api.py). The expense list omits receipt_image, has_receipt is correct for expenses with and without a photo, the list is sorted newest first and contains no _id. GET /api/expenses/{id} returns the full image and gives 404 for a wrong profile or unknown id, and 422 when profile_id is missing. A PUT without receipt_image keeps the photo, and a PUT with receipt_image=null removes it. Frontend (Playwright at 390x844, demo login): the edit screen fetches GET /api/expenses/{id}?profile_id=... once. It prefills date, amount, GST treatment, supplier, category, note and fuel litres. The scanned receipt renders (a 120x160 image), with a 'Remove photo' link. Saving an edit with a photo updates the amount and merchant, keeps the image intact (same length) and refreshes the Ledger row. Editing a demo fuel expense with no photo shows no receipt field and saves the note. Remove photo followed by save sets has_receipt to false. The Money, Reports and Mileage tabs render totals, with no page errors and no 4xx/5xx API responses. No deprecated expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT/DELETE /api/expenses/{id}", "issue": "Existing issue, not new: there is no profile_id or auth ownership check, so anyone who knows an expense id can change or delete it. The new GET-by-id does check profile_id."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Edit expense save", "issue": "entry.tsx:134 re-sends the full base64 receipt_image in every edit PUT, even when the photo has not changed. Downloads are faster now, but every save still uploads the whole photo again. The backend already keeps the photo when the field is absent, so the client could send receipt_image only when it was added or removed.", "affected_testIDs": ["entry-save"]},
+      {"flow": "Edit expense load failure", "issue": "entry.tsx:93 uses api.getExpense(...).catch(() => null). If the request fails (network or 404), the form opens blank with no error toast.", "affected_testIDs": ["entry-amount"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_receipt_loading.py", "/app/test_reports/pytest/pytest_receipt_loading.xml"],
+  "action_items": [
+    "Optional: in entry.tsx save(), send receipt_image only when the user changed it (track the original value) so unchanged edits don't upload the photo again.",
+    "Optional: show an error toast in entry.tsx when getExpense fails, instead of silently showing an empty form.",
+    "Optional: list items now carry has_receipt; consider showing a small receipt icon on Ledger rows.",
+    "Optional (existing issue): add profile_id ownership checks to PUT/DELETE /api/expenses/{id}."
+  ],
+  "critical_code_review_comments": [
+    "list_expenses aggregation ($addFields has_receipt via $strLenBytes, then $project receipt_image:0) is correct and also handles receipt_image being null.",
+    "The Drive backup (server.py ~line 655) reads expenses straight from the DB with images, so this change does not affect it.",
+    "The reports endpoint already projects out receipt_image."
+  ],
+  "updated_files": ["/app/backend/tests/test_receipt_loading.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Test expenses (merchants prefixed TEST_) were created under fresh, isolated demo accounts (auto-purged) and TEST_ profiles. All of them were deleted by id after the tests, except one in the first demo session, which expires with the demo account.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0. Demo login (login-demo) creates a fresh demo_xxx profile; read the pid from JSON.parse(JSON.parse(localStorage['gigtax.user'])).user_id. Demo data has no receipts, so create one with a canvas JPEG through fetch POST /api/expenses dated today, then open it via ledger-history-toggle and ledger-{id}. Server date is 2026-11-03."
+}

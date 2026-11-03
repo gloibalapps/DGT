@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, ScrollView, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -66,6 +66,7 @@ export default function Entry() {
   const [fromLabel, setFromLabel] = useState("");
   const [toLabel, setToLabel] = useState("");
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const loadedReceipt = useRef<string | null>(null);
 
   useEffect(() => {
     if (params.fromScan === "1" && receiptStash.image) {
@@ -90,9 +91,9 @@ export default function Entry() {
           const it = list.find((x) => x.id === params.id);
           if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setPlatform(it.platform || "Other"); setTreatment(it.tax_treatment); }
         } else if (kind === "expense") {
-          const list = await api.listExpenses();
-          const it = list.find((x) => x.id === params.id);
-          if (it) { setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setLiters(it.liters != null ? String(it.liters) : ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
+          const it = await api.getExpense(params.id as string).catch(() => null);
+          if (!it) show("Couldn't load this expense — please try again", "error");
+          if (it) { loadedReceipt.current = it.receipt_image || null; setAmount(String(it.amount)); setDateISO(it.date); setNote(it.note || ""); setCategory(it.category); setMerchant(it.merchant || ""); setLiters(it.liters != null ? String(it.liters) : ""); setTreatment(it.tax_treatment); setReceiptImage(it.receipt_image || null); }
         } else if (kind === "shift") {
           const list = await api.listShifts();
           const it = list.find((x) => x.id === params.id);
@@ -132,8 +133,9 @@ export default function Entry() {
           const l = parseFloat(liters);
           payload.liters = isNaN(l) ? null : l;
         }
-        if (receiptImage) payload.receipt_image = receiptImage;
-        else if (editing) payload.receipt_image = null;  // allow removing a scanned photo
+        // Only send the photo when it was added, replaced or removed — an
+        // unchanged receipt is kept by the server, so edits stay quick.
+        if (!editing || receiptImage !== loadedReceipt.current) payload.receipt_image = receiptImage;
         if ((category === "fuel" || category === "vehicle") && activeVehicleId && !editing) payload.vehicle_id = activeVehicleId;
         if (editing) await api.updateExpense(params.id!, payload); else await api.addExpense(payload);
       } else if (kind === "shift") {

@@ -184,6 +184,7 @@ export interface ExpenseT {
   merchant?: string | null; vehicle_id?: string | null;
   tax_treatment: string; note?: string | null;
   receipt_image?: string | null;
+  has_receipt?: boolean;
 }
 export interface ShiftT {
   id: string; profile_id: string; date: string; hours: number;
@@ -265,6 +266,10 @@ export const api = {
   async listExpenses(): Promise<ExpenseT[]> {
     const pid = await getProfileId();
     return req(`/expenses?profile_id=${pid}`);
+  },
+  async getExpense(id: string): Promise<ExpenseT> {
+    const pid = await getProfileId();
+    return req(`/expenses/${id}?profile_id=${pid}`);
   },
   async addExpense(e: Partial<ExpenseT>) {
     const pid = await getProfileId();
