@@ -81,9 +81,12 @@ export default function Money_() {
 
   // Backup reminder (same rule as Profile): Drive connected, last backup > 3 days.
   const [backupNudge, setBackupNudge] = useState<{ stale: boolean; days: number | null }>({ stale: false, days: null });
+  const ueOn = !!(profile as any)?.ue_guarantee_enabled;
+  const [ueMismatch, setUeMismatch] = useState<{ date: string; jobs_total: number; income_logged: number }[]>([]);
   useFocusEffect(useCallback(() => {
     api.backupStatus().then((st: BackupStatus) => setBackupNudge(backupStaleness(st))).catch(() => {});
-  }, []));
+    if (ueOn) api.ueMismatches().then(setUeMismatch).catch(() => {}); else setUeMismatch([]);
+  }, [ueOn]));
   const load = useCallback(async (p: Period) => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
@@ -176,6 +179,15 @@ export default function Money_() {
         </ListCard>
       )}
 
+      {ueMismatch.length > 0 && (
+        <ListCard>
+          <ListRow testID="home-ue-mismatch" icon="warning-outline" iconColor={colors.warm}
+            label={`Uber Eats total doesn't match your jobs on ${ueMismatch.length} day${ueMismatch.length > 1 ? "s" : ""}`}
+            sub={ueMismatch.slice(0, 2).map((m) => `${m.date.slice(8, 10)}/${m.date.slice(5, 7)}: logged ${fmtMoney(m.income_logged, symbol)} vs jobs ${fmtMoney(m.jobs_total, symbol)}`).join(" · ")}
+            onPress={() => router.push("/guarantee" as any)} />
+        </ListCard>
+      )}
+
       {backupNudge.stale && (
         <ListCard>
           <ListRow testID="home-backup-nudge" icon="warning-outline" iconColor={colors.warm}
@@ -218,6 +230,10 @@ export default function Money_() {
           onPress={() => router.push({ pathname: "/entry" as any, params: { type: "shift" } })} />
         <ListRow testID="money-insights" icon="analytics-outline" label="Driving insights"
           sub="Best & worst days, platforms, times & trend" onPress={() => router.push("/insights" as any)} />
+        {ueOn ? (
+          <ListRow testID="money-ue-jobs" icon="fast-food-outline" label="Uber Eats jobs"
+            sub="Log each job for the engaged-time guarantee" onPress={() => router.push("/ue-jobs" as any)} />
+        ) : null}
       </ListCard>
 
       {/* Performance — one row, expands inline */}

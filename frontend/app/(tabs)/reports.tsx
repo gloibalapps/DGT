@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, ScrollView, Pressable, Modal } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useStore } from "@/src/store";
 
 import { useTheme } from "@/src/theme";
 import { api, IncomeT, ExpenseT } from "@/src/api";
@@ -23,6 +24,8 @@ const CAT_LABEL: Record<string, string> = Object.fromEntries(CATEGORIES.map((c) 
 
 export default function Reports() {
   const { colors } = useTheme();
+  const { profile } = useStore();
+  const router = useRouter();
   const { show } = useToast();
   const [rangeKey, setRangeKey] = useState<RangeKey>("fy_to_date");
   const [customStart, setCustomStart] = useState("");
@@ -108,6 +111,12 @@ export default function Reports() {
 
           {tab === "overview" ? (
             <>
+              {(profile as any)?.ue_guarantee_enabled ? (
+                <ListCard>
+                  <ListRow testID="reports-ue-guarantee" icon="fast-food-outline" label="Uber Eats Guarantee"
+                    sub="Engaged-time cycle, top-up owed & export" onPress={() => router.push("/guarantee" as any)} />
+                </ListCard>
+              ) : null}
               <HeroCard testID="hero-net-profit" label="Net profit (est.)" value={data.tax.taxable_profit} symbol={sym}
                 valueColor={signColor(data.tax.taxable_profit)}>
                 <AppText variant="caption" color={colors.dim} style={{ fontVariant: ["tabular-nums"] }}>

@@ -301,6 +301,22 @@ export default function Settings() {
         })}
       </ListCard>
 
+      {/* Uber Eats guarantee */}
+      <ListCard label="Uber Eats guarantee">
+        <ListRow label="Track the engaged-time guarantee" sub="Log each Uber Eats job to check if Uber owes you a top-up."
+          right={<Toggle testID="ue-toggle" value={!!(profile as any).ue_guarantee_enabled}
+            onChange={() => updateProfile({ ue_guarantee_enabled: !(profile as any).ue_guarantee_enabled } as any)} />} />
+        {(profile as any).ue_guarantee_enabled ? (
+          <View style={{ paddingVertical: 12 }}>
+            <Field label="Guarantee vehicle" hint="Car A$32.00 · Motorbike A$31.50 · Bicycle A$31.30 per engaged hour.">
+              <Select testID="ue-vehicle" title="Guarantee vehicle" value={(profile as any).ue_vehicle_type || "car"}
+                options={[{ key: "car", label: "Car" }, { key: "motorbike", label: "Motorbike" }, { key: "bicycle", label: "Bicycle" }]}
+                onChange={(k) => updateProfile({ ue_vehicle_type: k } as any)} />
+            </Field>
+          </View>
+        ) : null}
+      </ListCard>
+
       {/* Tracking */}
       <ListCard label="Tracking">
         <ListRow label="Detect drives automatically" sub="Logs each drive in the background; tag it Business or Private later."

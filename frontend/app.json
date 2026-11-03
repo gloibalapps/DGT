@@ -18,7 +18,9 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Track drives automatically in the background",
         "UIBackgroundModes": [
           "location"
-        ]
+        ],
+        "NSMicrophoneUsageDescription": "Speak your Uber Eats jobs instead of typing",
+        "NSSpeechRecognitionUsageDescription": "Turn your spoken jobs into entries"
       },
       "usesAppleSignIn": true
     },
@@ -36,7 +38,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
-        "READ_MEDIA_IMAGES"
+        "READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -77,7 +80,17 @@
           "cameraPermission": "Scan receipts to log deductible expenses"
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Speak your Uber Eats jobs instead of typing",
+          "speechRecognitionPermission": "Turn your spoken jobs into entries",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

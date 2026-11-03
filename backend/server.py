@@ -212,7 +212,7 @@ async def delete_account(profile_id: str = Query(...), authorization: Optional[s
     for name, coll in (
         ("profiles", db.profiles), ("vehicles", db.vehicles), ("trips", db.trips),
         ("income", db.income), ("expenses", db.expenses), ("shifts", db.shifts),
-        ("drive_tokens", db.drive_tokens),
+        ("drive_tokens", db.drive_tokens), ("ue_jobs", db.ue_jobs),
     ):
         res = await coll.delete_many({"profile_id": profile_id})
         deleted[name] = res.deleted_count
@@ -329,7 +329,7 @@ async def auth_demo():
     cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     stale = [u["user_id"] async for u in db.users.find({"is_demo": True, "created_at": {"$lt": cutoff}}, {"user_id": 1})]
     if stale:
-        for coll in ("profiles", "income", "expenses", "trips", "shifts", "vehicles", "drive_tokens"):
+        for coll in ("profiles", "income", "expenses", "trips", "shifts", "vehicles", "drive_tokens", "ue_jobs"):
             await db[coll].delete_many({"profile_id": {"$in": stale}})
         await db.user_sessions.delete_many({"user_id": {"$in": stale}})
         await db.users.delete_many({"user_id": {"$in": stale}})
@@ -654,11 +654,14 @@ async def backup_profile(profile_id: str) -> dict:
     expenses = [clean(x) for x in await db.expenses.find({"profile_id": profile_id}).to_list(10000)]
     trips = [clean(x) for x in await db.trips.find({"profile_id": profile_id}).to_list(10000)]
     vehicles = [clean(x) for x in await db.vehicles.find({"profile_id": profile_id}).to_list(10000)]
+    shifts = [clean(x) for x in await db.shifts.find({"profile_id": profile_id}).to_list(10000)]
+    ue_jobs = [clean(x) for x in await db.ue_jobs.find({"profile_id": profile_id}).to_list(20000)]
     # Full-fidelity JSON (source of truth for restore — keeps IDs, tax_treatment,
     # litres, gst, receipt images, etc. that the human-readable CSV drops).
     backup_json = json.dumps({
-        "version": 1, "exported_at": now_iso(),
+        "version": 2, "exported_at": now_iso(),
         "income": income, "expenses": expenses, "trips": trips, "vehicles": vehicles,
+        "shifts": shifts, "ue_jobs": ue_jobs,
     }).encode()
     json_id = await _drive_find(token, root, "gigtax-data.json")
     await _drive_upload(token, backup_json, "gigtax-data.json", "application/json", root, json_id)
@@ -781,7 +784,7 @@ async def restore_profile(profile_id: str) -> dict:
     except Exception:
         raise HTTPException(422, "Backup file is unreadable")
 
-    counts = {"income": 0, "expenses": 0, "trips": 0, "vehicles": 0}
+    counts = {"income": 0, "expenses": 0, "trips": 0, "vehicles": 0, "shifts": 0, "ue_jobs": 0}
 
     async def _restore(coll, items, key):
         n = 0
@@ -799,6 +802,8 @@ async def restore_profile(profile_id: str) -> dict:
     await _restore(db.income, payload.get("income"), "income")
     await _restore(db.expenses, payload.get("expenses"), "expenses")
     await _restore(db.trips, payload.get("trips"), "trips")
+    await _restore(db.shifts, payload.get("shifts"), "shifts")
+    await _restore(db.ue_jobs, payload.get("ue_jobs"), "ue_jobs")
     return {"restored": counts, "exported_at": payload.get("exported_at"),
             "total": sum(counts.values())}
 
@@ -1559,6 +1564,8 @@ async def root():
 
 
 app.include_router(api_router)
+import ue_guarantee  # noqa: E402
+app.include_router(ue_guarantee.build_router(db))
 
 app.add_middleware(
     CORSMiddleware,

@@ -56,6 +56,8 @@ function SubGate() {
           <Stack.Screen name="weekly-goal" options={{ presentation: "modal" }} />
           <Stack.Screen name="tax-saved" options={{ presentation: "modal" }} />
           <Stack.Screen name="insights" />
+          <Stack.Screen name="ue-jobs" />
+          <Stack.Screen name="guarantee" />
           <Stack.Screen name="money-detail" />
           <Stack.Screen name="logbook" />
         </Stack>

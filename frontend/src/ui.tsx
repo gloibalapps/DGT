@@ -503,7 +503,9 @@ export function DateField({ value, onChange, placeholder = "Select date", testID
                       <SecondaryButton testID="date-picker-clear" label="Clear" tone="danger" style={{ flex: 1 }}
                         onPress={() => { onChange(""); setOpen(false); }} />
                     ) : null}
-                    <SecondaryButton testID="date-picker-close" label="Close" style={{ flex: 1 }} onPress={() => setOpen(false)} />
+                    <SecondaryButton testID="date-picker-today" label="Today" style={{ flex: 1 }}
+                      onPress={() => { onChange(todayISO); setOpen(false); }} />
+                    <SecondaryButton testID="date-picker-close" label="Cancel" style={{ flex: 1 }} onPress={() => setOpen(false)} />
                   </View>
                 </>
               )}

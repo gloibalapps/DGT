@@ -129,3 +129,8 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 
 ## Update — Money backup nudge
 - Money screen shows the same amber backup reminder (shared backupStaleness() in src/backup.ts) when Drive is connected and last backup >3 days; tapping opens Profile.
+
+## Update — Uber Eats Engaged-Time Guarantee module
+- Backend: backend/ue_guarantee.py (router /api/ue): ue_jobs collection {id, profile_id, date, start_time "12:03 PM", type DELIVERY|Package|Promotion, duration_sec, amount, km?}. Batch POST with duplicate rejection (same date+start, amount within 2c; later copy flagged), PUT (409 dup), DELETE, GET /guarantee (21-day cycles anchored Mon 19/10/2026, 3 weeks, rates car 32/motorbike 31.50/bicycle 31.30, promos count as earnings not time, top-up), /mismatches (daily jobs+promos vs logged 'Uber Eats' income), /export (xlsx Summary + Job Details incl. overlap column). Included in Drive backup/restore (+shifts), account delete, demo purge.
+- Profile: ue_guarantee_enabled toggle + ue_vehicle_type. Entry: Money quick action "Uber Eats jobs" (/ue-jobs); results: Reports Overview row → /guarantee (cycle dropdown, status, totals, week cards, week view ‹ ›, Newest/Oldest, export). Money shows mismatch warning.
+- Voice: expo-speech-recognition (en-AU, continuous, 60s silence stop) — native build only; parser in src/ueParse.ts (tested with sample phrases). GPS km and logged hours untouched; tax income still the daily total the driver logs. No confirm ticks / PDF / camera (per user).

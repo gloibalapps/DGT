@@ -1,3 +1,4 @@
+import type { UEJob } from "@/src/ueParse";
 import { storage } from "@/src/utils/storage";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -346,6 +347,33 @@ export const api = {
   async exportMileageUrl(refDate: string) {
     const pid = await getProfileId();
     return `${BASE}/api/export-mileage?profile_id=${pid}&ref_date=${refDate}`;
+  },
+  // ---- Uber Eats guarantee
+  async ueJobs(start?: string, end?: string): Promise<UEJob[]> {
+    const pid = await getProfileId();
+    return req(`/ue/jobs?profile_id=${pid}${start && end ? `&start=${start}&end=${end}` : ""}`);
+  },
+  async ueAddJobs(jobs: UEJob[]): Promise<{ saved: UEJob[]; duplicates: number[] }> {
+    const profile_id = await getProfileId();
+    return req(`/ue/jobs`, { method: "POST", body: JSON.stringify({ profile_id, jobs }) }, 0);
+  },
+  async ueUpdateJob(id: string, j: Partial<UEJob>): Promise<UEJob> {
+    return req(`/ue/jobs/${id}`, { method: "PUT", body: JSON.stringify(j) }, 0);
+  },
+  async ueDeleteJob(id: string) {
+    return req(`/ue/jobs/${id}`, { method: "DELETE" }, 0);
+  },
+  async ueGuarantee(cycleStart?: string): Promise<any> {
+    const pid = await getProfileId();
+    return req(`/ue/guarantee?profile_id=${pid}${cycleStart ? `&cycle_start=${cycleStart}` : ""}`);
+  },
+  async ueMismatches(): Promise<{ date: string; jobs_total: number; income_logged: number; difference: number }[]> {
+    const pid = await getProfileId();
+    return req(`/ue/mismatches?profile_id=${pid}`);
+  },
+  async ueExportUrl(cycleStart: string) {
+    const pid = await getProfileId();
+    return `${BASE}/api/ue/export?profile_id=${pid}&cycle_start=${cycleStart}`;
   },
   async ask(question: string, country: string, history: { role: string; text: string }[] = []) {
     return req(`/ask`, { method: "POST", body: JSON.stringify({ question, country, history }) }, 0, 45000);

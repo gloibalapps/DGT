@@ -1,0 +1,52 @@
+{
+  "summary": "Tested the Uber Eats Engaged-Time Guarantee module on the backend (13 pytest cases in a new file, plus curl checks of the xlsx) and on the frontend (Playwright at 390x844 using the seeded ui_tester session). Backend: 12/13 pass. Batch save, duplicates (within the batch and vs saved jobs, 2c tolerance), 422 validation, PUT 409/404, delete, guarantee maths, car/motorbike/bicycle rates, mismatches (ignores other platforms) and the xlsx export (Summary + Job Details with an overlap column) all work. One failure: an invalid job type (or other bad field types) returns 500 instead of 422. Frontend: the Profile toggle hides and shows money-ue-jobs and reports-ue-guarantee, and the vehicle dropdown works. On /ue-jobs, draft rows, the live duration preview (all 15 formats behaved as the spec says), the amber missing-fields message, the promo row (no start/duration/km), save, the live DUPLICATE badge plus a 'not saved' dialog, editing a saved row with 'Save changes', a 409 edit showing the DUPLICATE badge, delete, and the calendar Today/Cancel all work. On /guarantee, the 'Guarantee met' (green) and 'Uber owes you' (red) states, mismatch rows, cycle totals, weeks, week view with prev/next limits, the promotions note, Newest/Oldest tabs, cycle switching and export (opens a popup; the endpoint returns a valid xlsx) all work. home-ue-mismatch shows on Money. On web, Speak a Job opens the listening panel; tapping Done with no speech shows 'Didn't catch that'. Regression: all tabs load with no page errors; test_gigtax_api.py and test_money.py pass 20/20. No deprecated expo packages found (expo-speech-recognition 58.0.1 is used for voice).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/ue/jobs, PUT /api/ue/jobs/{id}", "issue": "Pydantic ValidationError from UEJob(**raw) is not caught, so type='Ride' (or duration_sec='abc') returns 500 Internal Server Error instead of 422. Reference: /app/backend/ue_guarantee.py:152,170"},
+      {"endpoint": "POST /api/ue/jobs (Promotion)", "issue": "Promotions have no start time, so _is_dup marks any two promos on the same day with amounts within 2c as duplicates. A driver can't log two A$5 boosts on one day: the second is silently rejected (confirmed in the UI). Reference: /app/backend/ue_guarantee.py:68-70 and /app/frontend/src/ueParse.ts:95"},
+      {"endpoint": "DELETE /api/ue/jobs/{id}", "issue": "Returns 200 {ok:true} even when the id doesn't exist (no 404)."},
+      {"endpoint": "GET /api/ue/export, /api/ue/*", "issue": "No auth: the endpoints take only profile_id, so anyone who knows a profile_id can read or export or delete that profile's jobs. This matches the rest of the app's pattern but is worth hardening."},
+      {"endpoint": "POST/PUT /api/ue/jobs", "issue": "A DELIVERY/Package job can be saved with amount=null, and nothing rejects negative amounts or negative duration/km."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "UEJob draft rows", "issue": "Adding two blank job rows (or two promo rows before amounts are entered) instantly marks the second as a red DUPLICATE, because the empty date+time+amount match. The duplicate check should skip rows that still have missing fields.", "testID": "ue-draft-1", "priority": "MEDIUM"},
+      {"component": "Promotion duplicates", "issue": "A new promo of A$5 on a day that already has a saved A$5 promo is flagged DUPLICATE and won't save (see backend issue).", "testID": "ue-draft-0", "priority": "MEDIUM"},
+      {"component": "Duration parser", "issue": "'1hr5min' / '1h5m' with no spaces shows 'Not recognised'. The \\b after the unit fails when a digit follows directly. Minor; the spec only lists '1h 5m'.", "testID": "ue-draft-0-dur-preview", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "guarantee", "issues": ["Header title 'Uber Eats Guarantee' is cut off to 'Uber Eats Guarant…' at 390px width", "Week cards and the Excel say '1 jobs' (needs singular/plural handling)", "Cycle dropdown also lists cycles before the 19/10/2026 anchor when old jobs exist (e.g. 28/09/2026–18/10/2026, showing a top-up owed) — check whether pre-anchor cycles should be allowed"]},
+      {"screen": "ue-jobs", "issues": ["The Duration input is too narrow: '38 min 36 sec' is clipped to '38 min 36 sec' with the end cut off at 390px", "The success toast at the bottom covers the 'Save changes' link of the last saved row, so a tap there right after saving hit the toast and did nothing"]},
+      {"screen": "home (Money)", "issues": ["The mismatch warning uses '$' while the guarantee screen uses 'A$' (minor inconsistency)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_ue_guarantee.py", "/app/test_reports/pytest/pytest_ue_guarantee.xml"],
+  "action_items": [
+    "Wrap the UEJob(...) construction in POST/PUT /api/ue/jobs in try/except pydantic.ValidationError, raising HTTPException(422), so a bad type or duration returns 422 instead of 500",
+    "Decide how promotion duplicates should work. Suggested: skip the duplicate check for type=='Promotion', or only flag an exact same-amount promo on the same day with a confirm option, so multiple same-value boosts per day can be logged (backend _is_dup and frontend isDup)",
+    "Frontend draftView: only run the duplicate check on rows with missingFields(...).length === 0, so empty rows aren't flagged DUPLICATE",
+    "useSpeech: on fatal errors (not-allowed, service-not-allowed, audio-capture, network) set wantRef.current=false, otherwise the 'end' handler keeps restarting recognition in a loop until the 60s timer fires",
+    "Minor: pluralise '1 jobs', widen the duration field or shorten the placeholder, shorten the guarantee title, return 404 from DELETE for a missing id"
+  ],
+  "critical_code_review_comments": [
+    "ue_guarantee.py:152/170 — model construction is outside validation handling, so bad input gives 500",
+    "ue_guarantee.py:149 — loads ALL of the profile's jobs (up to 20000) on every batch POST for the duplicate check; could be limited to the batch's dates",
+    "ue_guarantee.py:199-204 — the cycles list includes pre-anchor cycles; fine if intended",
+    "useSpeech.ts:31-40 — the error handler doesn't stop the auto-restart loop on fatal errors",
+    "UEJobRow.tsx:70 — onBlur uses the `d` captured at render time to normalise time (works in practice but fragile)",
+    "guarantee.tsx:91 — onChange calls setCycle(k) AND load(k); useFocusEffect depends on cycle, so the data loads twice",
+    "Export 'Driver name'/'Contact' cells are left blank; they could be prefilled from the profile name/email. It also has a decimal 'Duration (hrs)' column, despite the 'never decimals' rule (probably fine for Uber support)",
+    "The voice parser (parseVoiceJob) was checked offline with esbuild on 6 phrases and all parsed correctly (dates, 'oh three', half past, $ and dollars/cents, promo, package)"
+  ],
+  "updated_files": ["/app/backend/tests/test_ue_guarantee.py (new)"],
+  "success_rate": {"backend": "92% (12/13)", "frontend": "~95% (all requested flows work; 2 UX bugs around duplicate false positives)"},
+  "seed_data_creation": "Created temporary ue_jobs and 1 Uber Eats income for ui_tester (2026-11-03, 2026-10-27, 2026-10-10). All deleted at the end. ui_tester still has ue_guarantee_enabled=True, ue_vehicle_type=car and its original 2 income rows. The pytest file uses its own TEST_ue_* profile and cleans up after itself.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_ue_guarantee.py with `-n 0`: it is order-dependent within a module-scoped profile, and xdist splits it across workers. The public URL env var is EXPO_PUBLIC_BACKEND_URL (loaded by conftest). Server date is 2026-11-03, so the current cycle is 19/10–08/11/2026. Headless Chromium exposes webkitSpeechRecognition, so on web Speak a Job opens the listening panel rather than showing 'not supported'.",
+  "rca_of_issue": "Duplicate false positives: isDup/_is_dup compares date + start_time + amount (null → 0). Empty drafts and all promotions have start_time '', so they collide. 500 on a bad type: UEJob(**raw) raises pydantic ValidationError inside the route body, and FastAPI only turns request-model validation into 422, not errors raised in handler code."
+}
