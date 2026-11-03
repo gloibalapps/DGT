@@ -5,14 +5,15 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/src/theme";
 import { api, todayISO } from "@/src/api";
 import { storage } from "@/src/utils/storage";
-import { AppText, Card, DateField, Field, IconButton, ListCard, ListRow, PrimaryButton, Screen, SecondaryButton, useToast } from "@/src/ui";
+import { AppText, Card, DateField, Field, IconButton, ListCard, ListRow, PrimaryButton, Screen, SecondaryButton, Select, useToast } from "@/src/ui";
 import { UEJobRow, Draft, newKey, toJob, fromJob } from "@/src/UEJobRow";
-import { UEJob, isDup, missingFields, parseVoiceJob, auDate } from "@/src/ueParse";
+import { UEJob, isDup, missingFields, parseVoiceJob, auDate, FOOD_PLATFORMS } from "@/src/ueParse";
 import { useSpeech } from "@/src/useSpeech";
 
 const NEW_DATE_KEY = "gigtax.ue.newdate";
-const blank = (date: string, type: Draft["type"] = "DELIVERY"): Draft =>
-  ({ key: newKey(), date, time: "", type, dur: "", amount: "", km: "" });
+const NEW_PLAT_KEY = "gigtax.ue.newplatform";
+const blank = (date: string, platform: string, type: Draft["type"] = "DELIVERY"): Draft =>
+  ({ key: newKey(), platform, date, time: "", type, dur: "", amount: "", km: "" });
 
 const notify = (title: string, msg: string) => (Platform.OS === "web" ? window.alert(`${title}\n\n${msg}`) : Alert.alert(title, msg));
 
@@ -33,6 +34,9 @@ export default function UEJobs() {
     storage.getItem<string>(NEW_DATE_KEY, "").then((v) => { if (v) setNewDate(v); });
   }, [params.date]);
   const changeNewDate = (v: string) => { if (!v) return; setNewDate(v); storage.setItem(NEW_DATE_KEY, v); };
+  const [newPlat, setNewPlat] = useState("Uber Eats");
+  useEffect(() => { storage.getItem<string>(NEW_PLAT_KEY, "").then((v) => { if (v) setNewPlat(v); }); }, []);
+  const changeNewPlat = (v: string) => { setNewPlat(v); storage.setItem(NEW_PLAT_KEY, v); };
 
   const load = useCallback(async () => {
     try { const j = await api.ueJobs(); setAll(j); } catch { show("Couldn't load jobs", "error"); }
@@ -47,7 +51,7 @@ export default function UEJobs() {
     return { ...d, dup };
   }), [drafts, all]);
 
-  const addDraft = (type: Draft["type"]) => setDrafts((ds) => [...ds, blank(newDate, type)]);
+  const addDraft = (type: Draft["type"]) => setDrafts((ds) => [...ds, blank(newDate, newPlat, type)]);
 
   const finishVoice = () => {
     speech.stop();
@@ -60,7 +64,7 @@ export default function UEJobs() {
       const { job, spokenDate } = parseVoiceJob(line, fallback);
       if (spokenDate) changeNewDate(job.date);
       fallback = job.date;
-      added.push({ ...fromJob(job), key: newKey(), id: undefined });
+      added.push({ ...fromJob({ ...job, platform: job.platform || newPlat }), key: newKey(), id: undefined });
     }
     setDrafts((ds) => [...ds, ...added]);
     show(`${added.length} job${added.length > 1 ? "s" : ""} added — check and save`, "success");
@@ -102,12 +106,16 @@ export default function UEJobs() {
     <Screen scroll header={
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
         <IconButton testID="ue-back" icon="chevron-back" onPress={() => router.back()} />
-        <AppText variant="title" style={{ flex: 1 }}>Uber Eats jobs</AppText>
+        <AppText variant="title" style={{ flex: 1 }}>Delivery jobs</AppText>
         <IconButton testID="ue-open-guarantee" icon="stats-chart-outline" onPress={() => router.push("/guarantee" as any)} />
       </View>
     }>
       <Field label="Date for new jobs" hint="Stays set until you change it.">
         <DateField testID="ue-new-date" value={newDate} onChange={changeNewDate} maxToday />
+      </Field>
+      <Field label="Food app for new jobs" hint="Only Uber Eats jobs count toward the Uber Eats guarantee.">
+        <Select testID="ue-new-platform" title="Food app" value={newPlat} onChange={changeNewPlat}
+          options={FOOD_PLATFORMS.map((p) => ({ key: p, label: p }))} />
       </Field>
 
       <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>

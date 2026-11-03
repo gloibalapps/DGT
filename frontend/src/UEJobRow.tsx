@@ -4,11 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "@/src/theme";
 import { AppText, DateField, Input, Select } from "@/src/ui";
-import { UEJob, UEType, parseDuration, durationPreview, normTime, missingFields, durToText } from "@/src/ueParse";
+import { UEJob, UEType, FOOD_PLATFORMS, parseDuration, durationPreview, normTime, missingFields, durToText } from "@/src/ueParse";
 
 /** Editable text form of a job (what the boxes show). */
 export interface Draft {
-  key: string; id?: string; date: string; time: string; type: UEType; dur: string; amount: string; km: string;
+  key: string; id?: string; platform: string; date: string; time: string; type: UEType; dur: string; amount: string; km: string;
   dup?: boolean; dirty?: boolean;
 }
 
@@ -16,7 +16,7 @@ let _k = 0;
 export const newKey = () => `d${Date.now()}${_k++}`;
 
 export const toJob = (d: Draft): UEJob => ({
-  id: d.id, date: d.date, type: d.type,
+  id: d.id, platform: d.platform, date: d.date, type: d.type,
   start_time: d.type === "Promotion" ? "" : normTime(d.time),
   duration_sec: d.type === "Promotion" ? 0 : parseDuration(d.dur) || 0,
   amount: d.amount.trim() === "" || isNaN(+d.amount) ? null : Math.round(+d.amount * 100) / 100,
@@ -24,7 +24,7 @@ export const toJob = (d: Draft): UEJob => ({
 });
 
 export const fromJob = (j: UEJob): Draft => ({
-  key: j.id || newKey(), id: j.id, date: j.date, time: j.start_time || "", type: j.type,
+  key: j.id || newKey(), id: j.id, platform: j.platform || "Uber Eats", date: j.date, time: j.start_time || "", type: j.type,
   dur: durToText(j.duration_sec), amount: j.amount == null ? "" : String(j.amount), km: j.km == null ? "" : String(j.km),
 });
 
@@ -45,6 +45,10 @@ export function UEJobRow({ d, onChange, onDelete, onSave, testID }:
     <View testID={testID} style={{ backgroundColor: colors.surface, borderRadius: 20, borderWidth: d.dup || miss.length ? 2 : 1,
       borderColor: border, padding: 16, marginBottom: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 8 }}>
+        <View style={{ flex: 1.2 }}>
+          <Select testID={`${testID}-platform`} value={d.platform} onChange={(k) => set({ platform: k })}
+            options={FOOD_PLATFORMS.map((p) => ({ key: p, label: p }))} title="Food app" />
+        </View>
         <View style={{ flex: 1 }}>
           <Select testID={`${testID}-type`} value={d.type} onChange={(k) => set({ type: k as UEType })} options={TYPES} title="Type" />
         </View>

@@ -367,7 +367,7 @@ export const api = {
     const pid = await getProfileId();
     return req(`/ue/guarantee?profile_id=${pid}${cycleStart ? `&cycle_start=${cycleStart}` : ""}`);
   },
-  async ueMismatches(): Promise<{ date: string; jobs_total: number; income_logged: number; difference: number }[]> {
+  async ueMismatches(): Promise<{ date: string; platform: string; jobs_total: number; income_logged: number; difference: number }[]> {
     const pid = await getProfileId();
     return req(`/ue/mismatches?profile_id=${pid}`);
   },

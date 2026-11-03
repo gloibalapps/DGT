@@ -99,11 +99,11 @@ export default function Guarantee() {
       </HeroCard>
 
       {data.mismatches.length ? (
-        <ListCard label="Check your Uber Eats income">
+        <ListCard label="Check your food app income">
           {data.mismatches.map((m: any) => (
-            <ListRow key={m.date} testID={`g-mismatch-${m.date}`} icon="warning-outline" iconColor={colors.warm}
-              label={`${auDate(m.date)}: logged ${A(m.income_logged)}, jobs ${A(m.jobs_total)}`}
-              sub="Your daily Uber Eats total doesn't match the jobs entered" />
+            <ListRow key={`${m.date}-${m.platform}`} testID={`g-mismatch-${m.date}`} icon="warning-outline" iconColor={colors.warm}
+              label={`${auDate(m.date)} ${m.platform}: logged ${A(m.income_logged)}, jobs ${A(m.jobs_total)}`}
+              sub="Your daily income total doesn't match the jobs entered" />
           ))}
         </ListCard>
       ) : null}

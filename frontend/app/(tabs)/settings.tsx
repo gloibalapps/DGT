@@ -303,8 +303,8 @@ export default function Settings() {
       </ListCard>
 
       {/* Uber Eats guarantee */}
-      <ListCard label="Uber Eats guarantee">
-        <ListRow label="Track the engaged-time guarantee" sub="Log each Uber Eats job to check if Uber owes you a top-up."
+      <ListCard label="Delivery jobs & Uber Eats guarantee">
+        <ListRow label="Log food delivery jobs" sub="Enter each job (Uber Eats, DoorDash, Menulog…). Uber Eats jobs also check the engaged-time guarantee."
           right={<Toggle testID="ue-toggle" value={ueEnabled(profile)}
             onChange={() => updateProfile({ ue_guarantee_enabled: !ueEnabled(profile) } as any)} />} />
         {ueEnabled(profile) ? (

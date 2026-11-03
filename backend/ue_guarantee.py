@@ -32,6 +32,7 @@ class UEJob(BaseModel):
     duration_sec: int = 0          # engaged time, to the second (0 for promotions)
     amount: Optional[float] = None
     km: Optional[float] = None     # optional, not used in the guarantee maths
+    platform: str = UE_PLATFORM    # food app — only Uber Eats jobs count toward the guarantee
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -69,6 +70,7 @@ def _is_dup(a: dict, b: dict) -> bool:
     if a.get("type") == "Promotion" or b.get("type") == "Promotion":
         return False  # promos have no start time — two A$5 boosts on one day are both real
     return (a["date"] == b["date"] and (a.get("start_time") or "") == (b.get("start_time") or "")
+            and (a.get("platform") or UE_PLATFORM) == (b.get("platform") or UE_PLATFORM)
             and abs((a.get("amount") or 0) - (b.get("amount") or 0)) <= 0.02)
 
 
@@ -126,22 +128,25 @@ def build_router(db) -> APIRouter:
         return sorted(docs, key=lambda j: (j["date"], _start_minutes(j.get("start_time") or "") or 0))
 
     async def _mismatches(pid: str, start: date, end: date, jobs: List[dict]) -> List[dict]:
-        inc = await db.income.find({"profile_id": pid, "platform": UE_PLATFORM,
+        """Per day and food app: logged income total vs that app's jobs + promos."""
+        plats = sorted({j.get("platform") or UE_PLATFORM for j in jobs})
+        inc = await db.income.find({"profile_id": pid, "platform": {"$in": plats},
                                     "date": {"$gte": start.isoformat(), "$lt": end.isoformat()}},
-                                   {"_id": 0, "date": 1, "amount": 1}).to_list(5000)
+                                   {"_id": 0, "date": 1, "amount": 1, "platform": 1}).to_list(5000)
         logged: dict = {}
         for i in inc:
-            logged[i["date"][:10]] = round(logged.get(i["date"][:10], 0) + (i.get("amount") or 0), 2)
+            k = (i["date"][:10], i["platform"])
+            logged[k] = round(logged.get(k, 0) + (i.get("amount") or 0), 2)
         by_day: dict = {}
         for j in jobs:
-            by_day[j["date"]] = round(by_day.get(j["date"], 0) + (j.get("amount") or 0), 2)
+            k = (j["date"], j.get("platform") or UE_PLATFORM)
+            by_day[k] = round(by_day.get(k, 0) + (j.get("amount") or 0), 2)
         out = []
-        for d in sorted(set(by_day) | set(logged)):
-            if d not in by_day:
-                continue  # no jobs that day → nothing to compare
-            jt, lt = by_day[d], logged.get(d, 0.0)
+        for k in sorted(by_day):
+            jt, lt = by_day[k], logged.get(k, 0.0)
             if abs(jt - lt) > 0.05:
-                out.append({"date": d, "jobs_total": jt, "income_logged": lt, "difference": round(lt - jt, 2)})
+                out.append({"date": k[0], "platform": k[1], "jobs_total": jt, "income_logged": lt,
+                            "difference": round(lt - jt, 2)})
         return out
 
     @r.get("/jobs")
@@ -199,7 +204,8 @@ def build_router(db) -> APIRouter:
         today = date.today()
         cs = cycle_start_for(_pd(cycle_start)) if cycle_start else cycle_start_for(today)
         ce = cs + timedelta(days=21)
-        jobs = await _jobs(pid, cs, ce)
+        all_jobs = await _jobs(pid, cs, ce)
+        jobs = [j for j in all_jobs if (j.get("platform") or UE_PLATFORM) == UE_PLATFORM]  # guarantee = Uber Eats only
         weeks = []
         for w in range(3):
             ws = cs + timedelta(days=7 * w)
@@ -215,7 +221,7 @@ def build_router(db) -> APIRouter:
             c -= timedelta(days=21)
         return {"cycle_start": cs.isoformat(), "cycle_end": (ce - timedelta(days=1)).isoformat(),
                 "vehicle_type": vtype, "rate": rate, "weeks": weeks, "total": summarise(jobs, rate),
-                "jobs": jobs, "cycles": cycles, "mismatches": await _mismatches(pid, cs, ce, jobs)}
+                "jobs": jobs, "cycles": cycles, "mismatches": await _mismatches(pid, cs, ce, all_jobs)}
 
     @r.get("/guarantee")
     async def guarantee(profile_id: str = Query(...), cycle_start: Optional[str] = None):

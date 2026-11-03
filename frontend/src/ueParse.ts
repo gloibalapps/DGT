@@ -1,8 +1,10 @@
 // Uber Eats guarantee — pure parsing/formatting helpers (no React).
 
 export type UEType = "DELIVERY" | "Package" | "Promotion";
+export const FOOD_PLATFORMS = ["Uber Eats", "DoorDash", "Menulog", "HungryPanda"];
 export interface UEJob {
   id?: string;
+  platform?: string;     // food app (only Uber Eats counts toward the guarantee)
   date: string;          // YYYY-MM-DD
   start_time: string;    // "12:03 PM" ("" for promotions)
   type: UEType;
@@ -83,9 +85,9 @@ export function normTime(input: string): string {
 
 export const auDate = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "");
 
-/** Module is on if the driver switched it on — or, until they choose, if they drive for Uber Eats. */
+/** Module is on if the driver switched it on — or, until they choose, if they drive for a food app. */
 export const ueEnabled = (p: any): boolean =>
-  p?.ue_guarantee_enabled ?? (p?.platforms || []).includes("Uber Eats");
+  p?.ue_guarantee_enabled ?? (p?.platforms || []).some((x: string) => FOOD_PLATFORMS.includes(x));
 
 export function missingFields(j: UEJob): string[] {
   const miss: string[] = [];
@@ -98,6 +100,7 @@ export function missingFields(j: UEJob): string[] {
 
 export const isDup = (a: UEJob, b: UEJob) =>
   a.type !== "Promotion" && b.type !== "Promotion" && missingFields(a).length === 0 && missingFields(b).length === 0 &&
+  (a.platform || "Uber Eats") === (b.platform || "Uber Eats") &&
   a.date === b.date && (a.start_time || "") === (b.start_time || "") && Math.abs((a.amount || 0) - (b.amount || 0)) <= 0.02;
 
 // ------------------------------------------------------------------ voice
@@ -145,6 +148,13 @@ export function parseVoiceJob(raw: string, fallbackDate: string, now = new Date(
   let t = " " + wordsToDigits(raw).replace(/[,]/g, " ") + " ";
   // ignore spoken distances ("25 ks", "3.4 kilometres", "5 k")
   t = t.replace(/\d+(\.\d+)?\s*(ks|k|kms|km|kilometres|kilometers|kilometre|kilometer)\b/g, " ");
+
+  // ---- platform (optional)
+  let platform: string | undefined;
+  if (/\buber\s*eats\b/.test(t)) platform = "Uber Eats";
+  else if (/\bdoor\s*dash\b/.test(t)) platform = "DoorDash";
+  else if (/\bmenu\s*log\b/.test(t)) platform = "Menulog";
+  else if (/\bhungry\s*panda\b/.test(t)) platform = "HungryPanda";
 
   // ---- type
   let type: UEType = "DELIVERY";
@@ -203,7 +213,7 @@ export function parseVoiceJob(raw: string, fallbackDate: string, now = new Date(
     else if ((m = t.match(/\b(\d{1,2})\s*(?:o'?clock|am|pm|a\s*m|p\s*m)\b/))) start = ap(+m[1], 0, mer);
   }
   return {
-    job: { date, start_time: start, type, duration_sec: type === "Promotion" ? 0 : dur, amount, km: null },
+    job: { date, start_time: start, type, duration_sec: type === "Promotion" ? 0 : dur, amount, km: null, platform },
     spokenDate,
   };
 }
