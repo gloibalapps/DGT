@@ -126,3 +126,6 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 
 ## Update — Day odometer check (Mileage)
 - src/OdometerCheck.tsx: start/end odometer for today (saved per car+date on device) vs today's GPS trips for the active car → difference %. 'Correct future drives' sets vehicle.gps_calibration_pct = current × odo/GPS (clamped 50–150), only once per set of readings (prevents compounding). Existing trips untouched.
+
+## Update — Money backup nudge
+- Money screen shows the same amber backup reminder (shared backupStaleness() in src/backup.ts) when Drive is connected and last backup >3 days; tapping opens Profile.

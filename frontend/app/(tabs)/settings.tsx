@@ -20,7 +20,7 @@ import {
   Screen, ScreenHeader, Card, AppText, Spinner, Input, Field, Select, SegmentedTabs, ListCard, ListRow, Toggle,
   PrimaryButton, SecondaryButton, useToast,
 } from "@/src/ui";
-import { connectDrive, runBackupAndWait, backupErrorText, type BackupStatus } from "@/src/backup";
+import { connectDrive, runBackupAndWait, backupErrorText, backupStaleness, type BackupStatus } from "@/src/backup";
 import { isoToAU } from "@/src/date";
 
 export default function Settings() {
@@ -184,10 +184,8 @@ export default function Settings() {
     ? new Date(backup.last_backup_at).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
     : null;
   // Warn when the last Drive backup is over 3 days old (or never ran).
-  const backupAgeDays = backup?.last_backup_at
-    ? Math.floor((Date.now() - new Date(backup.last_backup_at).getTime()) / 86400000) : null;
-  const backupStale = !!backup?.connected && backup.backup_state !== "running" && !backupBusy
-    && (backupAgeDays == null || backupAgeDays > 3);
+  const { stale: staleRaw, days: backupAgeDays } = backupStaleness(backup);
+  const backupStale = staleRaw && !backupBusy;
 
   return (
     <Screen header={<ScreenHeader title="Profile" />} scroll>

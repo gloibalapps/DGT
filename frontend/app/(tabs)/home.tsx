@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
+import { backupStaleness, type BackupStatus } from "@/src/backup";
 import { storage } from "@/src/utils/storage";
 import { displayDateShort } from "@/src/date";
 import { CATEGORIES, TAX_TREATMENTS } from "@/src/config";
@@ -78,6 +79,11 @@ export default function Money_() {
 
   const country = profile?.country || "AU";
 
+  // Backup reminder (same rule as Profile): Drive connected, last backup > 3 days.
+  const [backupNudge, setBackupNudge] = useState<{ stale: boolean; days: number | null }>({ stale: false, days: null });
+  useFocusEffect(useCallback(() => {
+    api.backupStatus().then((st: BackupStatus) => setBackupNudge(backupStaleness(st))).catch(() => {});
+  }, []));
   const load = useCallback(async (p: Period) => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
@@ -167,6 +173,14 @@ export default function Money_() {
                 <Ionicons name="close" size={18} color={colors.dim} />
               </Pressable>
             } />
+        </ListCard>
+      )}
+
+      {backupNudge.stale && (
+        <ListCard>
+          <ListRow testID="home-backup-nudge" icon="warning-outline" iconColor={colors.warm}
+            label={backupNudge.days != null ? `Last backup was ${backupNudge.days} days ago` : "No Drive backup yet"}
+            sub="Tap to back up your receipts & records now" onPress={() => router.push("/(tabs)/settings" as any)} />
         </ListCard>
       )}
 

@@ -32,6 +32,14 @@ export async function runBackupAndWait(maxWaitMs = 5 * 60 * 1000): Promise<Backu
   throw new Error("Backup is still running — check back in a minute");
 }
 
+// Shared reminder rule: connected to Drive and the last backup is over 3 days
+// old (or never ran). Hidden while a backup is running.
+export function backupStaleness(st: BackupStatus | null | undefined): { stale: boolean; days: number | null } {
+  const days = st?.last_backup_at ? Math.floor((Date.now() - new Date(st.last_backup_at).getTime()) / 86400000) : null;
+  const stale = !!st?.connected && st.backup_state !== "running" && (days == null || days > 3);
+  return { stale, days };
+}
+
 export function backupErrorText(e: any): string {
   const m = String(e?.message || "");
   // api errors look like `503: {"detail":"..."}` — surface the detail
