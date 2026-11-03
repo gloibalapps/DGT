@@ -319,6 +319,69 @@ async def auth_apple(payload: dict = Body(...)):
     return {"session_token": await _new_session(user_id), "user_id": user_id}
 
 
+@api_router.post("/auth/demo")
+async def auth_demo():
+    """Guest demo (App Store reviewers / try-before-sign-in). Every call creates
+    a fresh, isolated demo account pre-filled with realistic sample data, so
+    visitors never see each other's data. Demo accounts expire after 24 h and
+    stale ones are purged here."""
+    from datetime import date as _date
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    stale = [u["user_id"] async for u in db.users.find({"is_demo": True, "created_at": {"$lt": cutoff}}, {"user_id": 1})]
+    if stale:
+        for coll in ("profiles", "income", "expenses", "trips", "shifts", "vehicles", "drive_tokens"):
+            await db[coll].delete_many({"profile_id": {"$in": stale}})
+        await db.user_sessions.delete_many({"user_id": {"$in": stale}})
+        await db.users.delete_many({"user_id": {"$in": stale}})
+
+    uid = f"demo_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({"user_id": uid, "email": f"{uid}@demo.gigtax.app", "name": "Demo Driver",
+                               "picture": None, "is_demo": True, "created_at": now_iso()})
+    today = _date.today()
+    d = lambda n: (today - timedelta(days=n)).isoformat()  # noqa: E731
+    veh = Vehicle(profile_id=uid, name="Demo car", registration="DEMO01", make_model="Toyota Camry Hybrid",
+                  year=2022, fuel_type="hybrid", ownership="own", business_use_start=d(60),
+                  opening_odometer=42000, opening_odometer_date=d(60), is_active=True)
+    await db.vehicles.insert_one(veh.model_dump())
+    await db.profiles.insert_one(Profile(
+        profile_id=uid, country="AU", region="NSW", driver_name="Demo Driver", work_type="both",
+        platforms=["Uber", "DiDi", "Uber Eats"], legal_name="Demo Driver", tax_id_on_file=True,
+        registration_status="registered", reporting_frequency="quarterly", theme="light", onboarded=True,
+    ).model_dump())
+    incomes, expenses, trips, shifts = [], [], [], []
+    plats = ["Uber", "DiDi", "Uber Eats"]
+    for n in range(0, 42):
+        if n % 7 in (2,):  # one day off a week
+            continue
+        p = plats[n % 3]
+        amt = round(140 + (n * 37) % 120 + (0.45 if n % 2 else 0.8), 2)
+        incomes.append(Income(profile_id=uid, date=d(n), amount=amt, platform=p).model_dump())
+        km = round(95 + (n * 13) % 80 + 0.4, 1)
+        start = datetime.combine(today - timedelta(days=n), datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=22)
+        trips.append(Trip(profile_id=uid, date=d(n), distance_km=km, type="business", vehicle_id=veh.id, source="gps",
+                          start_time=start.isoformat(), end_time=(start + timedelta(hours=7)).isoformat()).model_dump())
+        shifts.append(Shift(profile_id=uid, date=d(n), hours=8, active_hours=6, platform=p, vehicle_id=veh.id).model_dump())
+        if n % 3 == 0:
+            expenses.append(Expense(profile_id=uid, date=d(n), amount=round(62 + n % 20 + 0.35, 2), category="fuel",
+                                    merchant="Ampol", vehicle_id=veh.id, liters=34.2, gst=6.2).model_dump())
+        if n % 10 == 0:
+            trips.append(Trip(profile_id=uid, date=d(n), distance_km=18.0, type="personal", vehicle_id=veh.id).model_dump())
+    expenses += [
+        Expense(profile_id=uid, date=d(5), amount=49.0, category="phone", merchant="Telstra", gst=4.45).model_dump(),
+        Expense(profile_id=uid, date=d(12), amount=32.5, category="tolls", merchant="Linkt", gst=2.95).model_dump(),
+        Expense(profile_id=uid, date=d(20), amount=289.0, category="vehicle", merchant="Toyota Service", vehicle_id=veh.id, gst=26.27).model_dump(),
+    ]
+    await db.income.insert_many(incomes)
+    await db.expenses.insert_many(expenses)
+    await db.trips.insert_many(trips)
+    await db.shifts.insert_many(shifts)
+    token = uuid.uuid4().hex
+    await db.user_sessions.insert_one({"session_token": token, "user_id": uid, "is_demo": True,
+                                       "created_at": datetime.now(timezone.utc),
+                                       "expires_at": datetime.now(timezone.utc) + timedelta(hours=24)})
+    return {"session_token": token, "user_id": uid}
+
+
 @api_router.get("/auth/google/start")
 async def google_start(request: Request, app_redirect: str = Query(...),
                        backup: int = Query(0), profile_id: Optional[str] = Query(None),

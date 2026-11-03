@@ -12,7 +12,7 @@ const TOKEN_KEY = "gigtax.session_token";
 const USER_KEY = "gigtax.user";
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-export interface AuthUser { user_id: string; email: string; name?: string | null; picture?: string | null; }
+export interface AuthUser { user_id: string; email: string; name?: string | null; picture?: string | null; is_demo?: boolean; }
 
 interface AuthCtx {
   user: AuthUser | null;
@@ -20,12 +20,13 @@ interface AuthCtx {
   signingIn: boolean;
   signIn: () => Promise<void>;
   signInApple: () => Promise<void>;
+  signInDemo: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx>({
   user: null, loading: true, signingIn: false,
-  signIn: async () => {}, signInApple: async () => {}, signOut: async () => {},
+  signIn: async () => {}, signInApple: async () => {}, signInDemo: async () => {}, signOut: async () => {},
 });
 
 function parseToken(url: string): string | null {
@@ -73,8 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (!me) throw lastErr;
       await applySession(token, me.user);
-      // one-time: move this device's local data onto the account
-      try {
+      // one-time: move this device's local data onto the account (never into a
+      // throwaway demo account — that data would be deleted with it)
+      if (!me.user?.is_demo) try {
         const localPid = await getLocalProfileId();
         await api.authClaim(localPid);
       } catch { /* non-blocking */ }
@@ -242,6 +244,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [completeWithToken]);
 
+  // Guest demo: a fresh sample account (no Google/Apple needed) — used by
+  // App Store / Play reviewers and anyone who wants to look around first.
+  const signInDemo = useCallback(async () => {
+    setSigningIn(true);
+    try {
+      const r = await fetch(`${BACKEND}/api/auth/demo`, { method: "POST" });
+      if (!r.ok) throw new Error(`Demo failed (${r.status})`);
+      const j = await r.json();
+      await completeWithToken(j.session_token);
+    } finally {
+      setSigningIn(false);
+    }
+  }, [completeWithToken]);
+
   const signOut = useCallback(async () => {
     try { await api.authLogout(); } catch { /* noop */ }
     await storage.secureRemove(TOKEN_KEY);
@@ -254,7 +270,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, loading, signingIn, signIn, signInApple, signOut }}>
+    <Ctx.Provider value={{ user, loading, signingIn, signIn, signInApple, signInDemo, signOut }}>
       {children}
     </Ctx.Provider>
   );

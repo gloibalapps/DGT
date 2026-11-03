@@ -207,7 +207,12 @@ export default function Settings() {
               <AppText variant="caption" color={colors.dim}>{user.email}</AppText>
             </View>
           </View>
-          <ListRow icon="cloud-done-outline" iconColor={colors.profit} label="Your data syncs securely across your phones" />
+          {user.is_demo ? (
+            <ListRow testID="set-demo-banner" icon="flask-outline" iconColor={colors.warm} label="Demo account"
+              sub="Sample data only — it's removed after 24 hours. Sign out and sign in to keep your own records." />
+          ) : (
+            <ListRow icon="cloud-done-outline" iconColor={colors.profit} label="Your data syncs securely across your phones" />
+          )}
           <ListRow testID="set-signout" icon="log-out-outline" iconColor={colors.dim} label="Sign out" onPress={signOut} />
         </ListCard>
       ) : (

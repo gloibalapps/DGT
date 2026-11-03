@@ -119,3 +119,7 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 
 ## Update — Backup reminder
 - Profile → Backups shows an amber warning row when Drive is connected and the last backup is >3 days old (or never ran); hidden while a backup is running.
+
+## Update — Guest demo mode
+- POST /api/auth/demo creates a fresh isolated demo account (users.is_demo, email <uid>@demo.gigtax.app) pre-filled with 6 weeks of AU sample income/expenses/GPS trips/shifts + 1 car; 24h session; demo accounts >2 days old are purged on each new demo.
+- Login screen: 'Try without signing in' button. Profile shows a 'Demo account' notice. Local device data is never claimed into a demo account.

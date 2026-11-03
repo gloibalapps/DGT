@@ -7,11 +7,12 @@ import { Image } from "expo-image";
 
 import { useTheme } from "@/src/theme";
 import { useAuth } from "@/src/auth";
-import { AppText, PrimaryButton, useToast } from "@/src/ui";
+import { AppText, PrimaryButton, SecondaryButton, useToast } from "@/src/ui";
 
 export default function LoginScreen() {
   const { colors } = useTheme();
-  const { signIn, signInApple, signingIn } = useAuth();
+  const { signIn, signInApple, signInDemo, signingIn } = useAuth();
+  const onDemo = () => signInDemo().catch(() => show("Couldn't open the demo — please try again", "error"));
   const { show } = useToast();
   // Apple requires "Sign in with Apple" alongside Google on iPhone.
   const [appleOk, setAppleOk] = useState(false);
@@ -65,6 +66,10 @@ export default function LoginScreen() {
                 />
               ) : null}
               <PrimaryButton testID="login-google" label="Continue with Google" icon="logo-google" onPress={signIn} />
+              <SecondaryButton testID="login-demo" label="Try without signing in" onPress={onDemo} />
+              <AppText variant="caption" color={colors.dim} style={{ textAlign: "center" }}>
+                Explore with sample data — nothing you enter in the demo is kept.
+              </AppText>
             </View>
           )}
           <AppText variant="caption" color={colors.dim} style={{ textAlign: "center", marginTop: 14, lineHeight: 16 }}>
