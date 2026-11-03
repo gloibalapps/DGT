@@ -1236,7 +1236,9 @@ async def _load_all(profile_id):
     vehicles = await ensure_vehicles(profile_id)
     trips = await db.trips.find({"profile_id": profile_id}).to_list(5000)
     income = await db.income.find({"profile_id": profile_id}).to_list(5000)
-    expenses = await db.expenses.find({"profile_id": profile_id}).to_list(5000)
+    # receipt_image (base64) is never needed for reports — skip it to keep
+    # these hot endpoints fast and light on memory.
+    expenses = await db.expenses.find({"profile_id": profile_id}, {"receipt_image": 0}).to_list(5000)
     return (clean(profile), [clean(t) for t in trips],
             [clean(i) for i in income], [clean(e) for e in expenses], vehicles)
 
