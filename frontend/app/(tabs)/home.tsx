@@ -7,6 +7,7 @@ import { useTheme } from "@/src/theme";
 import { useStore } from "@/src/store";
 import { api } from "@/src/api";
 import { backupStaleness, type BackupStatus } from "@/src/backup";
+import { ueEnabled } from "@/src/ueParse";
 import { storage } from "@/src/utils/storage";
 import { displayDateShort } from "@/src/date";
 import { CATEGORIES, TAX_TREATMENTS } from "@/src/config";
@@ -81,7 +82,7 @@ export default function Money_() {
 
   // Backup reminder (same rule as Profile): Drive connected, last backup > 3 days.
   const [backupNudge, setBackupNudge] = useState<{ stale: boolean; days: number | null }>({ stale: false, days: null });
-  const ueOn = !!(profile as any)?.ue_guarantee_enabled;
+  const ueOn = ueEnabled(profile);
   const [ueMismatch, setUeMismatch] = useState<{ date: string; jobs_total: number; income_logged: number }[]>([]);
   useFocusEffect(useCallback(() => {
     api.backupStatus().then((st: BackupStatus) => setBackupNudge(backupStaleness(st))).catch(() => {});

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, ScrollView, Pressable, Modal } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useStore } from "@/src/store";
+import { ueEnabled } from "@/src/ueParse";
 
 import { useTheme } from "@/src/theme";
 import { api, IncomeT, ExpenseT } from "@/src/api";
@@ -111,7 +112,7 @@ export default function Reports() {
 
           {tab === "overview" ? (
             <>
-              {(profile as any)?.ue_guarantee_enabled ? (
+              {ueEnabled(profile) ? (
                 <ListCard>
                   <ListRow testID="reports-ue-guarantee" icon="fast-food-outline" label="Uber Eats Guarantee"
                     sub="Engaged-time cycle, top-up owed & export" onPress={() => router.push("/guarantee" as any)} />

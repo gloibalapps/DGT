@@ -21,6 +21,7 @@ import {
   PrimaryButton, SecondaryButton, useToast,
 } from "@/src/ui";
 import { connectDrive, runBackupAndWait, backupErrorText, backupStaleness, type BackupStatus } from "@/src/backup";
+import { ueEnabled } from "@/src/ueParse";
 import { isoToAU } from "@/src/date";
 
 export default function Settings() {
@@ -304,9 +305,9 @@ export default function Settings() {
       {/* Uber Eats guarantee */}
       <ListCard label="Uber Eats guarantee">
         <ListRow label="Track the engaged-time guarantee" sub="Log each Uber Eats job to check if Uber owes you a top-up."
-          right={<Toggle testID="ue-toggle" value={!!(profile as any).ue_guarantee_enabled}
-            onChange={() => updateProfile({ ue_guarantee_enabled: !(profile as any).ue_guarantee_enabled } as any)} />} />
-        {(profile as any).ue_guarantee_enabled ? (
+          right={<Toggle testID="ue-toggle" value={ueEnabled(profile)}
+            onChange={() => updateProfile({ ue_guarantee_enabled: !ueEnabled(profile) } as any)} />} />
+        {ueEnabled(profile) ? (
           <View style={{ paddingVertical: 12 }}>
             <Field label="Guarantee vehicle" hint="Car A$32.00 · Motorbike A$31.50 · Bicycle A$31.30 per engaged hour.">
               <Select testID="ue-vehicle" title="Guarantee vehicle" value={(profile as any).ue_vehicle_type || "car"}

@@ -83,6 +83,10 @@ export function normTime(input: string): string {
 
 export const auDate = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "");
 
+/** Module is on if the driver switched it on — or, until they choose, if they drive for Uber Eats. */
+export const ueEnabled = (p: any): boolean =>
+  p?.ue_guarantee_enabled ?? (p?.platforms || []).includes("Uber Eats");
+
 export function missingFields(j: UEJob): string[] {
   const miss: string[] = [];
   if (!j.date) miss.push("date");
