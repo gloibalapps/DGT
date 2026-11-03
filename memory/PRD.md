@@ -123,3 +123,6 @@ GigTax is a mobile tax & expense tracker for gig-economy drivers (rideshare + de
 ## Update — Guest demo mode
 - POST /api/auth/demo creates a fresh isolated demo account (users.is_demo, email <uid>@demo.gigtax.app) pre-filled with 6 weeks of AU sample income/expenses/GPS trips/shifts + 1 car; 24h session; demo accounts >2 days old are purged on each new demo.
 - Login screen: 'Try without signing in' button. Profile shows a 'Demo account' notice. Local device data is never claimed into a demo account.
+
+## Update — Day odometer check (Mileage)
+- src/OdometerCheck.tsx: start/end odometer for today (saved per car+date on device) vs today's GPS trips for the active car → difference %. 'Correct future drives' sets vehicle.gps_calibration_pct = current × odo/GPS (clamped 50–150), only once per set of readings (prevents compounding). Existing trips untouched.

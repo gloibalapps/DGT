@@ -9,6 +9,7 @@ import { useStore } from "@/src/store";
 import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
+import { OdometerCheck } from "@/src/OdometerCheck";
 import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner, Field, Select, HeroCard, ListCard, ListRow, SectionLabel,
@@ -330,6 +331,11 @@ export default function Mileage() {
         <ListRow label="Business use" value={`${today.business_pct}%`} />
         {today.per_business_km != null ? <ListRow label={`Earned / business ${unit}`} value={fmtMoney(today.per_business_km)} /> : null}
       </ListCard>
+
+      {/* ---- Day odometer check (compare + auto-correct this car) ---- */}
+      {activeVehicle?.id && !tracking && pendingTag == null ? (
+        <OdometerCheck vehicle={activeVehicle} trips={trips} unit={unit} onCalibrated={reloadVehicles} />
+      ) : null}
 
       {/* ---- Odometer reconciliation (read-only; manage the car in Profile) ---- */}
       {odo?.has_odometer ? (
