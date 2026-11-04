@@ -1,0 +1,8 @@
+.git
+frontend
+landing
+legal_site
+test_reports
+**/node_modules
+**/__pycache__
+**/.env
