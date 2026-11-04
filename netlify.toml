@@ -1,0 +1,65 @@
+# Marketing site for https://driversgigtax.app (static, no build step).
+# Netlify: Site configuration > Build & deploy > Base directory = (repo root),
+# Build command = (empty), Publish directory = website (set by this file).
+[build]
+  publish = "website"
+  command = ""
+
+# Clean legal URLs (App Store / Play Console link to these)
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/terms"
+  to = "/terms.html"
+  status = 200
+  force = true
+
+# Old backend-served paths -> static pages
+[[redirects]]
+  from = "/api/site"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/privacy"
+  to = "/privacy"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/terms"
+  to = "/terms"
+  status = 301
+  force = true
+
+# Waitlist form posts to /api/waitlist -> proxy to the FastAPI backend.
+# Change the host if the backend lives elsewhere.
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.driversgigtax.app/api/:splat"
+  status = 200
+  force = true
+
+# www -> apex
+[[redirects]]
+  from = "https://www.driversgigtax.app/*"
+  to = "https://driversgigtax.app/:splat"
+  status = 301
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
+
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

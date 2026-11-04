@@ -184,10 +184,10 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
             </Pressable>
 
             <View style={{ flexDirection: "row", gap: 18 }}>
-              <Pressable onPress={() => Linking.openURL("https://driversgigtax.com/terms")} hitSlop={6}>
+              <Pressable onPress={() => Linking.openURL("https://driversgigtax.app/terms")} hitSlop={6}>
                 <AppText variant="caption" color={colors.dim}>Terms</AppText>
               </Pressable>
-              <Pressable onPress={() => Linking.openURL("https://driversgigtax.com/privacy")} hitSlop={6}>
+              <Pressable onPress={() => Linking.openURL("https://driversgigtax.app/privacy")} hitSlop={6}>
                 <AppText variant="caption" color={colors.dim}>Privacy</AppText>
               </Pressable>
             </View>
