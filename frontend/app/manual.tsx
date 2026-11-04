@@ -207,7 +207,7 @@ export default function Manual() {
       icon: "star",
       title: "Subscription",
       lines: [
-        "GigTax comes with a 14-day free trial — you won't be charged until it ends, then $19.99/month or $199.99/year. Cancel anytime.",
+        "GigTax comes with a 14-day free trial — you won't be charged until it ends, then A$19.99/month or A$199.99/year. Cancel anytime.",
         "Manage or start your subscription in Profile \u203A Subscription.",
         "Purchases are handled securely through the App Store or Google Play.",
       ],

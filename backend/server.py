@@ -217,6 +217,44 @@ def _own_payload(payload: dict, owner: Owner) -> dict:
     return payload
 
 
+# ---------------------------------------------------------------------------
+# 14-day free trial + subscription enforcement (see subscription.py)
+# ---------------------------------------------------------------------------
+import hashlib  # noqa: E402
+import subscription as subs  # noqa: E402
+
+subscription_router, require_entitled, ensure_trial, subscription_status = subs.build(db, require_owner)
+
+
+def _trial_keys(email: Optional[str], apple_sub: Optional[str] = None) -> list:
+    keys = []
+    if email and not email.endswith("@appleid.private"):
+        keys.append("e:" + hashlib.sha256(email.strip().lower().encode()).hexdigest())
+    if apple_sub:
+        keys.append("a:" + hashlib.sha256(apple_sub.encode()).hexdigest())
+    return keys
+
+
+async def _signup_trial(email: Optional[str], apple_sub: Optional[str] = None) -> dict:
+    """Trial fields for a NEW account. One trial per identity: an unsalted
+    sha256 of the email / Apple sub is kept in trial_claims (survives account
+    deletion), so delete-and-re-sign-up resumes the original trial clock."""
+    fields = subs.new_user_fields()
+    keys = _trial_keys(email, apple_sub)
+    for k in keys:
+        prior = await db.trial_claims.find_one({"key": k})
+        if prior:
+            start = subs._dt(prior["trial_started_at"])
+            fields = {"trial_started_at": start.isoformat(),
+                      "trial_ends_at": (start + timedelta(days=subs.trial_days())).isoformat(),
+                      "sub_status": "trial"}
+            break
+    for k in keys:
+        await db.trial_claims.update_one({"key": k}, {"$setOnInsert": {
+            "key": k, "trial_started_at": fields["trial_started_at"]}}, upsert=True)
+    return fields
+
+
 @api_router.get("/auth/me")
 async def auth_me(authorization: Optional[str] = Header(None)):
     user = await current_user(authorization)
@@ -323,6 +361,7 @@ async def _login_google_user(email: str, name, picture) -> str:
         await db.users.insert_one({
             "user_id": user_id, "email": email, "name": name,
             "picture": picture, "created_at": now_iso(),
+            **(await _signup_trial(email)),
         })
     return await _new_session(user_id)
 
@@ -385,7 +424,8 @@ async def auth_apple(payload: dict = Body(...)):
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({"user_id": user_id, "apple_sub": sub, "email": email or f"{sub}@appleid.private",
-                                   "name": name, "picture": None, "created_at": now_iso()})
+                                   "name": name, "picture": None, "created_at": now_iso(),
+                                   **(await _signup_trial(email, sub))})
     return {"session_token": await _new_session(user_id), "user_id": user_id}
 
 
@@ -406,7 +446,8 @@ async def auth_demo():
 
     uid = f"demo_{uuid.uuid4().hex[:12]}"
     await db.users.insert_one({"user_id": uid, "email": f"{uid}@demo.driversgigtax.app", "name": "Demo Driver",
-                               "picture": None, "is_demo": True, "created_at": now_iso()})
+                               "picture": None, "is_demo": True, "created_at": now_iso(),
+                               **subs.new_user_fields()})
     today = _date.today()
     d = lambda n: (today - timedelta(days=n)).isoformat()  # noqa: E731
     veh = Vehicle(profile_id=uid, name="Demo car", registration="DEMO01", make_model="Toyota Camry Hybrid",
@@ -1106,7 +1147,7 @@ async def list_vehicles(owner: Owner = Depends(require_owner)):
 
 
 @api_router.post("/vehicles")
-async def add_vehicle(payload: dict, owner: Owner = Depends(require_owner)):
+async def add_vehicle(payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     existing = await ensure_vehicles(payload["profile_id"])
     make_first_active = payload.get("is_active") or len(existing) == 0
@@ -1119,7 +1160,7 @@ async def add_vehicle(payload: dict, owner: Owner = Depends(require_owner)):
 
 
 @api_router.put("/vehicles/{vehicle_id}")
-async def update_vehicle(vehicle_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+async def update_vehicle(vehicle_id: str, payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     existing = await db.vehicles.find_one({"id": vehicle_id, "profile_id": owner.profile_id})
     if not existing:
@@ -1135,7 +1176,7 @@ async def update_vehicle(vehicle_id: str, payload: dict, owner: Owner = Depends(
 
 
 @api_router.post("/vehicles/{vehicle_id}/activate")
-async def activate_vehicle(vehicle_id: str, owner: Owner = Depends(require_owner)):
+async def activate_vehicle(vehicle_id: str, owner: Owner = Depends(require_entitled)):
     profile_id = owner.profile_id
     if not await db.vehicles.find_one({"id": vehicle_id, "profile_id": profile_id}):
         raise HTTPException(404, "vehicle not found")
@@ -1144,7 +1185,7 @@ async def activate_vehicle(vehicle_id: str, owner: Owner = Depends(require_owner
 
 
 @api_router.delete("/vehicles/{vehicle_id}")
-async def delete_vehicle(vehicle_id: str, owner: Owner = Depends(require_owner)):
+async def delete_vehicle(vehicle_id: str, owner: Owner = Depends(require_entitled)):
     profile_id = owner.profile_id
     if not await db.vehicles.find_one({"id": vehicle_id, "profile_id": profile_id}):
         raise HTTPException(404, "vehicle not found")
@@ -1174,7 +1215,7 @@ async def get_profile(owner: Owner = Depends(require_owner)):
 
 
 @api_router.put("/profile")
-async def save_profile(payload: dict, owner: Owner = Depends(require_owner)):
+async def save_profile(payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     profile_id = owner.profile_id
     existing = await db.profiles.find_one({"profile_id": profile_id})
@@ -1203,7 +1244,7 @@ async def list_trips(owner: Owner = Depends(require_owner)):
 
 
 @api_router.post("/trips")
-async def add_trip(payload: dict, owner: Owner = Depends(require_owner)):
+async def add_trip(payload: dict, owner: Owner = Depends(require_entitled)):
     obj = Trip(**_own_payload(payload, owner))
     # Block the same physical drive being logged twice (manual GPS shift +
     # auto-detect, double taps): reject any trip whose time window overlaps an
@@ -1221,7 +1262,7 @@ async def add_trip(payload: dict, owner: Owner = Depends(require_owner)):
 
 
 @api_router.put("/trips/{item_id}")
-async def update_trip(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+async def update_trip(item_id: str, payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     existing = await db.trips.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
@@ -1233,7 +1274,7 @@ async def update_trip(item_id: str, payload: dict, owner: Owner = Depends(requir
 
 
 @api_router.delete("/trips/{item_id}")
-async def delete_trip(item_id: str, owner: Owner = Depends(require_owner)):
+async def delete_trip(item_id: str, owner: Owner = Depends(require_entitled)):
     res = await db.trips.delete_one({"id": item_id, "profile_id": owner.profile_id})
     if not res.deleted_count:
         raise HTTPException(404, "trip not found")
@@ -1248,14 +1289,14 @@ async def list_income(owner: Owner = Depends(require_owner)):
 
 
 @api_router.post("/income")
-async def add_income(payload: dict, owner: Owner = Depends(require_owner)):
+async def add_income(payload: dict, owner: Owner = Depends(require_entitled)):
     obj = Income(**_own_payload(payload, owner))
     await db.income.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
 
 @api_router.put("/income/{item_id}")
-async def update_income(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+async def update_income(item_id: str, payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     existing = await db.income.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
@@ -1267,7 +1308,7 @@ async def update_income(item_id: str, payload: dict, owner: Owner = Depends(requ
 
 
 @api_router.delete("/income/{item_id}")
-async def delete_income(item_id: str, owner: Owner = Depends(require_owner)):
+async def delete_income(item_id: str, owner: Owner = Depends(require_entitled)):
     res = await db.income.delete_one({"id": item_id, "profile_id": owner.profile_id})
     if not res.deleted_count:
         raise HTTPException(404, "income not found")
@@ -1299,14 +1340,14 @@ async def get_expense(item_id: str, owner: Owner = Depends(require_owner)):
 
 
 @api_router.post("/expenses")
-async def add_expense(payload: dict, owner: Owner = Depends(require_owner)):
+async def add_expense(payload: dict, owner: Owner = Depends(require_entitled)):
     obj = Expense(**_own_payload(payload, owner))
     await db.expenses.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
 
 @api_router.put("/expenses/{item_id}")
-async def update_expense(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+async def update_expense(item_id: str, payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     existing = await db.expenses.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
@@ -1318,7 +1359,7 @@ async def update_expense(item_id: str, payload: dict, owner: Owner = Depends(req
 
 
 @api_router.delete("/expenses/{item_id}")
-async def delete_expense(item_id: str, owner: Owner = Depends(require_owner)):
+async def delete_expense(item_id: str, owner: Owner = Depends(require_entitled)):
     res = await db.expenses.delete_one({"id": item_id, "profile_id": owner.profile_id})
     if not res.deleted_count:
         raise HTTPException(404, "expense not found")
@@ -1333,14 +1374,14 @@ async def list_shifts(owner: Owner = Depends(require_owner)):
 
 
 @api_router.post("/shifts")
-async def add_shift(payload: dict, owner: Owner = Depends(require_owner)):
+async def add_shift(payload: dict, owner: Owner = Depends(require_entitled)):
     obj = Shift(**_own_payload(payload, owner))
     await db.shifts.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
 
 @api_router.put("/shifts/{item_id}")
-async def update_shift(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+async def update_shift(item_id: str, payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
     existing = await db.shifts.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
@@ -1352,7 +1393,7 @@ async def update_shift(item_id: str, payload: dict, owner: Owner = Depends(requi
 
 
 @api_router.delete("/shifts/{item_id}")
-async def delete_shift(item_id: str, owner: Owner = Depends(require_owner)):
+async def delete_shift(item_id: str, owner: Owner = Depends(require_entitled)):
     res = await db.shifts.delete_one({"id": item_id, "profile_id": owner.profile_id})
     if not res.deleted_count:
         raise HTTPException(404, "shift not found")
@@ -1574,7 +1615,7 @@ class ScanRequest(BaseModel):
 
 
 @api_router.post("/receipts/scan")
-async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_owner)):
+async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled)):
     import json as _json
 
     system = (
@@ -1658,7 +1699,7 @@ class AskRequest(BaseModel):
 
 
 @api_router.post("/ask")
-async def ask_assistant(req: AskRequest, owner: Owner = Depends(require_owner)):
+async def ask_assistant(req: AskRequest, owner: Owner = Depends(require_entitled)):
     from tax_kb import kb_for
 
     country = (req.country or "AU").upper()
@@ -1718,8 +1759,9 @@ async def root():
 
 
 app.include_router(api_router)
+app.include_router(subscription_router)
 import ue_guarantee  # noqa: E402
-app.include_router(ue_guarantee.build_router(db, require_owner, require_owner_or_ticket, _own_payload))
+app.include_router(ue_guarantee.build_router(db, require_owner, require_owner_or_ticket, _own_payload, require_entitled))
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
+import TrialBanner from "@/src/TrialBanner";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, FONT } from "@/src/theme";
@@ -19,6 +20,8 @@ export default function TabsLayout() {
   // 72px bar plus the device's bottom inset (Android nav bar / iOS home indicator).
   const bottomInset = insets.bottom;
   return (
+    <View style={{ flex: 1 }}>
+    <TrialBanner />
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
@@ -46,5 +49,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="ask" options={{ title: "Ask", tabBarButtonTestID: "tab-ask" }} />
       <Tabs.Screen name="settings" options={{ title: "Profile", tabBarButtonTestID: "tab-settings" }} />
     </Tabs>
+    </View>
   );
 }

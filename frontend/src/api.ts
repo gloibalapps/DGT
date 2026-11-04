@@ -20,6 +20,29 @@ let _pidPromise: Promise<string> | null = null;
 export function setAuthProfileId(id: string | null) { _authPid = id; }
 export function setAuthToken(t: string | null) { _authToken = t; }
 
+// Server-side paywall: write/premium routes answer 402 {detail:{code:"subscription_required"}}
+// once the 14-day trial is over without an active subscription. One global
+// listener (SubscriptionProvider) reacts by refreshing status + opening the paywall.
+export const PAYWALL_CODE = "subscription_required";
+export class PaywallError extends Error {
+  code = PAYWALL_CODE;
+  constructor(msg: string) { super(msg); this.name = "PaywallError"; }
+}
+let _paywallListener: ((msg: string) => void) | null = null;
+export function setPaywallListener(fn: ((msg: string) => void) | null) { _paywallListener = fn; }
+
+export interface SubscriptionStatus {
+  state: "trial" | "active" | "grace" | "expired";
+  trial_started_at?: string | null;
+  trial_ends_at: string | null;
+  days_left: number | null;
+  entitlement: string | null;
+  expires_at?: string | null;
+  is_demo?: boolean;
+  enforced: boolean;
+  trial_days: number;
+}
+
 // Durable local identity that scopes ALL of a driver's data. This MUST survive
 // the Android OS killing a backgrounded app and cold-starting it. We keep TWO
 // copies — AsyncStorage (primary) and SecureStore/Keychain (durable mirror that
@@ -92,6 +115,12 @@ async function req(path: string, opts: RequestInit = {}, retries = 2, timeoutMs 
         return req(path, opts, retries - 1);
       }
       const t = await res.text();
+      if (res.status === 402) {
+        let msg = "Your 14-day free trial has ended. Subscribe to keep adding records.";
+        try { const d = JSON.parse(t)?.detail; if (d?.code === PAYWALL_CODE && d.message) msg = d.message; } catch { /* not JSON */ }
+        try { _paywallListener?.(msg); } catch { /* listener errors never mask the 402 */ }
+        throw new PaywallError(msg);
+      }
       throw new Error(`${res.status}: ${t.slice(0, 120)}`);
     }
     return res.json();
@@ -203,6 +232,8 @@ async function ticketParam(): Promise<string> {
 }
 
 export const api = {
+  subscriptionStatus: (refresh = false): Promise<SubscriptionStatus> =>
+    req(`/subscription/status${refresh ? "?refresh=true" : ""}`),
   async authMe() { return req(`/auth/me`); },
   async authLogout() { return req(`/auth/logout`, { method: "POST" }); },
   async authClaim(fromProfileId: string) {

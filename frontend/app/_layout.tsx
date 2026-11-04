@@ -1,6 +1,6 @@
 import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LogBox, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -33,10 +33,18 @@ function ThemedStatusBar() {
 }
 
 function SubGate() {
-  const { loading, managed, isActive } = useSubscription();
+  const { loading, managed, isActive, expired, paywallHit } = useSubscription();
+  // Server-enforced trial: once the 14-day trial is over (and the server has
+  // PAYWALL_ENFORCED on) show the paywall first. The driver can always continue
+  // in read-only mode to view, export and back up their data or delete their
+  // account; any write then gets a 402 that re-opens the paywall.
+  const [readOnlyOk, setReadOnlyOk] = useState(false);
+  useEffect(() => { if (paywallHit) setReadOnlyOk(false); }, [paywallHit]);
   if (loading) return null;
-  // The gate only enforces when RevenueCat is truly running (native build with
-  // keys). In web preview / Expo Go it's bypassed so the app stays testable.
+  if (expired && !isActive && !readOnlyOk) {
+    return <PaywallScreen gate expired onContinueReadOnly={() => setReadOnlyOk(true)} />;
+  }
+  // Legacy client-only gate (RevenueCat SDK running, no server status). Kept off.
   if (SUB_GATE_ENABLED && managed && !isActive) return <PaywallScreen gate />;
   return (
     <AppProvider>

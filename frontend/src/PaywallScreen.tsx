@@ -19,8 +19,8 @@ const FEATURES = [
 
 // Shown only when RevenueCat isn't running (web preview / Expo Go / keys not set).
 const FALLBACK_PLANS: Plan[] = [
-  { id: "yearly", title: "Yearly", price: "$199.99", period: "year", trial: true, pkg: null },
-  { id: "monthly", title: "Monthly", price: "$19.99", period: "month", trial: true, pkg: null },
+  { id: "yearly", title: "Yearly", price: "A$199.99", period: "year", trial: false, pkg: null },
+  { id: "monthly", title: "Monthly", price: "A$19.99", period: "month", trial: false, pkg: null },
 ];
 
 function parsePrice(s: string): number | null {
@@ -28,11 +28,12 @@ function parsePrice(s: string): number | null {
   return m ? parseFloat(m[1]) : null;
 }
 
-export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
+export default function PaywallScreen({ gate = false, expired = false, onContinueReadOnly }:
+  { gate?: boolean; expired?: boolean; onContinueReadOnly?: () => void }) {
   const { colors } = useTheme();
   const { signOut } = useAuth();
   const toast = useToast();
-  const { plans, isActive, managed, restore, presentPaywall } = useSubscription();
+  const { plans, isActive, managed, restore, presentPaywall, server, refreshServer } = useSubscription();
 
   const list = useMemo<Plan[]>(() => {
     const src = plans.length ? [...plans] : FALLBACK_PLANS;
@@ -63,6 +64,7 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
     if (managed) {
       setBusy(true);
       const ok = await presentPaywall();
+      if (ok) await refreshServer(true);
       setBusy(false);
       if (!ok) toast.show("Purchase didn't complete. Please try again.");
       return;
@@ -75,11 +77,16 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
     if (!managed) { toast.show("Restore works in the published app."); return; }
     setBusy(true);
     const ok = await restore();
+    await refreshServer(true);
     setBusy(false);
     toast.show(ok ? "Subscription restored." : "No active subscription found.");
   }
 
-  const cta = selected?.trial ? "Start 14-day free trial" : "Subscribe";
+  // The 14-day free trial is granted by the server from sign-up, so the store
+  // products carry no intro offer (no second trial). `selected.trial` stays
+  // supported in case the owner turns an aligned store offer back on.
+  const inTrial = server?.state === "trial";
+  const cta = selected?.trial && !inTrial ? "Start 14-day free trial" : "Subscribe";
   const priceLine = selected
     ? (selected.trial
         ? `14-day free trial. You won't be charged until it ends — then ${selected.price}/${selected.period}. Cancel anytime.`
@@ -103,6 +110,28 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
               Everything you need to track income, mileage and tax — in one place.
             </AppText>
           </View>
+
+          {!isActive && server?.state === "trial" && server.days_left != null ? (
+            <View testID="paywall-trial-left" style={{ marginTop: 24, padding: 14, borderRadius: 16, backgroundColor: colors.surface,
+              borderWidth: 1, borderColor: colors.accent }}>
+              <AppText variant="bodySemi" color={colors.text}>
+                {server.days_left} day{server.days_left === 1 ? "" : "s"} left in your 14-day free trial
+              </AppText>
+              <AppText variant="caption" color={colors.dim} style={{ marginTop: 4 }}>
+                Subscribe any time — your plan starts when you pay. No charge during the trial.
+              </AppText>
+            </View>
+          ) : null}
+          {expired && !isActive ? (
+            <View testID="paywall-expired" style={{ marginTop: 24, padding: 14, borderRadius: 16, backgroundColor: colors.surface,
+              borderWidth: 1, borderColor: colors.border }}>
+              <AppText variant="bodySemi" color={colors.text}>Your 14-day free trial has ended</AppText>
+              <AppText variant="caption" color={colors.dim} style={{ marginTop: 4, lineHeight: 16 }}>
+                Subscribe to keep adding trips, income and expenses. Your data is safe: you can still view it,
+                export CSV/XLSX, back it up to Google Drive, or delete your account.
+              </AppText>
+            </View>
+          ) : null}
 
           {isActive ? (
             <View style={{ marginTop: 24, padding: 16, borderRadius: 16, backgroundColor: colors.surface,
@@ -196,6 +225,12 @@ export default function PaywallScreen({ gate = false }: { gate?: boolean }) {
               Payment is charged to your {Platform.OS === "ios" ? "Apple ID" : "Google Play account"} at confirmation.
               Auto-renews unless cancelled at least 24 hours before the period ends. Manage in your store account settings.
             </AppText>
+
+            {onContinueReadOnly ? (
+              <Pressable testID="paywall-readonly" onPress={onContinueReadOnly} hitSlop={8}>
+                <AppText variant="bodyMed" color={colors.text}>Continue read-only (view, export, back up)</AppText>
+              </Pressable>
+            ) : null}
 
             {gate ? (
               <Pressable testID="paywall-signout" onPress={signOut} hitSlop={8} style={{ marginTop: 6 }}>

@@ -28,7 +28,12 @@ export default function Settings() {
   const { colors, mode, toggle } = useTheme();
   const { profile, updateProfile, version, vehicles, activeVehicleId, setActiveVehicle, reloadProfile, reloadVehicles, refresh } = useStore();
   const { user, signIn, signingIn, signOut } = useAuth();
-  const { isActive: subActive, managed: subManaged, presentCustomerCenter } = useSubscription();
+  const { isActive: subActive, managed: subManaged, presentCustomerCenter, server: subServer, expired: subExpired } = useSubscription();
+  const subSub = subActive || subServer?.state === "active" ? "Your subscription is active"
+    : subExpired ? "Free trial ended · read-only until you subscribe"
+    : subServer?.state === "trial" && subServer.days_left != null
+      ? `14-day free trial · ${subServer.days_left} day${subServer.days_left === 1 ? "" : "s"} left`
+      : "14-day free trial · cancel anytime";
   const { show } = useToast();
   const router = useRouter();
 
@@ -224,7 +229,7 @@ export default function Settings() {
       {/* Subscription */}
       <ListCard label="Subscription">
         <ListRow testID="set-subscription" icon="star-outline" label={subActive ? "GigTax" : "Subscribe to GigTax"}
-          sub={subActive ? "Your subscription is active" : "14-day free trial · cancel anytime"}
+          sub={subSub}
           value={subActive ? "Active" : undefined} valueColor={colors.profit}
           onPress={() => router.push("/paywall" as any)} />
         {subActive && subManaged ? (

@@ -23,7 +23,7 @@ from typing import Optional
 import asyncpg
 
 COLLECTIONS = ("users", "user_sessions", "oauth_states", "waitlist", "profiles", "vehicles",
-               "trips", "income", "expenses", "shifts", "drive_tokens", "ue_jobs")
+               "trips", "income", "expenses", "shifts", "drive_tokens", "ue_jobs", "trial_claims")
 
 
 def _default(o):

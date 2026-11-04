@@ -114,7 +114,8 @@ def summarise(jobs: List[dict], rate: float) -> dict:
     }
 
 
-def build_router(db, require_owner, require_owner_or_ticket, own_payload) -> APIRouter:
+def build_router(db, require_owner, require_owner_or_ticket, own_payload, require_entitled=None) -> APIRouter:
+    require_entitled = require_entitled or require_owner
     """All routes require the caller's Bearer session (see server.require_owner)
     and are scoped to their own profile_id."""
     r = APIRouter(prefix="/api/ue")
@@ -159,7 +160,7 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload) -> API
         return await _jobs(profile_id)
 
     @r.post("/jobs")
-    async def add_jobs(payload: dict = Body(...), owner=Depends(require_owner)):
+    async def add_jobs(payload: dict = Body(...), owner=Depends(require_entitled)):
         """Batch save. Duplicates (same date + start time, amounts within 2c —
         vs saved jobs or an earlier row in this batch) are NOT saved; their
         batch indexes are returned so the app can flag them."""
@@ -183,7 +184,7 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload) -> API
         return {"saved": saved, "duplicates": dups}
 
     @r.put("/jobs/{job_id}")
-    async def update_job(job_id: str, payload: dict = Body(...), owner=Depends(require_owner)):
+    async def update_job(job_id: str, payload: dict = Body(...), owner=Depends(require_entitled)):
         own_payload(payload, owner)
         cur = await db.ue_jobs.find_one({"id": job_id, "profile_id": owner.profile_id}, {"_id": 0})
         if not cur:
@@ -198,7 +199,7 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload) -> API
         return d
 
     @r.delete("/jobs/{job_id}")
-    async def delete_job(job_id: str, owner=Depends(require_owner)):
+    async def delete_job(job_id: str, owner=Depends(require_entitled)):
         res = await db.ue_jobs.delete_one({"id": job_id, "profile_id": owner.profile_id})
         if not res.deleted_count:
             raise HTTPException(404, "job not found")

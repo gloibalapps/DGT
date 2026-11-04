@@ -2,9 +2,11 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
 import { useAuth } from "@/src/auth";
+import { api, setPaywallListener, SubscriptionStatus } from "@/src/api";
 
 // Standard RevenueCat identifiers — must match the dashboard config.
-const ENTITLEMENT = "drivers_gig_tax_unlimited";
+// The server checks the SAME id (RC_ENTITLEMENT_ID, default "pro").
+const ENTITLEMENT = process.env.EXPO_PUBLIC_RC_ENTITLEMENT_ID || "pro";
 const CACHE_KEY = "gigtax.sub_active";
 
 // TEMP: master switch to PAUSE RevenueCat entirely while testing the APK.
@@ -56,12 +58,18 @@ interface SubCtx {
   refresh: () => Promise<void>;
   presentPaywall: () => Promise<boolean>;        // native RevenueCat remote paywall
   presentCustomerCenter: () => Promise<void>;    // native RevenueCat Customer Center
+  // Server-side trial / entitlement (authoritative; see backend/subscription.py)
+  server: SubscriptionStatus | null;
+  expired: boolean;     // server enforces the paywall AND trial is over with no subscription
+  refreshServer: (force?: boolean) => Promise<void>;
+  paywallHit: number;   // bumps whenever a write got 402 (UI can react)
 }
 
 const Ctx = createContext<SubCtx>({
   loading: true, isActive: false, managed: false, plans: [],
   buy: async () => false, restore: async () => false, refresh: async () => {},
   presentPaywall: async () => false, presentCustomerCenter: async () => {},
+  server: null, expired: false, refreshServer: async () => {}, paywallHit: 0,
 });
 
 function mapPackage(p: any): Plan {
@@ -91,13 +99,32 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isActive, setIsActive] = useState(false);
   const [managed, setManaged] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [server, setServer] = useState<SubscriptionStatus | null>(null);
+  const [paywallHit, setPaywallHit] = useState(0);
+
+  // Server status works whether or not RevenueCat (the SDK) is paused: the trial
+  // clock and enforcement live on the server, keyed by user_id.
+  const refreshServer = useCallback(async (force = false) => {
+    if (!user?.user_id) { setServer(null); return; }
+    try { setServer(await api.subscriptionStatus(force)); } catch { /* offline: keep last */ }
+  }, [user?.user_id]);
+
+  useEffect(() => { refreshServer(); }, [refreshServer]);
+
+  useEffect(() => {
+    setPaywallListener(() => { setPaywallHit((n) => n + 1); refreshServer(true); });
+    return () => setPaywallListener(null);
+  }, [refreshServer]);
 
   const apply = useCallback(async (info: any) => {
     const val = Boolean(info?.entitlements?.active?.[ENTITLEMENT]?.isActive);
     setIsActive(val);
     await storage.setItem(CACHE_KEY, val);
+    // A purchase/restore/renewal just happened (or app start): make the server
+    // re-verify with RevenueCat now instead of waiting for its cache TTL.
+    refreshServer(true);
     return val;
-  }, []);
+  }, [refreshServer]);
 
   const refresh = useCallback(async () => {
     if (!managed || !Purchases) return;
@@ -183,7 +210,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   }, [apply]);
 
   return (
-    <Ctx.Provider value={{ loading, isActive, managed, plans, buy, restore, refresh, presentPaywall, presentCustomerCenter }}>
+    <Ctx.Provider value={{ loading, isActive, managed, plans, buy, restore, refresh, presentPaywall, presentCustomerCenter,
+      server, expired: Boolean(server?.enforced && server.state === "expired"), refreshServer, paywallHit }}>
       {children}
     </Ctx.Provider>
   );

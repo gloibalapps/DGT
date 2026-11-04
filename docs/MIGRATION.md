@@ -21,10 +21,41 @@ Branch: `migrate-off-emergent` (local). Nothing here has been deployed or run ag
 ## Schema (one table per old collection)
 `users`, `user_sessions`, `oauth_states`, `waitlist`, `profiles`, `vehicles`, `trips`, `income`, `expenses`, `shifts`, `drive_tokens`, `ue_jobs`. The field inventory is in the comments of 0001_init.sql. Mongo TTL indexes are replaced by inline cleanup in the code plus `public.purge_expired()` (schedule it with pg_cron).
 
-## Free trial: 14 days
-The trial length is **not** set in code. It comes from the intro offer on the store products: App Store Connect > Subscriptions > Introductory Offer = Free, 2 weeks, and Play Console > Subscriptions > base plan > Offer = free trial, 14 days. RevenueCat just reads it. The copy says 14 days in: `frontend/src/PaywallScreen.tsx` (CTA and fine print), `frontend/app/(tabs)/settings.tsx`, `frontend/app/manual.tsx`, `website/index.html`, `website/terms.html`, and `landing/index.html` (fixed from 7 days). No backend trial logic exists. RevenueCat is still paused (`RC_ENABLED=false` in `src/subscription.tsx`), and entitlement id `drivers_gig_tax_unlimited` must match the dashboard.
+## Free trial: 14 days (server-enforced)
+Implemented in `backend/subscription.py`, schema in `supabase/migrations/0002_trial_subscription.sql` (apply after 0001).
 
-See the report for the env var table and manual steps.
+**Storage.** Trial and subscription state live on the `users` row (`doc` jsonb, exposed as STORED generated, indexed columns): `trial_started_at`, `trial_ends_at` (= start + `TRIAL_DAYS`, exactly 14×24 h), `sub_status` (`trial|active|grace|expired`, check constraint), `sub_expires_at`, `sub_checked_at`. `trial_started_at` is set at account creation (Google, Apple, demo). `trial_claims` keeps an unsalted sha256 of email / Apple `sub` with the original start so delete-and-re-sign-up resumes the old clock (one trial per identity; holds no other personal data, mention it in the privacy policy).
+
+**Day 14.** State is `trial` while `now < trial_ends_at`; `days_left = ceil(remaining / 24 h)` (14 on day 0, 1 on day 13). From the exact moment `trial_ends_at` passes: `expired` unless entitled.
+
+**Entitlement.** RevenueCat is the only source of truth: `GET https://api.revenuecat.com/v1/subscribers/{user_id}` with `REVENUECAT_SECRET_API_KEY`, entitlement `RC_ENTITLEMENT_ID` (default `pro`) active if `expires_date` is null or in the future. The result is cached on the row for `RC_CACHE_TTL_SECONDS` (300). `POST /api/subscription/webhook` (Authorization must equal `REVENUECAT_WEBHOOK_AUTH`) updates the cache immediately: purchase/renewal/uncancel/product change → active with expiry; EXPIRATION → expired; anything else (CANCELLATION, BILLING_ISSUE, TRANSFER…) clears the cache so the next request re-verifies. If RevenueCat is unreachable, a previously active user gets `grace` for `RC_GRACE_HOURS` (24); a never-paid user stays expired. Because RevenueCat entitlements are store-agnostic, App Store, Google Play and any future web purchase unify into the same check.
+
+**Enforcement.** `require_entitled` (wraps `require_owner`) returns **402** `{"detail":{"code":"subscription_required","message":...,"trial_ends_at":...}}` when expired and `PAYWALL_ENFORCED=true`. Gated: create/update/delete of trips, income, expenses, shifts, vehicles (incl. activate), `PUT /profile`, UE jobs, receipt scan, Ask AI. **Never gated** (trial or expired): every GET/report/dashboard, CSV/XLSX exports (`/export`, `/export-mileage`, `/ue/export`, download tickets), Google Drive backup status/run/restore/disconnect and Drive connect, `/auth/*` (incl. claim), `DELETE /account`, privacy/terms, `GET /api/subscription/status`. No data is ever deleted on expiry. There are **no** trial limits on data entry: trial = full access.
+
+**Backups.** Both methods stay available to trial and expired users: CSV/XLSX export (instant, offline-friendly, satisfies data-portability requests) and the existing Google Drive backup (automatic, restorable into the app). Restore is allowed after expiry because it only recovers the user's own data.
+
+**Other decisions.** Demo accounts are always entitled (`DEMO_ENTITLED=true`) so App Store / Play reviewers never hit the paywall; they still get trial fields. Pre-existing accounts (no `trial_started_at`) start at `max(created_at, TRIAL_EXISTING_USERS_START)`; empty = when the server first sees them after deploy (everyone migrated gets a fresh 14 days from cutover). Enforcement ships dark (`PAYWALL_ENFORCED=false`); status is still computed and returned with `"enforced": false`.
+
+**Store intro offer vs server trial (no double trial).** The server trial runs from sign-up, so the store products should have **no** introductory free trial; otherwise a driver gets 14 days from sign-up and then another 14 at purchase. The paywall CTA reads "Subscribe" (fallback plans `trial:false`); if an intro offer is ever re-enabled, `Plan.trial` still drives the "Start 14-day free trial" copy, but only outside the server trial.
+
+**Products to create later (none created yet).** RevenueCat project with entitlement `pro`, offering `default` with packages `$rc_monthly` and `$rc_annual`. App Store Connect and Play Console: auto-renewing subscriptions monthly **A$19.99** and yearly **A$199.99** in one subscription group, no intro offer (see above). Then: RevenueCat secret key → `REVENUECAT_SECRET_API_KEY`; webhook to `https://<backend>/api/subscription/webhook` with an Authorization value → `REVENUECAT_WEBHOOK_AUTH`; public SDK keys → `EXPO_PUBLIC_RC_IOS_KEY` / `EXPO_PUBLIC_RC_ANDROID_KEY`; flip `RC_ENABLED` in `src/subscription.tsx`; finally `PAYWALL_ENFORCED=true`.
+
+**Web billing: deferred.** Digital subscriptions sold inside the iOS/Android apps must use Apple/Google IAP (wired via RevenueCat). The app has no web client for the data today, so RevenueCat Web Billing / Stripe adds work without customers. If it's added later, use RevenueCat Web Billing (or Stripe connected to RevenueCat) so purchases grant the same `pro` entitlement and the server check needs no change. No Stripe code or keys are in this branch.
+
+**Frontend.** `api.ts` turns any 402 `subscription_required` into a `PaywallError` and notifies `SubscriptionProvider`, which refreshes `GET /subscription/status?refresh=true` and re-opens the paywall. `src/subscription.tsx` exposes `server`, `expired`, `refreshServer`; status refreshes on login, after purchase, restore, paywall and Customer Center. `app/_layout.tsx` shows `PaywallScreen` when expired, with "Continue read-only (view, export, back up)". `src/TrialBanner.tsx` shows days left (last 7 days) / "Trial ended — read-only" above the tabs. Settings shows days left. Entitlement id is now `pro` (`EXPO_PUBLIC_RC_ENTITLEMENT_ID`), replacing `drivers_gig_tax_unlimited`. The RevenueCat SDK pause switch (`RC_ENABLED=false`) is unchanged: with it off the server status and gating still work, and Subscribe shows "activates once published".
+
+### Trial env vars (backend)
+| Var | Default | |
+|---|---|---|
+| `PAYWALL_ENFORCED` | `false` | 402 on gated routes when expired |
+| `TRIAL_DAYS` | `14` | |
+| `TRIAL_EXISTING_USERS_START` | empty | ISO date; empty = first seen after deploy |
+| `DEMO_ENTITLED` | `true` | |
+| `REVENUECAT_SECRET_API_KEY` | empty | SECRET |
+| `RC_ENTITLEMENT_ID` | `pro` | |
+| `RC_CACHE_TTL_SECONDS` | `300` | |
+| `RC_GRACE_HOURS` | `24` | |
+| `REVENUECAT_WEBHOOK_AUTH` | empty | SECRET; webhook returns 503 until set |
 
 ## API auth & data scoping
 Every data route requires `Authorization: Bearer <session_token>` (a `user_sessions` row that hasn't expired; demo sessions included) through the `require_owner` FastAPI dependency in `server.py`. The caller's profile is `profile_id == user_id`: sign-in sets the app's profile id to the user_id, and `/auth/claim` re-keys pre-login device data onto it. Each account owns exactly that one profile.
@@ -33,4 +64,5 @@ Every data route requires `Authorization: Bearer <session_token>` (a `user_sessi
 * Anonymous device profiles (random UUIDs from before login) are no longer readable directly. They can only be moved onto the signed-in account, once, through `/auth/claim`. The account must have no data yet, and the source can't be a real account id (`user_*`/`demo_*`, or any `users.user_id`). Demo accounts never claim.
 * URLs opened in a browser (CSV/XLSX exports and the Drive-connect `auth/google/start?backup=1`) can't send the header. They use `?ticket=` from `POST /api/auth/ticket` instead: random, single-use, valid for 5 minutes, and stored in `oauth_states` with `kind=ticket`.
 * `DELETE /api/account` deletes the authenticated user's data, user row, all of their sessions, oauth_states, and drive_tokens. It also revokes the Google Drive token on a best-effort basis.
+* Paywall: `/api/subscription/webhook` is public but requires `REVENUECAT_WEBHOOK_AUTH`.
 * Public routes: `/health`, `/api/`, `/api/site`, `/api/privacy`, `/api/terms`, `/api/waitlist`, `/api/auth/{google/start (non-backup), google/callback, google/poll, apple, demo, me, logout}`.
