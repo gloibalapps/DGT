@@ -1,16 +1,16 @@
 {
   "expo": {
     "name": "GigTax",
-    "slug": "frontend",
+    "slug": "driversgigtax",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "driversgigtax",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.earningsauditapp.cxv7id",
+      "bundleIdentifier": "com.driversgigtax.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan receipts to log deductible expenses",
         "NSPhotoLibraryUsageDescription": "Pick receipt photos to log expenses",

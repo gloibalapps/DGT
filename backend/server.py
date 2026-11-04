@@ -420,7 +420,7 @@ async def google_callback(request: Request, code: Optional[str] = Query(None),
         # Web (http/https): browsers preserve the fragment, a normal 302 works.
         if app_redirect.startswith("http://") or app_redirect.startswith("https://"):
             return RedirectResponse(f"{app_redirect}#{fragment}")
-        # Native custom scheme (e.g. frontend://): Android DROPS the URL fragment
+        # Native custom scheme (e.g. driversgigtax://): Android DROPS the URL fragment
         # when it hands a custom-scheme intent to the app, so a `#token` payload is
         # lost and the user lands back on the sign-in screen. Pass it as a QUERY
         # param instead (reliably preserved); the app parses both `?` and `#`.
