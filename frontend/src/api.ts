@@ -195,9 +195,6 @@ export interface ShiftT {
 }
 
 export const api = {
-  async authSession(sessionId: string) {
-    return req(`/auth/session`, { method: "POST", body: JSON.stringify({ session_id: sessionId }) });
-  },
   async authMe() { return req(`/auth/me`); },
   async authLogout() { return req(`/auth/logout`, { method: "POST" }); },
   async authClaim(fromProfileId: string) {

@@ -15,19 +15,36 @@ from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Requ
 from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 
 import tax as taxlib
+from pgdb import Database
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Supabase Postgres (replaces MongoDB/Motor). See pgdb.py for the Motor-compatible
+# adapter and supabase/migrations/0001_init.sql for the schema.
+db = Database(os.environ.get("SUPABASE_DB_URL", ""))
 
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+ANTHROPIC_VISION_MODEL = os.environ.get("ANTHROPIC_VISION_MODEL", ANTHROPIC_MODEL)
+_anthropic_client = None
+
+
+def anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        if not ANTHROPIC_API_KEY:
+            raise HTTPException(503, "AI is not configured on the server (ANTHROPIC_API_KEY missing)")
+        from anthropic import AsyncAnthropic
+        _anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    return _anthropic_client
+
+
+def _claude_text(resp) -> str:
+    return "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text")
 
 app = FastAPI(title="GigTax API")
 api_router = APIRouter(prefix="/api")
@@ -95,22 +112,17 @@ def now_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Authentication — Emergent-managed Google sign-in (cross-device sync)
+# Authentication — own Google OAuth + Sign in with Apple, sessions in Postgres
 # ---------------------------------------------------------------------------
-EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 
-@app.on_event("startup")
-async def _startup_indexes():
-    try:
-        await db.users.create_index("email", unique=True)
-        await db.users.create_index("user_id", unique=True)
-        await db.user_sessions.create_index("session_token", unique=True)
-        await db.user_sessions.create_index("user_id")
-        await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
-        await db.oauth_states.create_index("created_at", expireAfterSeconds=600)
-    except Exception as e:  # pragma: no cover
-        logger.warning("index setup: %s", e)
+def _as_dt(v):
+    if isinstance(v, str):
+        try:
+            v = datetime.fromisoformat(v)
+        except ValueError:
+            return None
+    return v
 
 
 async def current_user(authorization: Optional[str] = Header(None)) -> dict:
@@ -120,7 +132,7 @@ async def current_user(authorization: Optional[str] = Header(None)) -> dict:
     sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not sess:
         raise HTTPException(status_code=401, detail="Invalid session")
-    exp = sess.get("expires_at")
+    exp = _as_dt(sess.get("expires_at"))
     if isinstance(exp, datetime):
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
@@ -130,41 +142,6 @@ async def current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
-
-
-@api_router.post("/auth/session")
-async def auth_session(payload: dict = Body(...)):
-    session_id = (payload or {}).get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id required")
-    async with httpx.AsyncClient(timeout=15) as hc:
-        r = await hc.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": session_id})
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid or expired session_id")
-    data = r.json()
-    email = data.get("email")
-    if not email:
-        raise HTTPException(status_code=401, detail="No email returned")
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
-    if existing:
-        user_id = existing["user_id"]
-        await db.users.update_one({"user_id": user_id},
-                                  {"$set": {"name": data.get("name"), "picture": data.get("picture")}})
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({
-            "user_id": user_id, "email": email, "name": data.get("name"),
-            "picture": data.get("picture"), "created_at": now_iso(),
-        })
-    session_token = data.get("session_token") or uuid.uuid4().hex
-    await db.user_sessions.insert_one({
-        "session_token": session_token, "user_id": user_id,
-        "created_at": datetime.now(timezone.utc),
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-    })
-    return {"session_token": session_token,
-            "user": {"user_id": user_id, "email": email,
-                     "name": data.get("name"), "picture": data.get("picture")}}
 
 
 @api_router.get("/auth/me")
@@ -229,8 +206,7 @@ async def delete_account(profile_id: str = Query(...), authorization: Optional[s
 
 
 # ---------------------------------------------------------------------------
-# Own-branded Google OAuth (drivergigtax.com) — backend-mediated code flow.
-# The Google consent shows the developer's own app name, not Emergent.
+# Own-branded Google OAuth (driversgigtax.app) — backend-mediated code flow.
 # ---------------------------------------------------------------------------
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -261,6 +237,8 @@ async def _login_google_user(email: str, name, picture) -> str:
 
 async def _new_session(user_id: str) -> str:
     session_token = uuid.uuid4().hex
+    # replaces the Mongo TTL index on user_sessions.expires_at
+    await db.user_sessions.delete_many({"expires_at": {"$lt": datetime.now(timezone.utc)}})
     await db.user_sessions.insert_one({
         "session_token": session_token, "user_id": user_id,
         "created_at": datetime.now(timezone.utc),
@@ -335,7 +313,7 @@ async def auth_demo():
         await db.users.delete_many({"user_id": {"$in": stale}})
 
     uid = f"demo_{uuid.uuid4().hex[:12]}"
-    await db.users.insert_one({"user_id": uid, "email": f"{uid}@demo.gigtax.app", "name": "Demo Driver",
+    await db.users.insert_one({"user_id": uid, "email": f"{uid}@demo.driversgigtax.app", "name": "Demo Driver",
                                "picture": None, "is_demo": True, "created_at": now_iso()})
     today = _date.today()
     d = lambda n: (today - timedelta(days=n)).isoformat()  # noqa: E731
@@ -392,6 +370,9 @@ async def google_start(request: Request, app_redirect: str = Query(...),
     # The app may supply its own `state` so it can poll for the result (robust
     # against Android dropping the deep-link payload on the way back).
     state = state or uuid.uuid4().hex
+    # replaces the Mongo TTL index (600 s) on oauth_states.created_at
+    await db.oauth_states.delete_many(
+        {"created_at": {"$lt": datetime.now(timezone.utc) - timedelta(minutes=10)}})
     await db.oauth_states.insert_one({
         "state": state, "app_redirect": app_redirect,
         "backup": bool(backup), "profile_id": profile_id,
@@ -1171,14 +1152,13 @@ async def delete_income(item_id: str):
 async def list_expenses(profile_id: str = Query(...)):
     # Receipt photos are large base64 blobs — leave them out of the list and
     # just flag which expenses have one. The photo loads via GET /expenses/{id}.
-    docs = await db.expenses.aggregate([
-        {"$match": {"profile_id": profile_id}},
-        {"$sort": {"date": -1}},
-        {"$limit": 2000},
-        {"$addFields": {"has_receipt": {"$gt": [{"$strLenBytes": {"$ifNull": ["$receipt_image", ""]}}, 0]}}},
-        {"$project": {"receipt_image": 0}},
-    ]).to_list(2000)
-    return [clean(d) for d in docs]
+    docs = await db.expenses.find({"profile_id": profile_id}).sort("date", -1).to_list(2000)
+    out = []
+    for d in docs:
+        d = clean(d)
+        d["has_receipt"] = bool(d.pop("receipt_image", None) or "")
+        out.append(d)
+    return out
 
 
 @api_router.get("/expenses/{item_id}")
@@ -1450,7 +1430,6 @@ class ScanRequest(BaseModel):
 
 @api_router.post("/receipts/scan")
 async def scan_receipt(req: ScanRequest):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
     import json as _json
 
     system = (
@@ -1466,20 +1445,30 @@ async def scan_receipt(req: ScanRequest):
         "Map petrol/servo/gas -> fuel; car service/tyres/repairs/parts -> vehicle; "
         "toll/etoll/linkt -> tolls; telco/mobile/data -> phone; everything else -> other."
     )
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY,
-                   session_id=f"receipt-{uuid.uuid4()}",
-                   system_message=system).with_model("openai", "gpt-4o")
     img = req.image_base64
+    media_type = "image/jpeg"
     if "," in img and img.strip().startswith("data:"):
-        img = img.split(",", 1)[1]
-    msg = UserMessage(text="Extract the receipt fields as JSON.",
-                      file_contents=[ImageContent(image_base64=img)])
+        header, img = img.split(",", 1)
+        mt = header[5:].split(";", 1)[0]
+        if mt in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+            media_type = mt
+    elif img.startswith("iVBOR"):
+        media_type = "image/png"
     try:
-        resp = await chat.send_message(msg)
+        resp = await anthropic_client().messages.create(
+            model=ANTHROPIC_VISION_MODEL, max_tokens=512, system=system,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img}},
+                {"type": "text", "text": "Extract the receipt fields as JSON."},
+            ]}],
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("receipt scan failed")
         raise HTTPException(502, f"Receipt scan failed: {e}")
 
+    resp = _claude_text(resp)
     text = resp if isinstance(resp, str) else str(resp)
     text = text.strip()
     if text.startswith("```"):
@@ -1525,7 +1514,6 @@ class AskRequest(BaseModel):
 
 @api_router.post("/ask")
 async def ask_assistant(req: AskRequest):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
     from tax_kb import kb_for
 
     country = (req.country or "AU").upper()
@@ -1564,11 +1552,13 @@ async def ask_assistant(req: AskRequest):
             "\nNow answer the driver's latest question:\n" + req.question.strip()
         )
 
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY,
-                   session_id=f"ask-{uuid.uuid4()}",
-                   system_message=system).with_model("anthropic", "claude-sonnet-4-6")
     try:
-        resp = await chat.send_message(UserMessage(text=user_text))
+        resp = _claude_text(await anthropic_client().messages.create(
+            model=ANTHROPIC_MODEL, max_tokens=1024, system=system,
+            messages=[{"role": "user", "content": user_text}],
+        ))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("ask assistant failed")
         raise HTTPException(502, f"Assistant failed: {e}")
@@ -1589,7 +1579,7 @@ app.include_router(ue_guarantee.build_router(db))
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1597,4 +1587,4 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    await db.close()
