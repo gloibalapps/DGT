@@ -194,6 +194,14 @@ export interface ShiftT {
   platform?: string | null; vehicle_id?: string | null; note?: string | null;
 }
 
+// URLs opened in a browser / OS handler (exports, Drive connect) can't carry the
+// Authorization header, so ask the backend for a short-lived (5 min), single-use
+// ticket and put that in the URL instead of the long-lived session token.
+async function ticketParam(): Promise<string> {
+  const { ticket } = await req(`/auth/ticket`, { method: "POST" }, 0);
+  return `ticket=${encodeURIComponent(ticket)}`;
+}
+
 export const api = {
   async authMe() { return req(`/auth/me`); },
   async authLogout() { return req(`/auth/logout`, { method: "POST" }); },
@@ -201,8 +209,8 @@ export const api = {
     return req(`/auth/claim`, { method: "POST", body: JSON.stringify({ from_profile_id: fromProfileId }) });
   },
   async deleteAccount() {
-    const pid = await getProfileId();
-    return req(`/account?profile_id=${pid}`, { method: "DELETE" });
+    // The backend deletes the account of the signed-in session (Bearer header).
+    return req(`/account`, { method: "DELETE" });
   },
 
   // ---- Google Drive backup ----
@@ -225,8 +233,7 @@ export const api = {
     return req(`/backups/disconnect?profile_id=${pid}`, { method: "POST" });
   },
   async driveConnectUrl(redirect: string) {
-    const pid = await getProfileId();
-    return `${BASE}/api/auth/google/start?backup=1&profile_id=${encodeURIComponent(pid)}&app_redirect=${encodeURIComponent(redirect)}`;
+    return `${BASE}/api/auth/google/start?backup=1&${await ticketParam()}&app_redirect=${encodeURIComponent(redirect)}`;
   },
   async getProfile(): Promise<ProfileT> {
     const pid = await getProfileId();
@@ -344,11 +351,11 @@ export const api = {
   },
   async exportUrl(period: string, refDate: string) {
     const pid = await getProfileId();
-    return `${BASE}/api/export?profile_id=${pid}&period=${period}&ref_date=${refDate}`;
+    return `${BASE}/api/export?profile_id=${pid}&period=${period}&ref_date=${refDate}&${await ticketParam()}`;
   },
   async exportMileageUrl(refDate: string) {
     const pid = await getProfileId();
-    return `${BASE}/api/export-mileage?profile_id=${pid}&ref_date=${refDate}`;
+    return `${BASE}/api/export-mileage?profile_id=${pid}&ref_date=${refDate}&${await ticketParam()}`;
   },
   // ---- Uber Eats guarantee
   async ueJobs(start?: string, end?: string): Promise<UEJob[]> {
@@ -375,7 +382,7 @@ export const api = {
   },
   async ueExportUrl(cycleStart: string) {
     const pid = await getProfileId();
-    return `${BASE}/api/ue/export?profile_id=${pid}&cycle_start=${cycleStart}`;
+    return `${BASE}/api/ue/export?profile_id=${pid}&cycle_start=${cycleStart}&${await ticketParam()}`;
   },
   async ask(question: string, country: string, history: { role: string; text: string }[] = []) {
     return req(`/ask`, { method: "POST", body: JSON.stringify({ question, country, history }) }, 0, 45000);

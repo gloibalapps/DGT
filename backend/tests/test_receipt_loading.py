@@ -77,9 +77,12 @@ class TestReceiptLoading:
         r = ctx["s"].get(f"{BASE_URL}/api/expenses/nope-{uuid.uuid4().hex}", params={"profile_id": ctx["pid"]})
         assert r.status_code == 404
 
-    def test_get_missing_profile_422(self, ctx):
+    def test_get_missing_profile_uses_session(self, ctx):
+        # profile_id is optional now: the owner comes from the Bearer session.
         r = ctx["s"].get(f"{BASE_URL}/api/expenses/{ctx['with']['id']}")
-        assert r.status_code == 422
+        assert r.status_code == 200 and r.json()["id"] == ctx["with"]["id"]
+        r = ctx["s"].get(f"{BASE_URL}/api/expenses/{ctx['with']['id']}", headers={"X-Test-No-Auto-Auth": "1"})
+        assert r.status_code == 401
 
     def test_put_without_image_keeps_photo(self, ctx):
         eid = ctx["with"]["id"]

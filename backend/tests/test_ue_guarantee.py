@@ -66,8 +66,9 @@ class TestJobs:
         assert r.status_code in (400, 422), f"got {r.status_code}"
 
     def test_missing_profile_id(self):
-        r = requests.post(f"{UE}/jobs", json={"jobs": [job()]})
-        assert r.status_code == 400
+        # no session at all -> 401 (profile_id is taken from the session)
+        r = requests.post(f"{UE}/jobs", json={"jobs": [job()]}, headers={"X-Test-No-Auto-Auth": "1"})
+        assert r.status_code == 401
 
     def test_put_409_and_update_and_delete(self, pid):
         got = requests.get(f"{UE}/jobs", params={"profile_id": pid}).json()

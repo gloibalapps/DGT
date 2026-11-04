@@ -58,8 +58,10 @@ class TestProfile:
         assert p2["legal_name"] == "TEST Driver"
 
     def test_put_missing_profile_id(self, base_url, api_client):
-        r = api_client.put(f"{base_url}/api/profile", json={"work_type": "delivery"})
-        assert r.status_code == 400
+        # profile_id now comes from the Bearer session; with no session -> 401.
+        r = api_client.put(f"{base_url}/api/profile", json={"work_type": "delivery"},
+                           headers={"X-Test-No-Auto-Auth": "1"})
+        assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------

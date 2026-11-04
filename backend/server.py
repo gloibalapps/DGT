@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional, Literal, Annotated, Dict
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Request, Depends
 from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -144,6 +144,79 @@ async def current_user(authorization: Optional[str] = Header(None)) -> dict:
     return user
 
 
+class Owner:
+    """The authenticated caller. `profile_id` is the ONLY profile they may read
+    or write. Profiles are keyed by the account's user_id (sign-in sets the
+    app's profile id to user_id, and /auth/claim re-keys any pre-login device
+    data onto it), so an account owns exactly one profile_id == user_id."""
+    __slots__ = ("user", "profile_id", "token")
+
+    def __init__(self, user: dict, token: str):
+        self.user = user
+        self.profile_id = user["user_id"]
+        self.token = token
+
+
+def _bearer(authorization: Optional[str]) -> Optional[str]:
+    if authorization and authorization.startswith("Bearer "):
+        return authorization.split(" ", 1)[1].strip() or None
+    return None
+
+
+def _check_pid(owner: "Owner", supplied: Optional[str]):
+    # Legacy clients still send profile_id. Accept it only when it is the
+    # caller's own; anything else is an attempt to reach someone else's data.
+    if supplied not in (None, "", owner.profile_id):
+        raise HTTPException(status_code=403, detail="Not your profile")
+
+
+async def require_owner(request: Request, authorization: Optional[str] = Header(None)) -> Owner:
+    """FastAPI dependency for every data route: valid, unexpired Bearer session
+    -> Owner. Rejects a query-string profile_id that isn't the caller's (403)."""
+    user = await current_user(authorization)
+    owner = Owner(user, _bearer(authorization))
+    _check_pid(owner, request.query_params.get("profile_id"))
+    return owner
+
+
+DOWNLOAD_TICKET_TTL = timedelta(minutes=5)
+
+
+async def require_owner_or_ticket(request: Request, authorization: Optional[str] = Header(None),
+                                  ticket: Optional[str] = Query(None)) -> Owner:
+    """For URLs the app opens in a browser / OS handler (CSV/XLSX exports,
+    Drive-connect), which cannot carry an Authorization header. The app first
+    calls POST /api/auth/ticket (Bearer) and appends ?ticket=..., a random,
+    single-use token valid for 5 minutes, instead of the long-lived session."""
+    if _bearer(authorization):
+        return await require_owner(request, authorization)
+    if not ticket:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    doc = await db.oauth_states.find_one({"state": f"tkt_{ticket}"})
+    if not doc or doc.get("kind") != "ticket":
+        raise HTTPException(status_code=401, detail="Invalid ticket")
+    await db.oauth_states.delete_one({"state": f"tkt_{ticket}"})  # single use
+    created = _as_dt(doc.get("created_at"))
+    if isinstance(created, datetime) and created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    if not isinstance(created, datetime) or created + DOWNLOAD_TICKET_TTL < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Ticket expired")
+    user = await db.users.find_one({"user_id": doc.get("user_id")}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    owner = Owner(user, None)
+    _check_pid(owner, request.query_params.get("profile_id"))
+    return owner
+
+
+def _own_payload(payload: dict, owner: Owner) -> dict:
+    """Body-carried profile_id: must be absent or the caller's; force it."""
+    payload = dict(payload or {})
+    _check_pid(owner, payload.get("profile_id"))
+    payload["profile_id"] = owner.profile_id
+    return payload
+
+
 @api_router.get("/auth/me")
 async def auth_me(authorization: Optional[str] = Header(None)):
     user = await current_user(authorization)
@@ -158,50 +231,69 @@ async def auth_logout(authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+@api_router.post("/auth/ticket")
+async def auth_ticket(owner: Owner = Depends(require_owner)):
+    """Mint a short-lived single-use ticket for a browser-opened URL."""
+    t = uuid.uuid4().hex + uuid.uuid4().hex
+    await db.oauth_states.delete_many(
+        {"created_at": {"$lt": datetime.now(timezone.utc) - timedelta(minutes=10)}})
+    await db.oauth_states.insert_one({"state": f"tkt_{t}", "kind": "ticket",
+                                      "user_id": owner.profile_id,
+                                      "created_at": datetime.now(timezone.utc)})
+    return {"ticket": t, "expires_in": int(DOWNLOAD_TICKET_TTL.total_seconds())}
+
+
+_DATA_COLLS = ("profiles", "vehicles", "trips", "income", "expenses", "shifts", "ue_jobs", "drive_tokens")
+
+
 @api_router.post("/auth/claim")
-async def auth_claim(payload: dict = Body(...), authorization: Optional[str] = Header(None)):
-    """Move a device's local (anonymous) data onto the signed-in account, once,
-    only if that account has no data yet — so first-time login keeps your work."""
-    user = await current_user(authorization)
+async def auth_claim(payload: dict = Body(...), owner: Owner = Depends(require_owner)):
+    """Move a device's local (anonymous, pre-login) data onto the signed-in
+    account, once, only if that account has no data yet. The source must be an
+    anonymous device id: ids that belong to any account (user_*/demo_*) can
+    never be claimed, so this can't be used to pull another user's data."""
     src = (payload or {}).get("from_profile_id")
-    uid = user["user_id"]
-    if not src or src == uid:
+    uid = owner.profile_id
+    if owner.user.get("is_demo") or not src or src == uid:
         return {"claimed": False}
-    has_data = False
-    for coll in (db.profiles, db.vehicles, db.trips, db.income, db.expenses):
-        if await coll.find_one({"profile_id": uid}):
-            has_data = True
-            break
-    if has_data:
-        return {"claimed": False}
+    if await db.users.find_one({"user_id": src}) or str(src).startswith(("user_", "demo_")):
+        raise HTTPException(status_code=403, detail="Not an anonymous device profile")
+    for name in _DATA_COLLS:
+        if await db[name].find_one({"profile_id": uid}):
+            return {"claimed": False}
     moved = 0
-    for coll in (db.profiles, db.vehicles, db.trips, db.income, db.expenses):
-        res = await coll.update_many({"profile_id": src}, {"$set": {"profile_id": uid}})
+    for name in _DATA_COLLS:
+        res = await db[name].update_many({"profile_id": src}, {"$set": {"profile_id": uid}})
         moved += res.modified_count
     return {"claimed": moved > 0, "moved": moved}
 
 
+async def _revoke_google(token_enc: Optional[str]):
+    if not token_enc or not _fernet:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10) as hc:
+            await hc.post("https://oauth2.googleapis.com/revoke", data={"token": _dec(token_enc)})
+    except Exception as e:  # best effort; the row is deleted regardless
+        logger.warning("drive token revoke failed: %s", e)
+
+
 @api_router.delete("/account")
-async def delete_account(profile_id: str = Query(...), authorization: Optional[str] = Header(None)):
-    """Permanently delete a driver's account and ALL their data.
+async def delete_account(owner: Owner = Depends(require_owner)):
+    """Permanently delete the signed-in driver's account and ALL their data.
     Required by the Apple App Store & Google Play for apps with sign-in."""
+    uid = owner.profile_id
+    row = await db.drive_tokens.find_one({"profile_id": uid})
+    if row:
+        await _revoke_google(row.get("refresh_token") or row.get("access_token"))
     deleted: dict = {}
-    for name, coll in (
-        ("profiles", db.profiles), ("vehicles", db.vehicles), ("trips", db.trips),
-        ("income", db.income), ("expenses", db.expenses), ("shifts", db.shifts),
-        ("drive_tokens", db.drive_tokens), ("ue_jobs", db.ue_jobs),
-    ):
-        res = await coll.delete_many({"profile_id": profile_id})
+    for name in _DATA_COLLS:
+        res = await db[name].delete_many({"profile_id": uid})
         deleted[name] = res.deleted_count
-    # If signed in, also remove the user record + all of their sessions.
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-        sess = await db.user_sessions.find_one({"session_token": token})
-        if sess:
-            uid = sess["user_id"]
-            await db.user_sessions.delete_many({"user_id": uid})
-            await db.users.delete_one({"user_id": uid})
-            deleted["user"] = 1
+    deleted["oauth_states"] = (await db.oauth_states.delete_many({"user_id": uid})).deleted_count \
+        + (await db.oauth_states.delete_many({"profile_id": uid})).deleted_count
+    deleted["user_sessions"] = (await db.user_sessions.delete_many({"user_id": uid})).deleted_count
+    deleted["user"] = (await db.users.delete_one({"user_id": uid})).deleted_count
     return {"ok": True, "deleted": deleted}
 
 
@@ -363,13 +455,23 @@ async def auth_demo():
 @api_router.get("/auth/google/start")
 async def google_start(request: Request, app_redirect: str = Query(...),
                        backup: int = Query(0), profile_id: Optional[str] = Query(None),
-                       state: Optional[str] = Query(None)):
+                       state: Optional[str] = Query(None), ticket: Optional[str] = Query(None)):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google login not configured")
+    if backup:
+        # Drive-connect binds a Google token to a profile, so it must be the
+        # caller's: identify them by a single-use ticket (browser can't send
+        # the Bearer header). A client-supplied profile_id is ignored.
+        owner = await require_owner_or_ticket(request, None, ticket)
+        profile_id = owner.profile_id
+    else:
+        profile_id = None
     from urllib.parse import urlencode
     # The app may supply its own `state` so it can poll for the result (robust
     # against Android dropping the deep-link payload on the way back).
     state = state or uuid.uuid4().hex
+    if state.startswith("tkt_"):
+        raise HTTPException(400, "bad state")
     # replaces the Mongo TTL index (600 s) on oauth_states.created_at
     await db.oauth_states.delete_many(
         {"created_at": {"$lt": datetime.now(timezone.utc) - timedelta(minutes=10)}})
@@ -689,7 +791,8 @@ async def backup_profile(profile_id: str) -> dict:
 
 
 @api_router.get("/backups/status")
-async def backup_status(profile_id: str = Query(...)):
+async def backup_status(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     row = await db.drive_tokens.find_one({"profile_id": profile_id})
     if not row:
         return {"connected": False}
@@ -726,9 +829,10 @@ async def _backup_job(profile_id: str):
 
 
 @api_router.post("/backups/google-drive")
-async def run_backup(profile_id: str = Query(...)):
+async def run_backup(owner: Owner = Depends(require_owner)):
     """Starts the backup in the background and returns immediately (large
     receipt sets used to exceed the request timeout). Poll /backups/status."""
+    profile_id = owner.profile_id
     if not _fernet:
         raise HTTPException(503, "Backups aren't configured on the server (DRIVE_ENCRYPTION_KEY missing)")
     row = await db.drive_tokens.find_one({"profile_id": profile_id})
@@ -744,7 +848,8 @@ async def run_backup(profile_id: str = Query(...)):
 
 
 @api_router.post("/backups/disconnect")
-async def disconnect_backup(profile_id: str = Query(...)):
+async def disconnect_backup(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     await db.drive_tokens.delete_one({"profile_id": profile_id})
     return {"connected": False}
 
@@ -775,7 +880,10 @@ async def restore_profile(profile_id: str) -> dict:
             doc = dict(it)
             doc.pop("_id", None)
             doc["profile_id"] = profile_id  # attach to the current driver
-            await coll.replace_one({"id": doc["id"]}, doc, upsert=True)
+            cur = await coll.find_one({"id": doc["id"]})
+            if cur and cur.get("profile_id") != profile_id:
+                continue  # id belongs to someone else — never overwrite it
+            await coll.replace_one({"id": doc["id"], "profile_id": profile_id}, doc, upsert=True)
             n += 1
         counts[key] = n
 
@@ -790,7 +898,8 @@ async def restore_profile(profile_id: str) -> dict:
 
 
 @api_router.post("/backups/restore")
-async def run_restore(profile_id: str = Query(...)):
+async def run_restore(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     return await restore_profile(profile_id)
 
 
@@ -991,12 +1100,14 @@ async def _set_active(profile_id: str, vehicle_id: str):
 
 
 @api_router.get("/vehicles")
-async def list_vehicles(profile_id: str = Query(...)):
+async def list_vehicles(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     return await ensure_vehicles(profile_id)
 
 
 @api_router.post("/vehicles")
-async def add_vehicle(payload: dict):
+async def add_vehicle(payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
     existing = await ensure_vehicles(payload["profile_id"])
     make_first_active = payload.get("is_active") or len(existing) == 0
     obj = Vehicle(**payload)
@@ -1008,27 +1119,35 @@ async def add_vehicle(payload: dict):
 
 
 @api_router.put("/vehicles/{vehicle_id}")
-async def update_vehicle(vehicle_id: str, payload: dict):
-    existing = await db.vehicles.find_one({"id": vehicle_id})
+async def update_vehicle(vehicle_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
+    existing = await db.vehicles.find_one({"id": vehicle_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "vehicle not found")
     base = clean(existing)
     base.update(payload)
+    base["id"] = vehicle_id
     obj = Vehicle(**base)
-    await db.vehicles.update_one({"id": vehicle_id}, {"$set": obj.model_dump()})
+    await db.vehicles.update_one({"id": vehicle_id, "profile_id": owner.profile_id}, {"$set": obj.model_dump()})
     if obj.is_active:
         await _set_active(obj.profile_id, vehicle_id)
     return await ensure_vehicles(obj.profile_id)
 
 
 @api_router.post("/vehicles/{vehicle_id}/activate")
-async def activate_vehicle(vehicle_id: str, profile_id: str = Query(...)):
+async def activate_vehicle(vehicle_id: str, owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
+    if not await db.vehicles.find_one({"id": vehicle_id, "profile_id": profile_id}):
+        raise HTTPException(404, "vehicle not found")
     await _set_active(profile_id, vehicle_id)
     return await ensure_vehicles(profile_id)
 
 
 @api_router.delete("/vehicles/{vehicle_id}")
-async def delete_vehicle(vehicle_id: str, profile_id: str = Query(...)):
+async def delete_vehicle(vehicle_id: str, owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
+    if not await db.vehicles.find_one({"id": vehicle_id, "profile_id": profile_id}):
+        raise HTTPException(404, "vehicle not found")
     all_v = await ensure_vehicles(profile_id)
     if len(all_v) <= 1:
         raise HTTPException(400, "You must keep at least one vehicle")
@@ -1044,7 +1163,8 @@ async def delete_vehicle(vehicle_id: str, profile_id: str = Query(...)):
 # Profile
 # ---------------------------------------------------------------------------
 @api_router.get("/profile")
-async def get_profile(profile_id: str = Query(...)):
+async def get_profile(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     doc = await db.profiles.find_one({"profile_id": profile_id})
     if not doc:
         prof = Profile(profile_id=profile_id)
@@ -1054,10 +1174,9 @@ async def get_profile(profile_id: str = Query(...)):
 
 
 @api_router.put("/profile")
-async def save_profile(payload: dict):
-    profile_id = payload.get("profile_id")
-    if not profile_id:
-        raise HTTPException(400, "profile_id required")
+async def save_profile(payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
+    profile_id = owner.profile_id
     existing = await db.profiles.find_one({"profile_id": profile_id})
     base = clean(existing) if existing else Profile(profile_id=profile_id).model_dump()
     base.update(payload)
@@ -1078,13 +1197,14 @@ async def _list(coll, profile_id):
 
 # Trips
 @api_router.get("/trips")
-async def list_trips(profile_id: str = Query(...)):
+async def list_trips(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     return await _list("trips", profile_id)
 
 
 @api_router.post("/trips")
-async def add_trip(payload: dict):
-    obj = Trip(**payload)
+async def add_trip(payload: dict, owner: Owner = Depends(require_owner)):
+    obj = Trip(**_own_payload(payload, owner))
     # Block the same physical drive being logged twice (manual GPS shift +
     # auto-detect, double taps): reject any trip whose time window overlaps an
     # existing timed trip for this driver. ISO-UTC strings compare correctly.
@@ -1101,55 +1221,63 @@ async def add_trip(payload: dict):
 
 
 @api_router.put("/trips/{item_id}")
-async def update_trip(item_id: str, payload: dict):
-    existing = await db.trips.find_one({"id": item_id})
+async def update_trip(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
+    existing = await db.trips.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "trip not found")
-    base = clean(existing); base.update(payload)
+    base = clean(existing); base.update(payload); base["id"] = item_id
     obj = Trip(**base)
-    await db.trips.update_one({"id": item_id}, {"$set": obj.model_dump()})
+    await db.trips.update_one({"id": item_id, "profile_id": owner.profile_id}, {"$set": obj.model_dump()})
     return clean(obj.model_dump())
 
 
 @api_router.delete("/trips/{item_id}")
-async def delete_trip(item_id: str):
-    await db.trips.delete_one({"id": item_id})
+async def delete_trip(item_id: str, owner: Owner = Depends(require_owner)):
+    res = await db.trips.delete_one({"id": item_id, "profile_id": owner.profile_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "trip not found")
     return {"ok": True}
 
 
 # Income
 @api_router.get("/income")
-async def list_income(profile_id: str = Query(...)):
+async def list_income(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     return await _list("income", profile_id)
 
 
 @api_router.post("/income")
-async def add_income(payload: dict):
-    obj = Income(**payload)
+async def add_income(payload: dict, owner: Owner = Depends(require_owner)):
+    obj = Income(**_own_payload(payload, owner))
     await db.income.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
 
 @api_router.put("/income/{item_id}")
-async def update_income(item_id: str, payload: dict):
-    existing = await db.income.find_one({"id": item_id})
+async def update_income(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
+    existing = await db.income.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "income not found")
-    base = clean(existing); base.update(payload)
+    base = clean(existing); base.update(payload); base["id"] = item_id
     obj = Income(**base)
-    await db.income.update_one({"id": item_id}, {"$set": obj.model_dump()})
+    await db.income.update_one({"id": item_id, "profile_id": owner.profile_id}, {"$set": obj.model_dump()})
     return clean(obj.model_dump())
 
 
 @api_router.delete("/income/{item_id}")
-async def delete_income(item_id: str):
-    await db.income.delete_one({"id": item_id})
+async def delete_income(item_id: str, owner: Owner = Depends(require_owner)):
+    res = await db.income.delete_one({"id": item_id, "profile_id": owner.profile_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "income not found")
     return {"ok": True}
 
 
 # Expenses
 @api_router.get("/expenses")
-async def list_expenses(profile_id: str = Query(...)):
+async def list_expenses(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     # Receipt photos are large base64 blobs — leave them out of the list and
     # just flag which expenses have one. The photo loads via GET /expenses/{id}.
     docs = await db.expenses.find({"profile_id": profile_id}).sort("date", -1).to_list(2000)
@@ -1162,7 +1290,8 @@ async def list_expenses(profile_id: str = Query(...)):
 
 
 @api_router.get("/expenses/{item_id}")
-async def get_expense(item_id: str, profile_id: str = Query(...)):
+async def get_expense(item_id: str, owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     doc = await db.expenses.find_one({"id": item_id, "profile_id": profile_id})
     if not doc:
         raise HTTPException(404, "expense not found")
@@ -1170,56 +1299,63 @@ async def get_expense(item_id: str, profile_id: str = Query(...)):
 
 
 @api_router.post("/expenses")
-async def add_expense(payload: dict):
-    obj = Expense(**payload)
+async def add_expense(payload: dict, owner: Owner = Depends(require_owner)):
+    obj = Expense(**_own_payload(payload, owner))
     await db.expenses.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
 
 @api_router.put("/expenses/{item_id}")
-async def update_expense(item_id: str, payload: dict):
-    existing = await db.expenses.find_one({"id": item_id})
+async def update_expense(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
+    existing = await db.expenses.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "expense not found")
-    base = clean(existing); base.update(payload)
+    base = clean(existing); base.update(payload); base["id"] = item_id
     obj = Expense(**base)
-    await db.expenses.update_one({"id": item_id}, {"$set": obj.model_dump()})
+    await db.expenses.update_one({"id": item_id, "profile_id": owner.profile_id}, {"$set": obj.model_dump()})
     return clean(obj.model_dump())
 
 
 @api_router.delete("/expenses/{item_id}")
-async def delete_expense(item_id: str):
-    await db.expenses.delete_one({"id": item_id})
+async def delete_expense(item_id: str, owner: Owner = Depends(require_owner)):
+    res = await db.expenses.delete_one({"id": item_id, "profile_id": owner.profile_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "expense not found")
     return {"ok": True}
 
 
 # Shifts — manually logged online hours
 @api_router.get("/shifts")
-async def list_shifts(profile_id: str = Query(...)):
+async def list_shifts(owner: Owner = Depends(require_owner)):
+    profile_id = owner.profile_id
     return await _list("shifts", profile_id)
 
 
 @api_router.post("/shifts")
-async def add_shift(payload: dict):
-    obj = Shift(**payload)
+async def add_shift(payload: dict, owner: Owner = Depends(require_owner)):
+    obj = Shift(**_own_payload(payload, owner))
     await db.shifts.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
 
 @api_router.put("/shifts/{item_id}")
-async def update_shift(item_id: str, payload: dict):
-    existing = await db.shifts.find_one({"id": item_id})
+async def update_shift(item_id: str, payload: dict, owner: Owner = Depends(require_owner)):
+    payload = _own_payload(payload, owner)
+    existing = await db.shifts.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "shift not found")
-    base = clean(existing); base.update(payload)
+    base = clean(existing); base.update(payload); base["id"] = item_id
     obj = Shift(**base)
-    await db.shifts.update_one({"id": item_id}, {"$set": obj.model_dump()})
+    await db.shifts.update_one({"id": item_id, "profile_id": owner.profile_id}, {"$set": obj.model_dump()})
     return clean(obj.model_dump())
 
 
 @api_router.delete("/shifts/{item_id}")
-async def delete_shift(item_id: str):
-    await db.shifts.delete_one({"id": item_id})
+async def delete_shift(item_id: str, owner: Owner = Depends(require_owner)):
+    res = await db.shifts.delete_one({"id": item_id, "profile_id": owner.profile_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "shift not found")
     return {"ok": True}
 
 
@@ -1241,19 +1377,21 @@ async def _load_all(profile_id):
 
 
 @api_router.get("/reports")
-async def reports(profile_id: str = Query(...),
+async def reports(owner: Owner = Depends(require_owner),
                   period: str = Query("quarter"),
                   ref_date: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     return taxlib.compute_report(profile, trips, income, expenses, period, ref, vehicles)
 
 
 @api_router.get("/reports/analytics")
-async def reports_analytics(profile_id: str = Query(...),
+async def reports_analytics(owner: Owner = Depends(require_owner),
                             start: str = Query(...), end: str = Query(...),
                             providers: Optional[str] = Query(None),
                             vehicle_id: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
     s = taxlib.parse_date(start)
@@ -1264,14 +1402,16 @@ async def reports_analytics(profile_id: str = Query(...),
 
 
 @api_router.get("/dashboard")
-async def dashboard(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+async def dashboard(owner: Owner = Depends(require_owner), ref_date: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     return taxlib.dashboard(profile, trips, income, expenses, ref, vehicles)
 
 
 @api_router.get("/performance")
-async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+async def performance(owner: Owner = Depends(require_owner), ref_date: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
@@ -1279,7 +1419,8 @@ async def performance(profile_id: str = Query(...), ref_date: Optional[str] = Qu
 
 
 @api_router.get("/insights")
-async def insights(profile_id: str = Query(...), ref_date: Optional[str] = Query(None)):
+async def insights(owner: Owner = Depends(require_owner), ref_date: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
@@ -1287,8 +1428,9 @@ async def insights(profile_id: str = Query(...), ref_date: Optional[str] = Query
 
 
 @api_router.get("/money")
-async def money(profile_id: str = Query(...), period: str = Query("week"),
+async def money(owner: Owner = Depends(require_owner), period: str = Query("week"),
                 ref_date: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     shifts = [clean(s) for s in await db.shifts.find({"profile_id": profile_id}).to_list(5000)]
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
@@ -1297,10 +1439,11 @@ async def money(profile_id: str = Query(...), period: str = Query("week"),
 
 
 @api_router.get("/tax-mileage")
-async def tax_mileage(profile_id: str = Query(...), ref_date: Optional[str] = Query(None),
+async def tax_mileage(owner: Owner = Depends(require_owner), ref_date: Optional[str] = Query(None),
                       vehicle_id: Optional[str] = Query(None)):
     """Full Tax Mileage engine: today, FY summary, ATO logbook, method
     comparison (logbook vs cents-per-km) and odometer reconciliation."""
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     return taxlib.tax_mileage(profile, trips, income, expenses, ref,
@@ -1308,9 +1451,10 @@ async def tax_mileage(profile_id: str = Query(...), ref_date: Optional[str] = Qu
 
 
 @api_router.get("/export")
-async def export_csv(profile_id: str = Query(...),
+async def export_csv(owner: Owner = Depends(require_owner_or_ticket),
                      period: str = Query("quarter"),
                      ref_date: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     rep = taxlib.compute_report(profile, trips, income, expenses, period, ref, vehicles)
@@ -1364,9 +1508,10 @@ async def export_csv(profile_id: str = Query(...),
 
 
 @api_router.get("/export-mileage")
-async def export_mileage_csv(profile_id: str = Query(...),
+async def export_mileage_csv(owner: Owner = Depends(require_owner_or_ticket),
                              ref_date: Optional[str] = Query(None),
                              vehicle_id: Optional[str] = Query(None)):
+    profile_id = owner.profile_id
     profile, trips, income, expenses, vehicles = await _load_all(profile_id)
     ref = taxlib.parse_date(ref_date) if ref_date else date.today()
     tm = taxlib.tax_mileage(profile, trips, income, expenses, ref,
@@ -1429,7 +1574,7 @@ class ScanRequest(BaseModel):
 
 
 @api_router.post("/receipts/scan")
-async def scan_receipt(req: ScanRequest):
+async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_owner)):
     import json as _json
 
     system = (
@@ -1513,7 +1658,7 @@ class AskRequest(BaseModel):
 
 
 @api_router.post("/ask")
-async def ask_assistant(req: AskRequest):
+async def ask_assistant(req: AskRequest, owner: Owner = Depends(require_owner)):
     from tax_kb import kb_for
 
     country = (req.country or "AU").upper()
@@ -1574,7 +1719,7 @@ async def root():
 
 app.include_router(api_router)
 import ue_guarantee  # noqa: E402
-app.include_router(ue_guarantee.build_router(db))
+app.include_router(ue_guarantee.build_router(db, require_owner, require_owner_or_ticket, _own_payload))
 
 app.add_middleware(
     CORSMiddleware,

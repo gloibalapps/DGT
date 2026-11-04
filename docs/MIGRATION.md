@@ -25,3 +25,12 @@ Branch: `migrate-off-emergent` (local). Nothing here has been deployed or run ag
 The trial length is **not** set in code. It comes from the intro offer on the store products: App Store Connect > Subscriptions > Introductory Offer = Free, 2 weeks, and Play Console > Subscriptions > base plan > Offer = free trial, 14 days. RevenueCat just reads it. The copy says 14 days in: `frontend/src/PaywallScreen.tsx` (CTA and fine print), `frontend/app/(tabs)/settings.tsx`, `frontend/app/manual.tsx`, `website/index.html`, `website/terms.html`, and `landing/index.html` (fixed from 7 days). No backend trial logic exists. RevenueCat is still paused (`RC_ENABLED=false` in `src/subscription.tsx`), and entitlement id `drivers_gig_tax_unlimited` must match the dashboard.
 
 See the report for the env var table and manual steps.
+
+## API auth & data scoping
+Every data route requires `Authorization: Bearer <session_token>` (a `user_sessions` row that hasn't expired; demo sessions included) through the `require_owner` FastAPI dependency in `server.py`. The caller's profile is `profile_id == user_id`: sign-in sets the app's profile id to the user_id, and `/auth/claim` re-keys pre-login device data onto it. Each account owns exactly that one profile.
+* A `profile_id` in the query or body is optional. If it isn't the caller's own, the request is refused with 403. Records are always written with the session's profile_id, and an update can't move a record to another profile.
+* Get, update, and delete of a single record filter by `id` and owner `profile_id`. A record that isn't yours returns 404.
+* Anonymous device profiles (random UUIDs from before login) are no longer readable directly. They can only be moved onto the signed-in account, once, through `/auth/claim`. The account must have no data yet, and the source can't be a real account id (`user_*`/`demo_*`, or any `users.user_id`). Demo accounts never claim.
+* URLs opened in a browser (CSV/XLSX exports and the Drive-connect `auth/google/start?backup=1`) can't send the header. They use `?ticket=` from `POST /api/auth/ticket` instead: random, single-use, valid for 5 minutes, and stored in `oauth_states` with `kind=ticket`.
+* `DELETE /api/account` deletes the authenticated user's data, user row, all of their sessions, oauth_states, and drive_tokens. It also revokes the Google Drive token on a best-effort basis.
+* Public routes: `/health`, `/api/`, `/api/site`, `/api/privacy`, `/api/terms`, `/api/waitlist`, `/api/auth/{google/start (non-backup), google/callback, google/poll, apple, demo, me, logout}`.

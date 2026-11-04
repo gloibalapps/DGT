@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -114,7 +114,9 @@ def summarise(jobs: List[dict], rate: float) -> dict:
     }
 
 
-def build_router(db) -> APIRouter:
+def build_router(db, require_owner, require_owner_or_ticket, own_payload) -> APIRouter:
+    """All routes require the caller's Bearer session (see server.require_owner)
+    and are scoped to their own profile_id."""
     r = APIRouter(prefix="/api/ue")
 
     async def _profile(pid: str) -> dict:
@@ -150,16 +152,18 @@ def build_router(db) -> APIRouter:
         return out
 
     @r.get("/jobs")
-    async def list_jobs(profile_id: str = Query(...), start: Optional[str] = None, end: Optional[str] = None):
+    async def list_jobs(start: Optional[str] = None, end: Optional[str] = None, owner=Depends(require_owner)):
+        profile_id = owner.profile_id
         if start and end:
             return await _jobs(profile_id, _pd(start), _pd(end) + timedelta(days=1))
         return await _jobs(profile_id)
 
     @r.post("/jobs")
-    async def add_jobs(payload: dict = Body(...)):
+    async def add_jobs(payload: dict = Body(...), owner=Depends(require_owner)):
         """Batch save. Duplicates (same date + start time, amounts within 2c —
         vs saved jobs or an earlier row in this batch) are NOT saved; their
         batch indexes are returned so the app can flag them."""
+        payload = own_payload(payload, owner)
         pid = payload.get("profile_id")
         rows = payload.get("jobs") or []
         if not pid:
@@ -179,8 +183,9 @@ def build_router(db) -> APIRouter:
         return {"saved": saved, "duplicates": dups}
 
     @r.put("/jobs/{job_id}")
-    async def update_job(job_id: str, payload: dict = Body(...)):
-        cur = await db.ue_jobs.find_one({"id": job_id}, {"_id": 0})
+    async def update_job(job_id: str, payload: dict = Body(...), owner=Depends(require_owner)):
+        own_payload(payload, owner)
+        cur = await db.ue_jobs.find_one({"id": job_id, "profile_id": owner.profile_id}, {"_id": 0})
         if not cur:
             raise HTTPException(404, "job not found")
         cur.update({k: v for k, v in payload.items() if k not in ("id", "profile_id")})
@@ -189,12 +194,14 @@ def build_router(db) -> APIRouter:
         others = [e for e in await _jobs(j.profile_id) if e["id"] != job_id]
         if any(_is_dup(d, e) for e in others):
             raise HTTPException(409, "duplicate of an existing job")
-        await db.ue_jobs.update_one({"id": job_id}, {"$set": d})
+        await db.ue_jobs.update_one({"id": job_id, "profile_id": owner.profile_id}, {"$set": d})
         return d
 
     @r.delete("/jobs/{job_id}")
-    async def delete_job(job_id: str):
-        await db.ue_jobs.delete_one({"id": job_id})
+    async def delete_job(job_id: str, owner=Depends(require_owner)):
+        res = await db.ue_jobs.delete_one({"id": job_id, "profile_id": owner.profile_id})
+        if not res.deleted_count:
+            raise HTTPException(404, "job not found")
         return {"ok": True}
 
     async def _cycle(pid: str, cycle_start: Optional[str]) -> dict:
@@ -224,17 +231,19 @@ def build_router(db) -> APIRouter:
                 "jobs": jobs, "cycles": cycles, "mismatches": await _mismatches(pid, cs, ce, all_jobs)}
 
     @r.get("/guarantee")
-    async def guarantee(profile_id: str = Query(...), cycle_start: Optional[str] = None):
-        return await _cycle(profile_id, cycle_start)
+    async def guarantee(cycle_start: Optional[str] = None, owner=Depends(require_owner)):
+        return await _cycle(owner.profile_id, cycle_start)
 
     @r.get("/mismatches")
-    async def mismatches(profile_id: str = Query(...)):
+    async def mismatches(owner=Depends(require_owner)):
+        profile_id = owner.profile_id
         end = date.today() + timedelta(days=1)
         start = end - timedelta(days=22)
         return await _mismatches(profile_id, start, end, await _jobs(profile_id, start, end))
 
     @r.get("/export")
-    async def export_xlsx(profile_id: str = Query(...), cycle_start: Optional[str] = None):
+    async def export_xlsx(cycle_start: Optional[str] = None, owner=Depends(require_owner_or_ticket)):
+        profile_id = owner.profile_id
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         c = await _cycle(profile_id, cycle_start)
