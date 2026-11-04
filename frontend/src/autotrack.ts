@@ -152,10 +152,34 @@ export async function isAutotrackEnabled(): Promise<boolean> {
   return (await storage.getItem<boolean>(ENABLED_KEY, false)) === true;
 }
 
-export interface EnableResult { ok: boolean; reason?: "unsupported" | "permission"; canAskAgain?: boolean; }
+export interface EnableResult { ok: boolean; reason?: "unsupported" | "permission" | "disclosure"; canAskAgain?: boolean; backgroundOff?: boolean; }
 
+// Prominent-disclosure state (Play User Data policy). true = accepted,
+// false = declined ("No thanks"), null = never shown. We never call
+// requestBackgroundPermissionsAsync unless this is true.
+const DISCLOSURE_KEY = "gigtax.bglocation.disclosure"; // "accepted" | "declined"
+export async function getBackgroundDisclosure(): Promise<boolean | null> {
+  const v = await storage.getItem<string>(DISCLOSURE_KEY, "");
+  return v === "accepted" ? true : v === "declined" ? false : null;
+}
+export async function setBackgroundDisclosure(accepted: boolean): Promise<void> {
+  await storage.setItem(DISCLOSURE_KEY, accepted ? "accepted" : "declined");
+}
+
+// True when the background permission is missing and we'd have to prompt for
+// it, i.e. the UI must show the disclosure first (unless already accepted).
+async function needsDisclosure(): Promise<boolean> {
+  const bg = await Location.getBackgroundPermissionsAsync();
+  if (bg.granted) return false;
+  return (await getBackgroundDisclosure()) !== true;
+}
+
+// Auto-detect needs background location. If the user hasn't accepted the
+// disclosure yet this returns reason "disclosure" WITHOUT any system prompt;
+// the caller shows the disclosure (useLocationDisclosure) and retries.
 export async function enableAutotrack(): Promise<EnableResult> {
   if (Platform.OS === "web") return { ok: false, reason: "unsupported" };
+  if (await needsDisclosure()) return { ok: false, reason: "disclosure" };
   let fg = await Location.getForegroundPermissionsAsync();
   if (!fg.granted && fg.canAskAgain) fg = await Location.requestForegroundPermissionsAsync();
   if (!fg.granted) return { ok: false, reason: "permission", canAskAgain: fg.canAskAgain };
@@ -316,17 +340,26 @@ export async function isManualRunning(): Promise<boolean> {
   catch { return false; }
 }
 
+// Manual drive. With background permission it runs as a foreground-service
+// task (survives screen-off). If the user declined the disclosure, or denies
+// "Allow all the time", it still starts in FOREGROUND-ONLY mode: the caller's
+// in-app watcher (trips.tsx startForegroundWatch) records the drive while the
+// app is open, and result.backgroundOff = true. Returns reason "disclosure"
+// (no prompt shown) when the disclosure hasn't been answered yet.
 export async function startManualDrive(): Promise<EnableResult> {
   if (Platform.OS === "web") return { ok: false, reason: "unsupported" };
+  const disclosure = await getBackgroundDisclosure();
+  let bg = await Location.getBackgroundPermissionsAsync();
+  if (!bg.granted && disclosure === null) return { ok: false, reason: "disclosure" };
   let fg = await Location.getForegroundPermissionsAsync();
   if (!fg.granted && fg.canAskAgain) fg = await Location.requestForegroundPermissionsAsync();
   if (!fg.granted) return { ok: false, reason: "permission", canAskAgain: fg.canAskAgain };
-  let bg = await Location.getBackgroundPermissionsAsync();
-  if (!bg.granted && bg.canAskAgain) bg = await Location.requestBackgroundPermissionsAsync();
-  if (!bg.granted) return { ok: false, reason: "permission", canAskAgain: bg.canAskAgain };
+  if (!bg.granted && disclosure === true && bg.canAskAgain) bg = await Location.requestBackgroundPermissionsAsync();
+  const background = bg.granted;
 
   await pauseAutotrackForManual(); // don't double-count the same drive
   await writeJSON(LIVE_KEY, { distance: 0, lastTs: 0, startTs: Date.now(), active: true } as Live);
+  if (!background) return { ok: true, backgroundOff: true };
   if (!(await isManualRunning())) {
     await Location.startLocationUpdatesAsync(MANUAL_TASK, {
       accuracy: Location.Accuracy.BestForNavigation,

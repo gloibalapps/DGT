@@ -9,6 +9,7 @@ import { useStore } from "@/src/store";
 import { useAuth } from "@/src/auth";
 import { useSubscription } from "@/src/subscription";
 import { api, resetLocalProfileId } from "@/src/api";
+import { useLocationDisclosure } from "@/src/LocationDisclosure";
 import {
   isAutotrackEnabled, enableAutotrack, disableAutotrack,
 } from "@/src/autotrack";
@@ -140,6 +141,8 @@ export default function Settings() {
   }, []);
   useFocusEffect(useCallback(() => { loadPct(); isAutotrackEnabled().then(setAutoOn); loadBackup(); }, [loadPct, version, loadBackup]));
 
+  const disclosure = useLocationDisclosure();
+
   const toggleAuto = async () => {
     if (autoOn) {
       await disableAutotrack();
@@ -147,7 +150,15 @@ export default function Settings() {
       show("Automatic drive detection turned off", "info");
       return;
     }
-    const res = await enableAutotrack();
+    let res = await enableAutotrack();
+    if (res.reason === "disclosure") {
+      // Prominent disclosure BEFORE any location system prompt.
+      if (!(await disclosure.ask())) {
+        show("Auto detection stays off — you can still add trips or track a drive with the app open", "info");
+        return;
+      }
+      res = await enableAutotrack();
+    }
     if (res.ok) {
       setAutoOn(true);
       show("Auto detection on — drives log themselves", "success");
@@ -428,6 +439,7 @@ export default function Settings() {
           </Card>
         )}
       </View>
+      {disclosure.element}
     </Screen>
   );
 }

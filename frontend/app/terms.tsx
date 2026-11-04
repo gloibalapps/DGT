@@ -80,7 +80,7 @@ const SECTIONS: LegalSection[] = [
   {
     heading: "Contact us",
     body: [
-      "Questions about these Terms can be sent to globalappsai@gmail.com.",
+      "Questions about these Terms can be sent to support@driversgigtax.app.",
     ],
   },
 ];

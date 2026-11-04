@@ -41,7 +41,7 @@ export function LegalDoc({
           </View>
         ))}
         <AppText variant="caption" color={colors.dim} style={{ marginTop: 8 }}>
-          GigTax by Global Apps AI · Contact: globalappsai@gmail.com
+          Drivers Gig Tax · Contact: support@driversgigtax.app
         </AppText>
       </ScrollView>
     </View>

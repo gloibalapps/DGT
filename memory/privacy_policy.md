@@ -1,61 +1,62 @@
-# GigTax — Privacy Policy (STARTER TEMPLATE)
+# Drivers Gig Tax — Privacy Policy
+Last updated: 4 November 2026
 
-**Review this with a lawyer/tax professional before publishing. Replace all [BRACKETS].**
+Drivers Gig Tax ("Drivers Gig Tax", "GigTax", "we", "us") is operated by [TO CONFIRM: legal entity name], ABN [TO CONFIRM], [TO CONFIRM: postal address], South Australia. This policy explains how we handle personal information under the Privacy Act 1988 (Cth) and the Australian Privacy Principles (APPs). Contact: support@driversgigtax.app · https://driversgigtax.app/privacy
 
-**Effective date:** [DATE]
-**App:** GigTax
-**Provider:** [YOUR COMPANY / NAME]
-**Contact:** [YOUR EMAIL]
+## 1. What we collect
+- Account: name, email and profile picture from Google Sign-In; Apple user identifier and (possibly private-relay) email from Sign in with Apple.
+- Profile and tax settings: driver/legal or business name, region, gig platforms used, tax settings including a yes/no flag that you have a tax ID on file. We do not ask for or store your TFN or ABN number. Please do not enter your TFN anywhere in the app (including receipts, notes or the Ask assistant).
+- Vehicle: registration, make/model, purchase price, finance details, odometer readings.
+- Trips: date, distance, start/end times and labels you type. Distance is calculated on your device; raw GPS coordinates are not uploaded to our servers.
+- Financial records: income, expenses, GST figures, shifts, Uber Eats jobs and receipt photos (stored on our servers).
+- Ask questions and voice input: questions you type in Ask, and Uber Eats jobs you dictate. Dictation uses your device's speech service (Google speech services on Android, Apple speech recognition on iOS); we keep only the resulting text.
+- Subscription status (via Apple, Google Play and RevenueCat). We never receive card details. We do not collect bank account data and we do not use analytics or advertising SDKs.
+- Trial record: to stop repeat free trials, we keep a one-way hash (SHA-256) of your sign-in email or Apple ID. It cannot be turned back into your email and is kept after account deletion (see section 9).
 
-Host this page at a public URL (e.g. https://[yourdomain]/privacy) and paste that URL into Google Play Console → Store listing and Data safety.
+## 2. Device permissions
+- Location, including background location: optional. Before asking for it, the app shows a notice explaining that Drivers Gig Tax collects location data to detect drives automatically and to record your mileage logbook, even when the app is closed or not in use. If you turn on "Detect drives automatically" or start a drive, the app uses location in the background (with an ongoing notification on Android) until you turn it off in the app or in your device settings. Location is processed on your phone only to calculate distance; we store trip distance and times, not your GPS route. It is never used for advertising and never sold. If you decline, you can still log trips manually or track a drive with the app open.
+- Camera and photos: optional, to capture or choose receipts. On Android the app uses the system photo picker and does not request access to your whole photo library.
+- Microphone and speech recognition: optional, used only while you tap voice input to speak your Uber Eats jobs. Audio is processed by your device's speech service and we receive only the text. The app does not record audio for any other purpose.
 
----
+## 3. How we use it
+To provide record-keeping, logbook, tax estimates and reports; scan receipts; answer Ask questions; back up to your Google Drive if you choose; manage your trial and subscription; provide support; and keep the service working and secure. We do not sell personal information or use it for direct marketing without consent.
 
-## 1. Introduction
-GigTax ("we", "us") helps rideshare and delivery drivers track income, expenses, mileage and estimated tax. This policy explains what we collect, how we use it, and your choices.
+## 4. Automated processing and AI
+The app uses software, including AI (Anthropic Claude), to extract receipt details, categorise expenses and estimate tax and set-aside amounts from the information you enter. These outputs are estimates for your information; we do not use them to make decisions about you (e.g. eligibility, pricing or account access). [LEGAL REVIEW: confirm whether any APP 1.7–1.8 automated-decision disclosure is required from 10 Dec 2026; if so list the kinds of personal information used and decisions made.] AI output can be wrong — always check it.
 
-## 2. Information we collect
-- **Data you enter:** income, expenses, expense categories, receipt details, vehicle details (registration, make/model, odometer), trips, and tax-setup information (e.g. legal/business name, registration status, tax ID on-file flag — we do NOT store your actual ABN/TFN/EIN/SSN number).
-- **Location data:** with your permission, we use your device location (including in the background during a work shift) to measure work-related driving distance for your mileage logbook. You can turn this off at any time in your device settings; the app remains usable without it.
-- **Receipt images:** photos you capture to scan an expense.
-- **Subscription status:** whether you have an active GigTax Pro subscription (processed by the app store / RevenueCat — we do not receive your card details).
-- **Device/technical data:** basic app and diagnostic information needed to run and improve the app.
+## 5. Service providers we use
+We disclose information to these providers only so they can run the service for us:
+- Anthropic, PBC (United States) — receipt images and Ask questions (with up to 6 previous chat turns) to generate results. We do not send your name, email or user ID. Under Anthropic's commercial API terms, inputs and outputs are not used to train its models by default. [LEGAL REVIEW: confirm the Anthropic data-retention terms that apply to our account.]
+- Supabase (database hosting, Sydney region, ap-southeast-2) — stores your account and records.
+- Fly.io (API hosting, Sydney region; Fly.io is a US company).
+- Google — Google Sign-In, optional Google Drive backup, Android speech recognition for voice input, and Google Play billing.
+- Apple — Sign in with Apple, iOS speech recognition for voice input, and App Store billing.
+- RevenueCat, Inc. (United States) — an internal app user ID and purchase status to manage subscriptions.
+- Authorities, where required or authorised by law.
 
-## 3. How we use your information
-- To provide the app's features: earnings tracking, mileage logbook, expense scanning, reports and tax estimates.
-- To answer your questions in the in-app assistant.
-- To manage your subscription and access.
-- To maintain, secure and improve the app.
+## 6. Overseas disclosure (APP 8)
+Some providers are located in, or may access data from, the United States (Anthropic, RevenueCat, and potentially Google, Apple, Supabase and Fly.io for support and operations). Your main records are hosted in Sydney. We take reasonable steps (contractual terms and minimising what we send) so these providers handle information consistently with the APPs. [LEGAL REVIEW: confirm the APP 8.1 position and wording.]
 
-We do **not** sell your personal information.
+## 7. Google user data
+Drive access uses the limited drive.file scope (only files the app creates). Our use of information from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. Drive tokens are stored encrypted.
 
-## 4. Third-party services
-We use trusted providers to deliver certain features:
-- **RevenueCat / Google Play Billing** — subscription management and purchases.
-- **AI providers (e.g. Anthropic, OpenAI) accessed via our backend** — to power the in-app tax assistant and receipt scanning. Content you submit for these features is processed to generate a response and is not used to identify you publicly.
-- **Cloud hosting** — to store and sync your data securely.
+## 8. Security
+We use encrypted connections (HTTPS) and access controls and are working to improve our safeguards. No system is completely secure. If an eligible data breach occurs we will notify affected users and the OAIC as required by the Notifiable Data Breaches scheme.
 
-These providers process data under their own terms and only as needed to provide their service.
+## 9. Retention and deletion
+We keep your records while your account is active (tax records may be useful for 5 years; keeping your own copies is your responsibility). Login sessions expire after 7 days; demo accounts are deleted after 2 days.
 
-## 5. Data storage & security
-Your data is stored securely and transmitted over encrypted connections. We take reasonable measures to protect it, but no method of transmission or storage is 100% secure.
+You can delete your account in two ways:
+- In the app: Profile › Delete account › Delete permanently. Deletion is immediate.
+- Without the app: email support@driversgigtax.app from your sign-in email (or follow https://driversgigtax.app/delete-account). We complete email and web requests within 30 days.
 
-## 6. Data retention & deletion
-We keep your data while your account/app is in use. You can delete your entries in the app. To request deletion of your data, contact us at [YOUR EMAIL] and we will action it within a reasonable period.
+Deletion removes your profile, vehicles, trips, income, expenses and receipt images, shifts, Uber Eats jobs, login sessions, Google Drive connection tokens (we also revoke Drive access) and your user record. It does not delete: the hashed trial record described in section 1; backups in your own Google Drive (delete those yourself); your subscription (cancel through Apple or Google); records Apple, Google and RevenueCat keep under their own policies; or website waitlist sign-ups (ask us and we will remove them). Database backups at our host roll off on the provider's schedule. [TO CONFIRM: Supabase backup retention period for our plan.]
 
-## 7. Your rights
-Depending on your location, you may have rights to access, correct, export or delete your personal data. Contact [YOUR EMAIL] to exercise these rights.
+## 10. Access, correction and complaints
+You can access and correct most information in the app, or ask us at support@driversgigtax.app; we respond within 30 days. If you are not satisfied with our response to a complaint, you can contact the Office of the Australian Information Commissioner (oaic.gov.au, 1300 363 992).
 
-## 8. Children
-GigTax is intended for adults (18+) and is not directed at children.
+## 11. Children
+The service is for adults 18+ and is not directed at children.
 
-## 9. Disclaimer
-GigTax provides general estimates and information to help you stay organised. It is **not** personal tax, legal or financial advice. Always confirm with a registered tax professional.
-
-## 10. Changes to this policy
-We may update this policy. Material changes will be posted here with a new effective date.
-
-## 11. Contact
-[YOUR COMPANY / NAME]
-[YOUR EMAIL]
-[YOUR ADDRESS, if required]
+## 12. Changes
+We will update the date above and notify you in the app of material changes.

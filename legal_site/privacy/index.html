@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GigTax — Privacy Policy</title>
+<title>Drivers Gig Tax — Privacy Policy</title>
 <style>
   :root{--bg:#0A1420;--card:#0F1B2B;--text:#E7EEF6;--dim:#9FB2C6;--accent:#38BDF8;--border:#1E2E42}
   *{box-sizing:border-box}
@@ -20,57 +20,75 @@
 </head>
 <body>
   <div class="wrap">
-    <a class="home" href="/">&larr; GigTax home</a>
+    <a class="home" href="/">&larr; Drivers Gig Tax home</a>
     <h1>Privacy Policy</h1>
-    <div class="updated">Last updated: 19 June 2026</div>
-    <p>GigTax (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;), operated by Global Apps AI, helps gig-economy drivers track income, expenses and mileage and estimate their tax. This Privacy Policy explains what information we collect, how we use it, and the choices you have. By using GigTax you agree to this policy.</p>
+    <div class="updated">Last updated: 4 November 2026</div>
+    <p>Drivers Gig Tax ("Drivers Gig Tax", "GigTax", "we", "us") is operated by [TO CONFIRM: legal entity name], ABN [TO CONFIRM], [TO CONFIRM: postal address], South Australia. This policy explains how we handle personal information under the Privacy Act 1988 (Cth) and the Australian Privacy Principles (APPs). Contact: <a href="mailto:support@driversgigtax.app">support@driversgigtax.app</a> · <a href="/privacy">driversgigtax.app/privacy</a></p>
 
-    <h2>1. Information you provide</h2>
-    <p>Account details: when you sign in with Google we receive your name, email address and profile picture so we can create and secure your account.</p>
-    <p>Financial records you enter: income, expenses, receipts, vehicle details, odometer readings, work hours and shift information.</p>
-    <p>Support messages: any information you send us by email.</p>
+  <h2>1. What we collect</h2>
+  <ul>
+    <li><strong>Account</strong>: name, email and profile picture from Google Sign-In; Apple user identifier and (possibly private-relay) email from Sign in with Apple.</li>
+    <li><strong>Profile and tax settings</strong>: driver/legal or business name, region, gig platforms used, tax settings including a yes/no flag that you have a tax ID on file. We do not ask for or store your TFN or ABN number. Please do not enter your TFN anywhere in the app (including receipts, notes or the Ask assistant).</li>
+    <li><strong>Vehicle</strong>: registration, make/model, purchase price, finance details, odometer readings.</li>
+    <li><strong>Trips</strong>: date, distance, start/end times and labels you type. Distance is calculated on your device; raw GPS coordinates are not uploaded to our servers.</li>
+    <li><strong>Financial records</strong>: income, expenses, GST figures, shifts, Uber Eats jobs and receipt photos (stored on our servers).</li>
+    <li><strong>Ask questions and voice input</strong>: questions you type in Ask, and Uber Eats jobs you dictate. Dictation uses your device's speech service (Google speech services on Android, Apple speech recognition on iOS); we keep only the resulting text.</li>
+    <li>Subscription status (via Apple, Google Play and RevenueCat). We never receive card details. We do not collect bank account data and we do not use analytics or advertising SDKs.</li>
+    <li><strong>Trial record</strong>: to stop repeat free trials, we keep a one-way hash (SHA-256) of your sign-in email or Apple ID. It cannot be turned back into your email and is kept after account deletion (see section 9).</li>
+  </ul>
 
-    <h2>2. Location information</h2>
-    <p>If you enable GPS trip tracking or automatic drive detection, GigTax collects your device&rsquo;s location while a drive is being recorded &mdash; including in the background &mdash; solely to calculate the distance of your work trips for your mileage log.</p>
-    <p>Location is only used to measure trip distance. We do not use it for advertising and we do not sell it. You can turn tracking off at any time in your device settings or in the app.</p>
+  <h2>2. Device permissions</h2>
+  <ul>
+    <li><strong>Location, including background location</strong>: optional. Before asking for it, the app shows a notice explaining that Drivers Gig Tax collects location data to detect drives automatically and to record your mileage logbook, even when the app is closed or not in use. If you turn on "Detect drives automatically" or start a drive, the app uses location in the background (with an ongoing notification on Android) until you turn it off in the app or in your device settings. Location is processed on your phone only to calculate distance; we store trip distance and times, not your GPS route. It is never used for advertising and never sold. If you decline, you can still log trips manually or track a drive with the app open.</li>
+    <li><strong>Camera and photos</strong>: optional, to capture or choose receipts. On Android the app uses the system photo picker and does not request access to your whole photo library.</li>
+    <li><strong>Microphone and speech recognition</strong>: optional, used only while you tap voice input to speak your Uber Eats jobs. Audio is processed by your device's speech service and we receive only the text. The app does not record audio for any other purpose.</li>
+  </ul>
 
-    <h2>3. Receipt images and AI scanning</h2>
-    <p>When you scan a receipt, the image is sent securely to our AI provider (OpenAI) to extract details such as amount, date and merchant. The image and extracted data are stored with your account so you can review them.</p>
+  <h2>3. How we use it</h2>
+  <p>To provide record-keeping, logbook, tax estimates and reports; scan receipts; answer Ask questions; back up to your Google Drive if you choose; manage your trial and subscription; provide support; and keep the service working and secure. We do not sell personal information or use it for direct marketing without consent.</p>
 
-    <h2>4. Google Drive backups and Google user data</h2>
-    <p>If you connect Google Drive, GigTax uses the restricted &ldquo;drive.file&rdquo; scope, which lets the app create and manage only the backup files it creates in your Drive. We cannot see or access any other files in your Google Drive.</p>
-    <p>GigTax&rsquo;s use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. We do not use Google user data for advertising and we do not sell it.</p>
+  <h2>4. Automated processing and AI</h2>
+  <p>The app uses software, including AI (Anthropic Claude), to extract receipt details, categorise expenses and estimate tax and set-aside amounts from the information you enter. These outputs are estimates for your information; we do not use them to make decisions about you (e.g. eligibility, pricing or account access). [LEGAL REVIEW: confirm whether any APP 1.7–1.8 automated-decision disclosure is required from 10 Dec 2026; if so list the kinds of personal information used and decisions made.] AI output can be wrong — always check it.</p>
 
-    <h2>5. How we use your information</h2>
-    <p>To provide the app&rsquo;s core features: recording your income, expenses and mileage and generating tax estimates and reports.</p>
-    <p>To authenticate you, sync your data across your devices, and back up your data to your own Google Drive at your request.</p>
-    <p>To operate, maintain, secure and improve the app, and to respond to your support requests.</p>
+  <h2>5. Service providers we use</h2>
+  <p>We disclose information to these providers only so they can run the service for us:</p>
+  <ul>
+    <li><strong>Anthropic, PBC (United States)</strong> — receipt images and Ask questions (with up to 6 previous chat turns) to generate results. We do not send your name, email or user ID. Under Anthropic's commercial API terms, inputs and outputs are not used to train its models by default. [LEGAL REVIEW: confirm the Anthropic data-retention terms that apply to our account.]</li>
+    <li><strong>Supabase (database hosting, Sydney region, ap-southeast-2)</strong> — stores your account and records.</li>
+    <li>Fly.io (API hosting, Sydney region; Fly.io is a US company).</li>
+    <li><strong>Google</strong> — Google Sign-In, optional Google Drive backup, Android speech recognition for voice input, and Google Play billing.</li>
+    <li><strong>Apple</strong> — Sign in with Apple, iOS speech recognition for voice input, and App Store billing.</li>
+    <li><strong>RevenueCat, Inc. (United States)</strong> — an internal app user ID and purchase status to manage subscriptions.</li>
+    <li>Authorities, where required or authorised by law.</li>
+  </ul>
 
-    <h2>6. How your information is shared</h2>
-    <p>We do not sell your personal information.</p>
-    <p>We share data only with service providers that help us run the app: Google (sign-in and, if you enable it, Drive backup), OpenAI (receipt scanning and the tax assistant), and, if applicable, our subscription provider for processing in-app purchases. These providers process data on our behalf under their own terms.</p>
-    <p>We may disclose information if required by law or to protect the rights, safety and security of our users and the service.</p>
+  <h2>6. Overseas disclosure (APP 8)</h2>
+  <p>Some providers are located in, or may access data from, the United States (Anthropic, RevenueCat, and potentially Google, Apple, Supabase and Fly.io for support and operations). Your main records are hosted in Sydney. We take reasonable steps (contractual terms and minimising what we send) so these providers handle information consistently with the APPs. [LEGAL REVIEW: confirm the APP 8.1 position and wording.]</p>
 
-    <h2>7. Data storage and security</h2>
-    <p>Your records are stored on secure servers. We use reasonable technical and organisational measures to protect your information. No method of transmission or storage is completely secure, so we cannot guarantee absolute security.</p>
+  <h2>7. Google user data</h2>
+  <p>Drive access uses the limited drive.file scope (only files the app creates). Our use of information from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. Drive tokens are stored encrypted.</p>
 
-    <h2>8. Data retention and deletion</h2>
-    <p>We keep your information for as long as your account is active. You can permanently delete your account and all associated data at any time from Profile &rsaquo; Delete account. Deletion is immediate and cannot be undone.</p>
-    <p>You may also disconnect Google Drive at any time from Profile &rsaquo; Backups, which stops future backups.</p>
+  <h2>8. Security</h2>
+  <p>We use encrypted connections (HTTPS) and access controls and are working to improve our safeguards. No system is completely secure. If an eligible data breach occurs we will notify affected users and the OAIC as required by the Notifiable Data Breaches scheme.</p>
 
-    <h2>9. Your rights</h2>
-    <p>Depending on where you live, you may have the right to access, correct, export or delete your personal information. You can exercise most of these directly in the app, or by contacting us at <a href="mailto:globalappsai@gmail.com">globalappsai@gmail.com</a>.</p>
+  <h2>9. Retention and deletion</h2>
+  <p>We keep your records while your account is active (tax records may be useful for 5 years; keeping your own copies is your responsibility). Login sessions expire after 7 days; demo accounts are deleted after 2 days.</p>
+  <p>You can delete your account in two ways:</p>
+  <ul>
+    <li><strong>In the app</strong>: Profile › Delete account › Delete permanently. Deletion is immediate.</li>
+    <li><strong>Without the app</strong>: email <a href="mailto:support@driversgigtax.app">support@driversgigtax.app</a> from your sign-in email (or follow <a href="/delete-account">driversgigtax.app/delete-account</a>). We complete email and web requests within 30 days.</li>
+  </ul>
+  <p>Deletion removes your profile, vehicles, trips, income, expenses and receipt images, shifts, Uber Eats jobs, login sessions, Google Drive connection tokens (we also revoke Drive access) and your user record. It does not delete: the hashed trial record described in section 1; backups in your own Google Drive (delete those yourself); your subscription (cancel through Apple or Google); records Apple, Google and RevenueCat keep under their own policies; or website waitlist sign-ups (ask us and we will remove them). Database backups at our host roll off on the provider's schedule. [TO CONFIRM: Supabase backup retention period for our plan.]</p>
 
-    <h2>10. Children</h2>
-    <p>GigTax is intended for adults who work as gig-economy drivers and is not directed at children under 16. We do not knowingly collect personal information from children.</p>
+  <h2>10. Access, correction and complaints</h2>
+  <p>You can access and correct most information in the app, or ask us at <a href="mailto:support@driversgigtax.app">support@driversgigtax.app</a>; we respond within 30 days. If you are not satisfied with our response to a complaint, you can contact the Office of the Australian Information Commissioner (oaic.gov.au, 1300 363 992).</p>
 
-    <h2>11. Changes to this policy</h2>
-    <p>We may update this Privacy Policy from time to time. If we make material changes we will update the &ldquo;Last updated&rdquo; date above and, where appropriate, notify you in the app.</p>
+  <h2>11. Children</h2>
+  <p>The service is for adults 18+ and is not directed at children.</p>
 
-    <h2>12. Contact us</h2>
-    <p>If you have any questions about this Privacy Policy or your data, contact us at <a href="mailto:globalappsai@gmail.com">globalappsai@gmail.com</a>.</p>
-
-    <footer>GigTax by Global Apps AI · Contact: <a href="mailto:globalappsai@gmail.com">globalappsai@gmail.com</a></footer>
+  <h2>12. Changes</h2>
+  <p>We will update the date above and notify you in the app of material changes.</p>
+    <footer>Drivers Gig Tax · Contact: <a href="mailto:support@driversgigtax.app">support@driversgigtax.app</a></footer>
   </div>
 </body>
 </html>

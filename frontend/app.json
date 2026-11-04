@@ -14,8 +14,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Scan receipts to log deductible expenses",
         "NSPhotoLibraryUsageDescription": "Pick receipt photos to log expenses",
-        "NSLocationWhenInUseUsageDescription": "Track business drives for your logbook",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Track drives automatically in the background",
+        "NSLocationWhenInUseUsageDescription": "Drivers Gig Tax uses your location to measure the distance of your work drives for your mileage logbook.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Drivers Gig Tax uses your location in the background to detect drives automatically and record the distance for your mileage logbook, even when the app is closed. Only distance and times are saved, not your route.",
         "UIBackgroundModes": [
           "location"
         ],
@@ -38,8 +38,14 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
-        "READ_MEDIA_IMAGES",
         "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "web": {
@@ -61,8 +67,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Track business drives for your logbook",
-          "locationAlwaysAndWhenInUsePermission": "Track drives automatically in the background",
+          "locationWhenInUsePermission": "Drivers Gig Tax uses your location to measure the distance of your work drives for your mileage logbook.",
+          "locationAlwaysAndWhenInUsePermission": "Drivers Gig Tax uses your location in the background to detect drives automatically and record the distance for your mileage logbook, even when the app is closed. Only distance and times are saved, not your route.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
@@ -77,7 +83,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Scan receipts to log deductible expenses"
+          "cameraPermission": "Scan receipts to log deductible expenses",
+          "recordAudioAndroid": false
         }
       ],
       "expo-apple-authentication",

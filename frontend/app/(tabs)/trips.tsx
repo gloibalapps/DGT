@@ -10,6 +10,7 @@ import { api, TripT, todayISO } from "@/src/api";
 import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
 import { OdometerCheck } from "@/src/OdometerCheck";
+import { useLocationDisclosure } from "@/src/LocationDisclosure";
 import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning } from "@/src/autotrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner, Field, Select, HeroCard, ListCard, ListRow, SectionLabel,
@@ -125,8 +126,16 @@ export default function Mileage() {
 
   useFocusEffect(useCallback(() => { load(); }, [load, version]));
 
+  const disclosure = useLocationDisclosure();
+
   const startShift = async () => {
-    const res = await startManualDrive();
+    let res = await startManualDrive();
+    if (res.reason === "disclosure") {
+      // Prominent disclosure BEFORE any location system prompt. Declining
+      // still tracks the drive, but only while the app is open.
+      await disclosure.ask();
+      res = await startManualDrive();
+    }
     if (!res.ok) {
       if (res.reason === "unsupported") { show("GPS tracking needs a device build", "info"); return; }
       show("Location needed to track your drive", "error");
@@ -135,6 +144,7 @@ export default function Mileage() {
     }
     setDist(0); startTimeRef.current = Date.now(); setTracking(true);
     await startForegroundWatch();
+    if (res.backgroundOff) { show("Tracking while the app is open — keep GigTax on screen during the drive", "info"); return; }
     maybePromptBattery();
   };
 
@@ -379,6 +389,7 @@ export default function Mileage() {
         )) : null}
         {trips.length > 0 ? <ListRow testID="mileage-export" icon="download-outline" label="Motor vehicle report" onPress={exportReport} /> : null}
       </ListCard>
+      {disclosure.element}
     </Screen>
   );
 }

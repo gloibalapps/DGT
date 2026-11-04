@@ -84,7 +84,7 @@ Use real screen recordings/captures with a caption banner at the top of each.
 - Category: Finance
 - Tags: taxes, mileage, expense tracker, gig economy
 - Contains ads: No (unless you add ads)
-- In-app purchases: Yes — GigTax Pro (monthly & yearly subscriptions)
+- In-app purchases: Yes — Drivers Gig Tax (monthly & yearly subscriptions)
 - Target audience: 18+ (financial app)
 - Content rating: Everyone (complete the questionnaire; no sensitive content)
 - Background location justification (required): "GigTax uses background location to automatically record work-related driving distance for the user's tax mileage logbook. Tracking runs only during a driver's work shift, and the resulting trips are shown to the user to classify as business or private. Location data is used solely for mileage/expense tax records and is never sold."

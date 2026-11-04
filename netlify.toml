@@ -18,6 +18,12 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/delete-account"
+  to = "/delete-account.html"
+  status = 200
+  force = true
+
 # Old backend-served paths -> static pages
 [[redirects]]
   from = "/api/site"
