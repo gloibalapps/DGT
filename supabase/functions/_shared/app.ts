@@ -189,13 +189,32 @@ async function newSession(deps: AppDeps, userId: string, hours = 24 * 7): Promis
   return token;
 }
 
+const FUNCTION_PREFIX = "/functions/v1/api";
+
+/**
+ * Hosted Supabase calls this function with the slug as the pathname
+ * (`/api/health`, `/api/api/profile`), not `/functions/v1/api/...`.
+ * Local tests and a full gateway URL use the other forms. Rewrite only the
+ * slug form so routing and the Google redirect URI stay on one prefix.
+ */
+export function normalizeRequestUrl(req: Request): Request {
+  const url = new URL(req.url);
+  if (url.pathname.includes("/functions/v1/")) return req;
+  const p = url.pathname;
+  const hostedSlug = p === "/api" || p === "/api/health" || p.startsWith("/api/health/") ||
+    p === "/api/api" || p.startsWith("/api/api/");
+  if (!hostedSlug) return req;
+  url.pathname = `/functions/v1${p}`;
+  return new Request(url, req);
+}
+
 function apiPath(url: URL): string {
-  const marker = "/functions/v1/api";
-  const path = url.pathname.startsWith(marker) ? url.pathname.slice(marker.length) : url.pathname;
+  const path = url.pathname.startsWith(FUNCTION_PREFIX) ? url.pathname.slice(FUNCTION_PREFIX.length) : url.pathname;
   return path || "/";
 }
 
 export async function handle(req: Request, deps: AppDeps): Promise<Response> {
+  req = normalizeRequestUrl(req);
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   const url = new URL(req.url);
   const path = apiPath(url);
@@ -289,8 +308,7 @@ async function googleStart(req: Request, deps: AppDeps): Promise<Response> {
 
 function publicBase(req: Request): string {
   const url = new URL(req.url);
-  const marker = "/functions/v1/api";
-  const path = url.pathname.startsWith(marker) ? marker : "";
+  const path = url.pathname.startsWith(FUNCTION_PREFIX) ? FUNCTION_PREFIX : "";
   return `${url.origin}${path}`;
 }
 
@@ -339,8 +357,7 @@ async function googleCallback(url: URL, deps: AppDeps): Promise<Response> {
 }
 
 function redirectUriOf(url: URL): string {
-  const marker = "/functions/v1/api";
-  const basePath = url.pathname.startsWith(marker) ? marker : "";
+  const basePath = url.pathname.startsWith(FUNCTION_PREFIX) ? FUNCTION_PREFIX : "";
   return `${url.origin}${basePath}/api/auth/google/callback`;
 }
 

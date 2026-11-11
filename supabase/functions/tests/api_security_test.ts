@@ -29,6 +29,31 @@ Deno.test("router health and api root", async () => {
   assertEquals((await root.json()).message, "GigTax API");
 });
 
+Deno.test("routes match the function slug and the full gateway prefix", async () => {
+  const d = deps();
+  for (const path of ["/api/health", "/functions/v1/api/health"]) {
+    const res = await call(d, path);
+    assertEquals(res.status, 200, path);
+    assertEquals((await res.json()).status, "ok");
+  }
+  for (const path of ["/api/api/", "/functions/v1/api/api/"]) {
+    const res = await call(d, path);
+    assertEquals(res.status, 200, path);
+    assertEquals((await res.json()).message, "GigTax API");
+  }
+  for (const path of ["/api/api/auth/me", "/functions/v1/api/api/auth/me", "/api/auth/me"]) {
+    const res = await call(d, path);
+    assertEquals(res.status, 401, path);
+  }
+  for (const path of ["/api/api/auth/google/start", "/functions/v1/api/api/auth/google/start"]) {
+    const started = await (await call(d, path, {
+      method: "POST",
+      body: JSON.stringify({ app_redirect: "driversgigtax://auth" }),
+    })).json();
+    assert(String(started.auth_url).includes("functions%2Fv1%2Fapi%2Fapi%2Fauth%2Fgoogle%2Fcallback"), path);
+  }
+});
+
 Deno.test("evil redirect is 400 and GET start cannot redirect", async () => {
   const d = deps();
   const post = await call(d, "/api/auth/google/start", {
