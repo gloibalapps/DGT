@@ -27,6 +27,8 @@ export interface Collection {
 }
 
 export interface Db {
+  /** Returns true when the caller is over the limit (this hit is not counted). */
+  hitRate(bucket: string, limit: number, windowMs: number): Promise<boolean>;
   users: Collection;
   user_sessions: Collection;
   oauth_states: Collection;
@@ -93,6 +95,15 @@ function applyUpdate(doc: Doc, update: Update, inserting: boolean): Doc {
     if (op === "$set") Object.assign(next, vals);
     else if (op === "$setOnInsert") {
       if (inserting) Object.assign(next, vals);
+    } else if (op === "$addToSet") {
+      for (const [k, v] of Object.entries(vals)) {
+        const items = v && typeof v === "object" && "$each" in (v as Doc)
+          ? (v as Doc).$each as unknown[]
+          : [v];
+        const cur = Array.isArray(next[k]) ? [...(next[k] as unknown[])] : [];
+        for (const it of items) if (!cur.includes(it)) cur.push(it);
+        next[k] = cur;
+      }
     } else throw new Error(`update operator ${op}`);
   }
   return next;
@@ -175,8 +186,18 @@ class MemColl implements Collection {
 
 export class MemoryDb implements Db {
   private cols = new Map<string, MemColl>();
+  private hits: { bucket: string; at: number }[] = [];
   constructor() {
     for (const n of NAMES) this.cols.set(n, new MemColl());
+  }
+  hitRate(bucket: string, limit: number, windowMs: number): Promise<boolean> {
+    if (limit <= 0) return Promise.resolve(false);
+    const now = Date.now();
+    this.hits = this.hits.filter((h) => now - h.at < windowMs);
+    const n = this.hits.filter((h) => h.bucket === bucket).length;
+    if (n >= limit) return Promise.resolve(true);
+    this.hits.push({ bucket, at: now });
+    return Promise.resolve(false);
   }
   col(name: string): Collection {
     const c = this.cols.get(name);
@@ -259,6 +280,26 @@ export async function openPostgres(dsn: string): Promise<Db> {
   const db = {} as Db;
   for (const n of NAMES) (db as unknown as Record<string, Collection>)[n] = coll(n);
   db.col = (name) => coll(name);
+  db.hitRate = async (bucket, limit, windowMs) => {
+    if (limit <= 0) return false;
+    const secs = Math.ceil(windowMs / 1000);
+    const rows = await sql.unsafe(
+      `with purged as (
+         delete from gigtax.rate_hits where bucket = $1 and hit_at < now() - make_interval(secs => $2)
+       ),
+       counted as (
+         select count(*)::int as n from gigtax.rate_hits where bucket = $1
+       ),
+       ins as (
+         insert into gigtax.rate_hits(bucket)
+         select $1 from counted where n < $3
+         returning 1
+       )
+       select (select n from counted) as before, (select count(*)::int from ins) as inserted`,
+      [bucket, secs, limit],
+    );
+    return Number(rows[0]?.inserted ?? 0) === 0;
+  };
   return db;
 }
 

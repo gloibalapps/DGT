@@ -162,6 +162,16 @@ begin
   end loop;
 end $$;
 
+-- Per-isolate memory is not shared across Edge Function workers, so rate limits
+-- live in Postgres. Rows older than the window are deleted on each check.
+create table if not exists gigtax.rate_hits (
+  bucket text not null,
+  hit_at timestamptz not null default now()
+);
+create index if not exists rate_hits_bucket_hit_at_idx on gigtax.rate_hits (bucket, hit_at);
+alter table gigtax.rate_hits enable row level security;
+revoke all on gigtax.rate_hits from anon, authenticated;
+
 revoke all on schema gigtax from anon, authenticated;
 grant usage on schema gigtax to postgres, service_role;
 grant all on all tables in schema gigtax to postgres, service_role;

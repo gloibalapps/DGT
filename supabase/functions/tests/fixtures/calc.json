@@ -1,0 +1,49 @@
+{
+  "today": "2026-11-11",
+  "analytics_start": "2026-11-01",
+  "analytics_end": "2026-11-11",
+  "profile": {
+    "profile_id": "p1",
+    "country": "AU",
+    "work_type": "passengers",
+    "registration_status": "registered",
+    "business_use_fallback": 80,
+    "week_start": 0,
+    "vehicle_ownership": "lease",
+    "legal_name": "Ada Driver",
+    "tax_set_aside": 40
+  },
+  "vehicles": [{
+    "id": "v1",
+    "is_active": true,
+    "ownership": "lease",
+    "name": "Corolla",
+    "make_model": "Toyota Corolla",
+    "registration": "ABC123",
+    "year": 2018,
+    "fuel_type": "petrol",
+    "opening_odometer": 10000,
+    "closing_odometer": 10030,
+    "recurring_payment": {"amount": 140, "frequency": "weekly", "anchor_date": "2026-07-01"}
+  }],
+  "trips": [
+    {"id": "t1", "date": "2026-11-10", "distance_km": 42.5, "type": "business", "duration_min": 70, "vehicle_id": "v1", "purpose": "rideshare", "from_label": "Home", "to_label": "Airport", "created_at": "2026-11-10T08:00:00Z"},
+    {"id": "t2", "date": "2026-11-09", "distance_km": 12, "type": "personal", "duration_min": 25, "vehicle_id": "v1", "purpose": "private", "created_at": "2026-11-09T08:00:00Z"},
+    {"id": "t3", "date": "2026-11-02", "distance_km": 30, "type": "mixed", "business_pct": 50, "duration_min": 40, "vehicle_id": "v1", "created_at": "2026-11-02T08:00:00Z"}
+  ],
+  "incomes": [
+    {"id": "i1", "date": "2026-11-10", "amount": 186.4, "platform": "Uber", "tax_treatment": "inclusive", "note": "night", "created_at": "2026-11-10T12:00:00Z"},
+    {"id": "i2", "date": "2026-11-03", "amount": 90, "platform": "Uber Eats", "tax_treatment": "inclusive", "created_at": "2026-11-03T12:00:00Z"}
+  ],
+  "expenses": [
+    {"id": "e1", "date": "2026-11-10", "amount": 61.05, "category": "fuel", "merchant": "Shell", "tax_treatment": "inclusive", "gst": 5.55, "vehicle_id": "v1", "created_at": "2026-11-10T09:00:00Z"},
+    {"id": "e2", "date": "2026-11-04", "amount": 22, "category": "phone", "merchant": "Telstra", "tax_treatment": "inclusive", "created_at": "2026-11-04T09:00:00Z"}
+  ],
+  "shifts": [
+    {"id": "s1", "date": "2026-11-10", "hours": 5.5, "active_hours": 4, "start_time": "17:30", "end_time": "23:00", "platform": "Uber", "vehicle_id": "v1", "active_by_platform": {"Uber": 4}}
+  ],
+  "ue_jobs": [
+    {"type": "DELIVERY", "amount": 18.4, "duration_sec": 1860, "km": 6.2, "date": "2026-11-10", "platform": "Uber Eats"},
+    {"type": "Promotion", "amount": 5, "duration_sec": 0, "date": "2026-11-10", "platform": "Uber Eats"}
+  ]
+}

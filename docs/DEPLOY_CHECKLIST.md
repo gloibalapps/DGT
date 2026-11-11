@@ -16,7 +16,8 @@ A profile request is
 ## 1. Database migration (review first, then apply)
 
 `supabase/migrations/0003_gigtax_api_schema.sql` creates schema `gigtax` with
-the JSONB tables the API uses. It does not drop or alter the empty `public`
+the JSONB tables the API uses, plus `gigtax.rate_hits` for the demo and AI
+rate limits. It does not drop or alter the empty `public`
 tables (`profiles`, `vehicles`, `shifts`, `shift_points`, `incomes`,
 `expenses`, `receipt_backup_queue`, `sync_log`). Those are a different
 Supabase-Auth shape and are not what this app calls.
