@@ -1,0 +1,10 @@
+# Existing project "Drivers Gig Tax". Do not create another project.
+project_id = "cvxifukwesvcbmygxqts"
+
+# The Expo app sends Authorization: Bearer <gigtax session token>, a random
+# hex from gigtax.user_sessions. That is not a Supabase Auth JWT. The platform
+# JWT check would reject every app call, the Google callback, the RevenueCat
+# webhook, and the review demo route before our code runs. This function
+# checks the session itself (see supabase/functions/_shared/app.ts).
+[functions.api]
+verify_jwt = false
