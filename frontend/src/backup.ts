@@ -50,14 +50,17 @@ export function backupErrorText(e: any): string {
 // Open the Google consent flow to grant Drive access for backups.
 // Returns the refreshed status after the browser closes.
 export async function connectDrive(): Promise<BackupStatus> {
-  const redirect = Platform.OS === "web" ? window.location.origin + "/" : Linking.createURL("/");
-  const url = await api.driveConnectUrl(redirect);
+  // Native must return through the app scheme. A dev-client https URL is not
+  // on the backend allowlist and would be rejected.
+  const redirect = Platform.OS === "web"
+    ? window.location.origin + "/"
+    : Linking.createURL("/", { scheme: "driversgigtax" });
+  const started = await api.startGoogleAuth({ app_redirect: redirect, backup: true });
   if (Platform.OS === "web") {
-    window.location.href = url;
+    window.location.href = started.auth_url;
     return { connected: false }; // page navigates away
   }
-  await WebBrowser.openAuthSessionAsync(url, redirect);
-  // Give the backend a moment, then re-check.
+  await WebBrowser.openAuthSessionAsync(started.auth_url, redirect);
   return api.backupStatus();
 }
 

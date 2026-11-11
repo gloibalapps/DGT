@@ -1,6 +1,9 @@
 import os
 import io
 import csv
+import hmac
+import html
+import secrets
 import uuid
 import time
 import json
@@ -10,6 +13,7 @@ import asyncio
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional, Literal, Annotated, Dict
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, Body, Request, Depends
 from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse
@@ -338,8 +342,14 @@ async def delete_account(owner: Owner = Depends(require_owner)):
 # ---------------------------------------------------------------------------
 # Own-branded Google OAuth (driversgigtax.app) — backend-mediated code flow.
 # ---------------------------------------------------------------------------
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+def _google_client_id() -> str:
+    return os.environ.get("GOOGLE_CLIENT_ID", "")
+
+
+def _google_client_secret() -> str:
+    return os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
@@ -429,12 +439,83 @@ async def auth_apple(payload: dict = Body(...)):
     return {"session_token": await _new_session(user_id), "user_id": user_id}
 
 
+def _const_eq(got: str, expected: str) -> bool:
+    got = got or ""
+    expected = expected or ""
+    if not got or not expected or len(got) != len(expected):
+        return False
+    return hmac.compare_digest(got, expected)
+
+
+def _oauth_redirect_origins() -> set:
+    return {item.strip().rstrip("/") for item in os.environ.get("OAUTH_REDIRECT_ORIGINS", "").split(",") if item.strip()}
+
+
+def redirect_allowed(url: str) -> bool:
+    """driversgigtax:// or an https origin listed in OAUTH_REDIRECT_ORIGINS."""
+    if not url or any(c in url for c in ("\r", "\n", "\x00", "\\")):
+        return False
+    parts = urlsplit(url)
+    if parts.username or parts.password:
+        return False
+    scheme = (parts.scheme or "").lower()
+    if scheme == "driversgigtax":
+        return True
+    if scheme != "https" or not parts.hostname:
+        return False
+    if parts.port not in (None, 443):
+        origin = f"https://{parts.hostname}:{parts.port}"
+    else:
+        origin = f"https://{parts.hostname}"
+    return origin in _oauth_redirect_origins()
+
+
+_rate_buckets: Dict[str, list] = {}
+
+
+def reset_rate_limits() -> None:
+    _rate_buckets.clear()
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip() or "unknown"
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _rate_limit(key: str, limit_env: str, default_limit: int, window_s: int = 60) -> None:
+    try:
+        limit = int(os.environ.get(limit_env, str(default_limit)))
+    except ValueError:
+        limit = default_limit
+    if limit <= 0:
+        return
+    now = time.monotonic()
+    hits = [t for t in _rate_buckets.get(key, []) if now - t < window_s]
+    if len(hits) >= limit:
+        raise HTTPException(status_code=429, detail="Too many requests")
+    hits.append(now)
+    _rate_buckets[key] = hits
+
+
+def _reject_demo_premium(owner: "Owner") -> None:
+    if owner.user.get("is_demo"):
+        raise HTTPException(status_code=403, detail="Demo accounts can't use this feature")
+
+
 @api_router.post("/auth/demo")
-async def auth_demo():
-    """Guest demo (App Store reviewers / try-before-sign-in). Every call creates
-    a fresh, isolated demo account pre-filled with realistic sample data, so
-    visitors never see each other's data. Demo accounts expire after 24 h and
-    stale ones are purged here."""
+async def auth_demo(request: Request, x_demo_review_secret: Optional[str] = Header(None)):
+    """Reviewer demo. Off unless DEMO_ENABLED=true and the request carries
+    X-Demo-Review-Secret matching DEMO_REVIEW_SECRET. Demo accounts are not
+    entitled to Ask or receipt scan."""
+    _rate_limit(f"demo:{_client_ip(request)}", "DEMO_RATE_LIMIT", 5)
+    if not subs._env_bool("DEMO_ENABLED", False):
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _const_eq(x_demo_review_secret or "", os.environ.get("DEMO_REVIEW_SECRET") or ""):
+        raise HTTPException(status_code=401, detail="Demo access denied")
     from datetime import date as _date
     cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     stale = [u["user_id"] async for u in db.users.find({"is_demo": True, "created_at": {"$lt": cutoff}}, {"user_id": 1})]
@@ -493,50 +574,56 @@ async def auth_demo():
     return {"session_token": token, "user_id": uid}
 
 
-@api_router.get("/auth/google/start")
-async def google_start(request: Request, app_redirect: str = Query(...),
-                       backup: int = Query(0), profile_id: Optional[str] = Query(None),
-                       state: Optional[str] = Query(None), ticket: Optional[str] = Query(None)):
-    if not GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="Google login not configured")
-    if backup:
-        # Drive-connect binds a Google token to a profile, so it must be the
-        # caller's: identify them by a single-use ticket (browser can't send
-        # the Bearer header). A client-supplied profile_id is ignored.
-        owner = await require_owner_or_ticket(request, None, ticket)
+class GoogleStartIn(BaseModel):
+    app_redirect: str
+    backup: int = 0
+    ticket: Optional[str] = None
+
+
+class GooglePollIn(BaseModel):
+    state: str
+    poll_secret: str = ""
+
+
+@api_router.post("/auth/google/start")
+async def google_start(request: Request, body: GoogleStartIn):
+    """Begin Google OAuth. Returns JSON only: the Google URL (which carries the
+    server-generated state) and a poll secret that is never placed on a URL.
+    app_redirect must be driversgigtax:// or an https origin in
+    OAUTH_REDIRECT_ORIGINS. Anything else is 400 and is not stored."""
+    if not redirect_allowed(body.app_redirect):
+        raise HTTPException(status_code=400, detail="Invalid redirect")
+    if body.backup:
+        owner = await require_owner_or_ticket(request, request.headers.get("authorization"), body.ticket)
         profile_id = owner.profile_id
     else:
         profile_id = None
-    from urllib.parse import urlencode
-    # The app may supply its own `state` so it can poll for the result (robust
-    # against Android dropping the deep-link payload on the way back).
-    state = state or uuid.uuid4().hex
-    if state.startswith("tkt_"):
-        raise HTTPException(400, "bad state")
-    # replaces the Mongo TTL index (600 s) on oauth_states.created_at
+    if not _google_client_id():
+        raise HTTPException(status_code=500, detail="Google login not configured")
+    state = secrets.token_urlsafe(32)
+    poll_secret = secrets.token_urlsafe(32)
     await db.oauth_states.delete_many(
         {"created_at": {"$lt": datetime.now(timezone.utc) - timedelta(minutes=10)}})
     await db.oauth_states.insert_one({
-        "state": state, "app_redirect": app_redirect,
-        "backup": bool(backup), "profile_id": profile_id,
+        "state": state, "app_redirect": body.app_redirect, "poll_secret": poll_secret,
+        "backup": bool(body.backup), "profile_id": profile_id,
         "created_at": datetime.now(timezone.utc),
     })
     redirect_uri = f"{_public_base(request)}/api/auth/google/callback"
-    p = {
-        "client_id": GOOGLE_CLIENT_ID,
+    params = {
+        "client_id": _google_client_id(),
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
         "state": state,
         "prompt": "select_account",
     }
-    if backup:
-        # Add Drive scope + request a refresh token for unattended backups.
-        p["scope"] = "openid email profile https://www.googleapis.com/auth/drive.file"
-        p["access_type"] = "offline"
-        p["include_granted_scopes"] = "true"
-        p["prompt"] = "consent"  # force refresh_token on re-consent
-    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(p)}")
+    if body.backup:
+        params["scope"] = "openid email profile https://www.googleapis.com/auth/drive.file"
+        params["access_type"] = "offline"
+        params["include_granted_scopes"] = "true"
+        params["prompt"] = "consent"
+    return {"auth_url": f"{GOOGLE_AUTH_URL}?{urlencode(params)}", "state": state, "poll_secret": poll_secret}
 
 
 @api_router.get("/auth/google/callback")
@@ -545,10 +632,13 @@ async def google_callback(request: Request, code: Optional[str] = Query(None),
     st = await db.oauth_states.find_one({"state": state}) if state else None
     app_redirect = (st or {}).get("app_redirect") or ""
 
+    def _must_allow():
+        # Re-check at the bounce so a stored value can never become an open redirect.
+        if not redirect_allowed(app_redirect):
+            raise HTTPException(status_code=400, detail="Invalid redirect")
+
     async def finish(fragment: str, *, keep: bool = False, session_token: str = None):
-        # Persist the result on the state doc so the app can POLL for it (this is
-        # the reliable path on Android, where the deep-link payload is often
-        # dropped). Non-login flows delete the state immediately.
+        _must_allow()
         if state:
             if keep and session_token:
                 await db.oauth_states.update_one(
@@ -560,36 +650,34 @@ async def google_callback(request: Request, code: Optional[str] = Query(None),
         return bounce(fragment)
 
     def bounce(fragment: str):
-        # Web (http/https): browsers preserve the fragment, a normal 302 works.
-        if app_redirect.startswith("http://") or app_redirect.startswith("https://"):
+        _must_allow()
+        # The session token is never put on this URL. The app polls with the
+        # secret it received in the JSON start response.
+        if app_redirect.startswith("https://"):
             return RedirectResponse(f"{app_redirect}#{fragment}")
-        # Native custom scheme (e.g. driversgigtax://): Android DROPS the URL fragment
-        # when it hands a custom-scheme intent to the app, so a `#token` payload is
-        # lost and the user lands back on the sign-in screen. Pass it as a QUERY
-        # param instead (reliably preserved); the app parses both `?` and `#`.
         sep = "&" if "?" in app_redirect else "?"
         target = f"{app_redirect}{sep}{fragment}"
-        import json as _json
-        t = _json.dumps(target)
-        html = f"""<!doctype html><html><head>
+        safe = html.escape(target, quote=True)
+        script_url = json.dumps(target).replace("<", "\\u003c").replace(">", "\\u003e")
+        page = f"""<!doctype html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0;url={target}">
-<script>window.location.replace({t});setTimeout(function(){{window.location.href={t};}},400);</script>
+<meta http-equiv="refresh" content="0;url={safe}">
+<script>window.location.replace({script_url});setTimeout(function(){{window.location.href={script_url};}},400);</script>
 <style>body{{font-family:-apple-system,Roboto,Helvetica,sans-serif;background:#0A1420;color:#fff;
 display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;text-align:center;padding:24px}}
 a{{color:#0A1420;background:#4FC3F7;font-size:17px;font-weight:600;text-decoration:none;padding:14px 28px;
 border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size:15px}}</style>
 </head><body><div><p>Signing you in…</p>
-<a href="{target}">Return to Drivers Gig Tax</a></div></body></html>"""
-        return HTMLResponse(html)
+<a href="{safe}">Return to Drivers Gig Tax</a></div></body></html>"""
+        return HTMLResponse(page)
 
     if error or not code or not st:
         return await finish("auth_error=1")
     redirect_uri = f"{_public_base(request)}/api/auth/google/callback"
     async with httpx.AsyncClient(timeout=15) as hc:
         tok = await hc.post(GOOGLE_TOKEN_URL, data={
-            "code": code, "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET, "redirect_uri": redirect_uri,
+            "code": code, "client_id": _google_client_id(),
+            "client_secret": _google_client_secret(), "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         })
         if tok.status_code != 200:
@@ -604,30 +692,27 @@ border-radius:12px;margin-top:24px;display:inline-block}}p{{opacity:.7;font-size
     if not email:
         return await finish("auth_error=noemail")
 
-    # Drive-backup connect: persist the encrypted refresh/access token for this
-    # profile so the backend can upload backups on the user's behalf later.
     if st.get("backup") and st.get("profile_id"):
         await _save_drive_tokens(st["profile_id"], tokjson, email)
         return await finish("drive_connected=1")
 
     session_token = await _login_google_user(email, info.get("name"), info.get("picture"))
-    return await finish(f"session_token={session_token}", keep=True, session_token=session_token)
+    return await finish("signed_in=1", keep=True, session_token=session_token)
 
 
-@api_router.get("/auth/google/poll")
-async def google_poll(state: str = Query(...)):
-    """The app polls this with the `state` it generated for /start. Once Google
-    sign-in completes on the backend, the minted session token is returned here
-    (and consumed). This is the reliable path on Android, where the deep-link
-    payload is frequently dropped on the way back into the app."""
-    doc = await db.oauth_states.find_one({"state": state})
-    if not doc:
-        return {"status": "expired"}
+@api_router.post("/auth/google/poll")
+async def google_poll(body: GooglePollIn):
+    """Return the session token only to the caller that holds the poll secret
+    from POST /auth/google/start. The secret is not accepted on the query string."""
+    doc = await db.oauth_states.find_one({"state": body.state})
+    expected = (doc or {}).get("poll_secret") or ""
+    if not doc or not _const_eq(body.poll_secret or "", expected):
+        raise HTTPException(status_code=401, detail="Invalid poll")
     token = doc.get("session_token")
-    if token:
-        await db.oauth_states.delete_one({"state": state})
-        return {"status": "ready", "session_token": token}
-    return {"status": "pending"}
+    if not token:
+        return {"status": "pending"}
+    await db.oauth_states.delete_one({"state": body.state})
+    return {"status": "ready", "session_token": token}
 
 
 
@@ -674,7 +759,7 @@ async def _drive_access_token(profile_id: str) -> str:
         return _dec(row["access_token"])
     async with httpx.AsyncClient(timeout=20) as hc:
         r = await hc.post(GOOGLE_TOKEN_URL, data={
-            "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
+            "client_id": _google_client_id(), "client_secret": _google_client_secret(),
             "refresh_token": _dec(row["refresh_token"]), "grant_type": "refresh_token",
         })
     if r.status_code != 200:
@@ -1616,6 +1701,8 @@ class ScanRequest(BaseModel):
 
 @api_router.post("/receipts/scan")
 async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled)):
+    _reject_demo_premium(owner)
+    _rate_limit(f"ai:{owner.profile_id}", "AI_RATE_LIMIT", 30)
     import json as _json
 
     system = (
@@ -1700,6 +1787,8 @@ class AskRequest(BaseModel):
 
 @api_router.post("/ask")
 async def ask_assistant(req: AskRequest, owner: Owner = Depends(require_entitled)):
+    _reject_demo_premium(owner)
+    _rate_limit(f"ai:{owner.profile_id}", "AI_RATE_LIMIT", 30)
     from tax_kb import kb_for
 
     country = (req.country or "AU").upper()

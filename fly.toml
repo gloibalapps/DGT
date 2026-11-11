@@ -5,6 +5,7 @@ app = "driversgigtax-api"
 primary_region = "syd"
 
 [build]
+  # Installs backend/requirements.txt only (runtime). Lint and tests are requirements-dev.txt.
   dockerfile = "backend/Dockerfile"
 
 [http_service]

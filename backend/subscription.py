@@ -24,7 +24,10 @@ toggled without code changes (and tests can monkeypatch it):
                              before this feature (no trial_started_at). Start =
                              max(created_at, this). Unset = the moment the server
                              first sees the account (i.e. cutover day).
-  DEMO_ENTITLED              "true" (default): demo accounts are never gated
+  DEMO_ENTITLED              "true" to skip the paywall for demo accounts (default false).
+                             Demo accounts still cannot call /api/ask or /api/receipts/scan.
+  DEMO_ENABLED               "true" to allow POST /api/auth/demo (default false)
+  DEMO_REVIEW_SECRET         required X-Demo-Review-Secret when DEMO_ENABLED is true. SECRET.
   REVENUECAT_SECRET_API_KEY  RevenueCat secret (sk_...) key. SECRET.
   RC_ENTITLEMENT_ID          default "pro"
   RC_CACHE_TTL_SECONDS       default 300
@@ -70,6 +73,11 @@ def trial_days() -> int:
 
 def entitlement_id() -> str:
     return os.environ.get("RC_ENTITLEMENT_ID", "pro")
+
+
+def demo_entitled() -> bool:
+    """Demo accounts skip the paywall only when this is explicitly turned on."""
+    return _env_bool("DEMO_ENTITLED", False)
 
 
 def _now() -> datetime:
@@ -149,7 +157,7 @@ def build(db, require_owner):
     async def compute(user: dict, *, force: bool = False) -> dict:
         now = _now()
         uid = user["user_id"]
-        if user.get("is_demo") and _env_bool("DEMO_ENTITLED", True):
+        if user.get("is_demo") and demo_entitled():
             return {"state": "active", "entitlement": "demo", "trial_ends_at": user.get("trial_ends_at"),
                     "days_left": None, "is_demo": True}
         user = await ensure_trial(user, now)

@@ -232,20 +232,24 @@ def test_existing_user_env_start(client, monkeypatch):
     assert client.get("/api/subscription/status", headers=h3).json()["days_left"] == 11
 
 
-def test_demo_always_entitled(client, monkeypatch):
+def test_demo_not_entitled_unless_enabled(client, monkeypatch):
+    monkeypatch.delenv("DEMO_ENTITLED", raising=False)
     uid, h = new_user(60, demo=True)
-    r = client.get("/api/subscription/status", headers=h).json()
-    assert r["state"] == "active" and r["entitlement"] == "demo"
-    assert write(client, h).status_code == 200
-    monkeypatch.setenv("DEMO_ENTITLED", "false")
+    # Default is off: a demo account past the 14-day trial is gated like anyone else.
     assert write(client, h).status_code == 402
+    monkeypatch.setenv("DEMO_ENTITLED", "true")
+    assert write(client, h).status_code == 200
 
 
-def test_demo_signup_sets_trial(client):
-    r = client.post("/api/auth/demo").json()
-    h = {"Authorization": f"Bearer {r.get('session_token') or r.get('token')}", "X-Test-No-Auto-Auth": "1"}
+def test_demo_signup_sets_trial(client, monkeypatch):
+    monkeypatch.setenv("DEMO_ENABLED", "true")
+    monkeypatch.setenv("DEMO_REVIEW_SECRET", "review-secret")
+    r = client.post("/api/auth/demo", headers={"X-Demo-Review-Secret": "review-secret"})
+    assert r.status_code == 200, r.text
+    h = {"Authorization": f"Bearer {r.json()['session_token']}", "X-Test-No-Auto-Auth": "1"}
     st = client.get("/api/subscription/status", headers=h).json()
     assert st["is_demo"] and st["trial_ends_at"]
+    assert client.post("/api/ask", json={"question": "fuel?", "country": "AU"}, headers=h).status_code == 403
 
 
 def test_signup_trial_one_per_identity(monkeypatch):

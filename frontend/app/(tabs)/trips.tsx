@@ -199,7 +199,7 @@ export default function Mileage() {
         start_time: pendingStartTs ? new Date(pendingStartTs).toISOString() : null,
         end_time: pendingEndTs ? new Date(pendingEndTs).toISOString() : null });
       // Auto-calibrate this vehicle from the odometer vs the raw GPS distance.
-      if (useOdo && activeVehicle && pendingRawKm && pendingRawKm > 0) {
+      if (useOdo && activeVehicle?.id && pendingRawKm && pendingRawKm > 0) {
         const pct = Math.min(150, Math.max(50, Math.round((odo / pendingRawKm) * 1000) / 10));
         await api.updateVehicle(activeVehicle.id, { gps_calibration_pct: pct });
         await reloadVehicles();

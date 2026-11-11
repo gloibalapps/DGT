@@ -34,7 +34,7 @@ Implemented in `backend/subscription.py`, schema in `supabase/migrations/0002_tr
 
 **Backups.** Both methods stay available to trial and expired users: CSV/XLSX export (instant, offline-friendly, satisfies data-portability requests) and the existing Google Drive backup (automatic, restorable into the app). Restore is allowed after expiry because it only recovers the user's own data.
 
-**Other decisions.** Demo accounts are always entitled (`DEMO_ENTITLED=true`) so App Store / Play reviewers never hit the paywall; they still get trial fields. Pre-existing accounts (no `trial_started_at`) start at `max(created_at, TRIAL_EXISTING_USERS_START)`; empty = when the server first sees them after deploy (everyone migrated gets a fresh 14 days from cutover). Enforcement ships dark (`PAYWALL_ENFORCED=false`); status is still computed and returned with `"enforced": false`.
+**Other decisions.** Demo accounts are not entitled unless `DEMO_ENTITLED=true`, and `POST /api/auth/demo` is off unless `DEMO_ENABLED=true` plus `DEMO_REVIEW_SECRET`. Demo accounts cannot call `/api/ask` or `/api/receipts/scan`. They still get trial fields. Pre-existing accounts (no `trial_started_at`) start at `max(created_at, TRIAL_EXISTING_USERS_START)`; empty = when the server first sees them after deploy (everyone migrated gets a fresh 14 days from cutover). Enforcement ships dark (`PAYWALL_ENFORCED=false`); status is still computed and returned with `"enforced": false`.
 
 **Store intro offer vs server trial (no double trial).** The server trial runs from sign-up, so the store products should have **no** introductory free trial; otherwise a driver gets 14 days from sign-up and then another 14 at purchase. The paywall CTA reads "Subscribe" (fallback plans `trial:false`); if an intro offer is ever re-enabled, `Plan.trial` still drives the "Start 14-day free trial" copy, but only outside the server trial.
 
@@ -50,7 +50,10 @@ Implemented in `backend/subscription.py`, schema in `supabase/migrations/0002_tr
 | `PAYWALL_ENFORCED` | `false` | 402 on gated routes when expired |
 | `TRIAL_DAYS` | `14` | |
 | `TRIAL_EXISTING_USERS_START` | empty | ISO date; empty = first seen after deploy |
-| `DEMO_ENTITLED` | `true` | |
+| `DEMO_ENTITLED` | `false` | set true only to skip the paywall for demo accounts |
+| `DEMO_ENABLED` | `false` | `POST /api/auth/demo` |
+| `DEMO_REVIEW_SECRET` | empty | SECRET; header `X-Demo-Review-Secret` |
+| `OAUTH_REDIRECT_ORIGINS` | empty | https origins allowed to receive the Google return, besides `driversgigtax://` |
 | `REVENUECAT_SECRET_API_KEY` | empty | SECRET |
 | `RC_ENTITLEMENT_ID` | `pro` | |
 | `RC_CACHE_TTL_SECONDS` | `300` | |
@@ -65,4 +68,4 @@ Every data route requires `Authorization: Bearer <session_token>` (a `user_sessi
 * URLs opened in a browser (CSV/XLSX exports and the Drive-connect `auth/google/start?backup=1`) can't send the header. They use `?ticket=` from `POST /api/auth/ticket` instead: random, single-use, valid for 5 minutes, and stored in `oauth_states` with `kind=ticket`.
 * `DELETE /api/account` deletes the authenticated user's data, user row, all of their sessions, oauth_states, and drive_tokens. It also revokes the Google Drive token on a best-effort basis.
 * Paywall: `/api/subscription/webhook` is public but requires `REVENUECAT_WEBHOOK_AUTH`.
-* Public routes: `/health`, `/api/`, `/api/site`, `/api/privacy`, `/api/terms`, `/api/waitlist`, `/api/auth/{google/start (non-backup), google/callback, google/poll, apple, demo, me, logout}`.
+* Public routes: `/health`, `/api/`, `/api/site`, `/api/privacy`, `/api/terms`, `/api/waitlist`, `/api/auth/{google/start (non-backup), google/callback, google/poll, apple, me, logout}`. `POST /api/auth/demo` is off unless `DEMO_ENABLED` and `DEMO_REVIEW_SECRET`. `POST /api/auth/google/start` returns JSON (`auth_url`, `state`, `poll_secret`) and rejects any `app_redirect` that is not `driversgigtax://` or an origin in `OAUTH_REDIRECT_ORIGINS`. The session token is returned only from `POST /api/auth/google/poll` with that poll secret.
