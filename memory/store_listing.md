@@ -43,7 +43,7 @@ BUILT FOR AUSTRALIA & THE UNITED STATES
 GigTax applies the right tax rules for your country automatically — GST/BAS and logbook rules for Australia, Schedule C, standard-mileage and self-employment tax for the US.
 
 GIGTAX PRO
-Start with a 7-day free trial, then continue on a monthly or yearly plan to keep the full app. Manage your subscription any time.
+Start with a 14-day free trial, then continue on a monthly or yearly plan to keep the full app. Manage your subscription any time.
 
 IMPORTANT
 GigTax provides general estimates to help you plan and stay organised. It is not personal tax advice. Always confirm your figures with a registered tax professional before you lodge or file.
