@@ -9,55 +9,13 @@ import { Platform } from "react-native";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { storage } from "@/src/utils/storage";
+import { applyFix, MIN_DRIVE_KM, STOP_GAP_MS, type DriveState, type GpsFix } from "./gpsTrack";
 
 export const AUTOTRACK_TASK = "gigtax-autotrack";
 const ENABLED_KEY = "gigtax.autotrack.enabled"; // boolean (scalar)
 const BUF_KEY = "gigtax.autotrack.buffer"; // JSON string
 const PENDING_KEY = "gigtax.autotrack.pending"; // JSON string (array)
-const STOP_GAP_MS = 5 * 60 * 1000; // 5 min stationary => drive ended
-const MIN_DRIVE_KM = 0.3; // ignore trivial GPS jitter drives
-const GPS_ACC_MAX_M = 30;     // manual: ignore fixes less accurate than this (metres)
-const AUTO_ACC_MAX_M = 60;    // auto: slightly looser (sparser background fixes)
-const GPS_MAX_KMH = 180;      // ignore segments implying an impossible speed (GPS glitch)
-const MIN_GAP_MS = 1000;      // accept at most one fix per second (two sources → one)
-const STILL_MS = 1.0;         // GPS speed below ~3.6 km/h = not moving
 const MAX_AVG_KMH = 130;      // a whole drive can't average more than this
-
-// Decide how much real distance one GPS step represents. The phone's Doppler
-// SPEED (coords.speed, m/s) is far more reliable than position, which jitters
-// by tens of metres — so speed is used to (a) recognise standing still and
-// (b) cap each step to what the car could actually have covered. Returns null
-// to reject the fix outright (keep the reference), km 0 + move=false to hold
-// the reference (stationary / jitter), or the km to add and move the reference.
-interface Ref { lat: number; lon: number; ts: number; speed?: number | null }
-function stepKm(ref: Ref, lat: number, lon: number, ts: number, accuracy?: number | null, speed?: number | null):
-  { km: number; move: boolean } | null {
-  const dtS = (ts - ref.ts) / 1000;
-  if (dtS < MIN_GAP_MS / 1000) return null;              // duplicate / stale / out-of-order
-  const d = haversine(ref.lat, ref.lon, lat, lon);
-  if (d / (dtS / 3600) > GPS_MAX_KMH) return null;       // teleport glitch
-  const spd = speed != null && speed >= 0 ? speed : null;
-  if (spd != null) {
-    const refSpd = ref.speed != null && ref.speed >= 0 ? ref.speed : spd;
-    if (spd < STILL_MS && refSpd < STILL_MS) return { km: 0, move: false }; // parked / at lights
-    if (d < moveFloorKm(accuracy)) return { km: 0, move: false };
-    // Distance can't exceed what the speedometer says was covered — this stops
-    // sideways position jitter inflating the total while driving.
-    const capKm = (((spd + refSpd) / 2) * dtS * 1.05) / 1000;
-    return { km: Math.min(d, capKm), move: true };
-  }
-  // No speed from the device: be stricter — movement must beat the fix's own error.
-  const accM = accuracy != null && accuracy > 0 ? accuracy : 20;
-  if (d * 1000 < Math.max(60, accM * 3)) return { km: 0, move: false };
-  return { km: d, move: true };
-}
-
-// Movement must beat the fix's own uncertainty before it counts, otherwise
-// standing still at lights / in a car park slowly "walks" the distance up.
-function moveFloorKm(accuracy?: number | null): number {
-  const acc = accuracy != null && accuracy > 0 ? accuracy : 10;
-  return Math.max(8, Math.min(25, acc * 0.6)) / 1000;
-}
 
 export interface PendingDrive {
   id: string;
@@ -67,19 +25,23 @@ export interface PendingDrive {
   end_ts: number;
 }
 
-interface Buffer {
+interface LegacyBuffer {
   lastLat: number; lastLon: number; lastTs: number; distance: number; startTs: number;
   lastSpeed?: number | null; seenTs?: number;
+  anchorLat?: number;
 }
 
-function haversine(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6371;
-  const dLat = ((bLat - aLat) * Math.PI) / 180;
-  const dLon = ((bLon - aLon) * Math.PI) / 180;
-  const la1 = (aLat * Math.PI) / 180;
-  const la2 = (bLat * Math.PI) / 180;
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+function asState(raw: DriveState | LegacyBuffer | null): DriveState | null {
+  if (!raw || typeof (raw as LegacyBuffer).lastLat !== "number") return null;
+  if (typeof raw.anchorLat === "number" && typeof (raw as DriveState).armed === "boolean") return raw as DriveState;
+  const legacy = raw as LegacyBuffer;
+  return {
+    anchorLat: legacy.lastLat, anchorLon: legacy.lastLon, anchorTs: legacy.startTs || legacy.lastTs,
+    lastLat: legacy.lastLat, lastLon: legacy.lastLon, lastTs: legacy.lastTs,
+    lastSpeed: legacy.lastSpeed ?? null, seenTs: legacy.seenTs ?? legacy.lastTs,
+    distance: legacy.distance || 0, startTs: legacy.startTs || legacy.lastTs,
+    speedStreak: 0, progress: 0, farthestM: 0, armed: (legacy.distance || 0) > 0,
+  };
 }
 
 async function readJSON<T>(key: string, fallback: T): Promise<T> {
@@ -91,13 +53,23 @@ async function writeJSON(key: string, value: unknown): Promise<void> {
   await storage.setItem(key, JSON.stringify(value));
 }
 
-function finalize(buf: Buffer): PendingDrive {
+function finalize(buf: DriveState): PendingDrive {
   return {
     id: `${buf.startTs}`,
     distance_km: Math.round(buf.distance * 100) / 100,
     date: new Date(buf.startTs).toLocaleDateString("en-CA"),
     start_ts: buf.startTs,
     end_ts: buf.seenTs || buf.lastTs,
+  };
+}
+
+function toFix(loc: Location.LocationObject): GpsFix {
+  return {
+    lat: loc.coords.latitude,
+    lon: loc.coords.longitude,
+    ts: loc.timestamp,
+    accuracy: loc.coords.accuracy,
+    speed: loc.coords.speed,
   };
 }
 
@@ -115,26 +87,16 @@ if (Platform.OS !== "web") {
 let autoChain: Promise<void> = Promise.resolve();
 async function autoIngest(locsIn: Location.LocationObject[]): Promise<void> {
   if ((await readJSON<Live | null>(LIVE_KEY, null))?.active) return; // manual shift owns this drive
-  let buf = await readJSON<Buffer | null>(BUF_KEY, null);
+  let buf = asState(await readJSON<DriveState | LegacyBuffer | null>(BUF_KEY, null));
   const pending = await readJSON<PendingDrive[]>(PENDING_KEY, []);
   const locs = [...locsIn].sort((a, b) => a.timestamp - b.timestamp);
   for (const loc of locs) {
-    const { latitude, longitude, accuracy, speed } = loc.coords;
-    const ts = loc.timestamp;
-    if (accuracy != null && accuracy > AUTO_ACC_MAX_M) continue; // skip junk fix
-    const lastMove = buf ? buf.lastTs : 0;
-    if (buf && ts - lastMove > STOP_GAP_MS) {
-      if (buf.distance >= MIN_DRIVE_KM) pending.push(finalize(buf));
+    const fix = toFix(loc);
+    if (buf && fix.ts - buf.lastTs > STOP_GAP_MS) {
+      if (buf.armed && buf.distance >= MIN_DRIVE_KM) pending.push(finalize(buf));
       buf = null;
     }
-    if (!buf) {
-      buf = { lastLat: latitude, lastLon: longitude, lastTs: ts, distance: 0, startTs: ts, lastSpeed: speed, seenTs: ts };
-      continue;
-    }
-    const step = stepKm({ lat: buf.lastLat, lon: buf.lastLon, ts: buf.lastTs, speed: buf.lastSpeed }, latitude, longitude, ts, accuracy, speed);
-    if (!step || !step.move) continue; // stationary → stop-gap closes the drive
-    buf.distance += step.km;
-    buf.lastLat = latitude; buf.lastLon = longitude; buf.lastTs = ts; buf.lastSpeed = speed; buf.seenTs = ts;
+    buf = applyFix(buf, fix).state;
   }
   await writeJSON(BUF_KEY, buf);
   // de-dupe by id so a drive can never be queued twice
@@ -251,10 +213,10 @@ export async function resumeAutotrackIfEnabled(): Promise<void> {
 
 // If a drive is sitting open past the stop-gap, close it into the queue.
 export async function flushOpenDrive(): Promise<void> {
-  const buf = await readJSON<Buffer | null>(BUF_KEY, null);
+  const buf = asState(await readJSON<DriveState | LegacyBuffer | null>(BUF_KEY, null));
   if (!buf) return;
   if (Date.now() - buf.lastTs > STOP_GAP_MS) {
-    if (buf.distance >= MIN_DRIVE_KM) {
+    if (buf.armed && buf.distance >= MIN_DRIVE_KM) {
       const pending = await readJSON<PendingDrive[]>(PENDING_KEY, []);
       pending.push(finalize(buf));
       await writeJSON(PENDING_KEY, pending);
@@ -282,7 +244,10 @@ export async function clearPendingDrive(id: string): Promise<void> {
 export const MANUAL_TASK = "gigtax-manual-drive";
 const LIVE_KEY = "gigtax.manual.live"; // JSON string
 
-interface Live { distance: number; lastLat?: number; lastLon?: number; lastTs: number; lastSpeed?: number | null; startTs: number; active: boolean; }
+interface Live {
+  distance: number; lastLat?: number; lastLon?: number; lastTs: number; lastSpeed?: number | null;
+  startTs: number; active: boolean; gate?: DriveState | null;
+}
 
 
 // Read-modify-write a single GPS fix into the live drive. Shared by BOTH the
@@ -290,12 +255,9 @@ interface Live { distance: number; lastLat?: number; lastLon?: number; lastTs: n
 // running distance is persisted to storage on EVERY update from either source
 // and can never be lost if the OS kills the app.
 //
-// Stability guards (fixes the ±20–100 km back-and-forth jumping):
-//  • drop fixes whose reported accuracy is worse than GPS_ACC_MAX_M — a bad fix
-//    must NEVER become the reference point, or the "return" step spikes too;
-//  • drop segments implying an impossible speed (GPS teleport);
-//  • de-dupe by timestamp so the same fix arriving from both sources (or a
-//    stale racing write) is only ever counted once.
+// Distance is gated in gpsTrack.applyFix: poor fixes, jumps, and stationary
+// jitter never move the anchor or add kilometres. A drive is not "moving"
+// until speed stays at/above ~2.5 m/s or the phone is 150 m from its anchor.
 // Serialise every write: the foreground watcher and the background task can
 // fire at the same moment, and two overlapping read-modify-writes would lose
 // or double-count distance.
@@ -308,16 +270,14 @@ export function ingestManualPoint(latitude: number, longitude: number, ts: numbe
 async function ingestOne(latitude: number, longitude: number, ts: number, accuracy?: number | null, speed?: number | null): Promise<void> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
   if (!live || !live.active) return;
-  if (accuracy != null && accuracy > GPS_ACC_MAX_M) return; // junk fix — ignore entirely
-  if (live.lastLat == null || live.lastLon == null) {
-    live.lastLat = latitude; live.lastLon = longitude; live.lastTs = ts; live.lastSpeed = speed;
-    await writeJSON(LIVE_KEY, live);
-    return;
-  }
-  const step = stepKm({ lat: live.lastLat, lon: live.lastLon, ts: live.lastTs, speed: live.lastSpeed }, latitude, longitude, ts, accuracy, speed);
-  if (!step || !step.move) return; // glitch or standing still — hold the reference
-  live.distance += step.km;
-  live.lastLat = latitude; live.lastLon = longitude; live.lastTs = ts; live.lastSpeed = speed;
+  const step = applyFix(live.gate ?? null, { lat: latitude, lon: longitude, ts, accuracy, speed });
+  if (!step.state) return;
+  live.gate = step.state;
+  live.distance = step.state.distance;
+  live.lastLat = step.state.lastLat;
+  live.lastLon = step.state.lastLon;
+  live.lastTs = step.state.lastTs;
+  live.lastSpeed = step.state.lastSpeed;
   await writeJSON(LIVE_KEY, live);
 }
 
