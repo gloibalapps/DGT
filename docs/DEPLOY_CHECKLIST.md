@@ -1,62 +1,94 @@
 # Deploy checklist
 
-Do these before a preview APK or a store submission. Nothing in this file has been run against production.
+The API runs as one Supabase Edge Function on the existing project **Drivers Gig Tax**
+(`cvxifukwesvcbmygxqts`, ap-southeast-2). The website stays on Netlify. Do not
+create a second Supabase project. `fly.toml` is not the host for this API.
+Nothing here has been applied or deployed.
 
-## 1. Backend on Fly.io (Sydney)
+The app calls `EXPO_PUBLIC_BACKEND_URL` + `/api/...`, so the base URL is the
+function root and the path still starts with `/api`:
 
-The app name in `fly.toml` is `driversgigtax-api`. The image installs `backend/requirements.txt` (runtime only) via `backend/Dockerfile`.
+`https://cvxifukwesvcbmygxqts.supabase.co/functions/v1/api`
 
-From the repo root, with the Fly CLI logged in:
+A profile request is
+`https://cvxifukwesvcbmygxqts.supabase.co/functions/v1/api/api/profile`.
 
-```bash
-fly apps create driversgigtax-api --org <your-fly-org>
-fly secrets set \
-  SUPABASE_DB_URL= \
-  ANTHROPIC_API_KEY= \
-  GOOGLE_CLIENT_ID= \
-  GOOGLE_CLIENT_SECRET= \
-  DRIVE_ENCRYPTION_KEY= \
-  OAUTH_REDIRECT_ORIGINS=https://driversgigtax.app \
-  APPLE_AUDIENCES=com.driversgigtax.app
-fly deploy
-```
+## 1. Database migration (review first, then apply)
 
-Set the secret values in the Fly dashboard or your shell, not in git. Names match `backend/.env.example`. Leave `PAYWALL_ENFORCED` unset (default false) until step 4.
-
-Confirm:
+`supabase/migrations/0003_gigtax_api_schema.sql` creates schema `gigtax` with
+the JSONB tables the API uses, plus `gigtax.rate_hits` for the demo and AI
+rate limits. It does not drop or alter the empty `public`
+tables (`profiles`, `vehicles`, `shifts`, `shift_points`, `incomes`,
+`expenses`, `receipt_backup_queue`, `sync_log`). Those are a different
+Supabase-Auth shape and are not what this app calls.
 
 ```bash
-curl -fsS https://driversgigtax-api.fly.dev/health
+supabase link --project-ref cvxifukwesvcbmygxqts
+supabase db push
 ```
 
-Expect `{"status":"ok"}`.
+## 2. Function secrets
 
-## 2. DNS for api.driversgigtax.app
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and
+`SUPABASE_DB_URL` are injected by Supabase. Do not copy them into the app.
+Set the rest with `supabase secrets set` (values from the place named, never
+from git):
 
-`api.driversgigtax.app` has no DNS record until this is done. The app and `eas.json` call `https://api.driversgigtax.app`.
+| Name | Where the value comes from |
+|---|---|
+| `ANTHROPIC_API_KEY` | console.anthropic.com API keys |
+| `ANTHROPIC_MODEL` | optional, default `claude-sonnet-4-6` |
+| `ANTHROPIC_VISION_MODEL` | optional, same default (scan is not ported yet) |
+| `GOOGLE_CLIENT_ID` | Google Cloud OAuth web client |
+| `GOOGLE_CLIENT_SECRET` | same client |
+| `APPLE_AUDIENCES` | `com.driversgigtax.app` |
+| `OAUTH_REDIRECT_ORIGINS` | `https://driversgigtax.app` |
+| `DRIVE_ENCRYPTION_KEY` | existing Fernet key, or a new one if no Drive tokens exist yet |
+| `DEMO_ENABLED` | `false` except a review build |
+| `DEMO_REVIEW_SECRET` | generate for the review build only |
+| `DEMO_ENTITLED` | `false` |
+| `DEMO_RATE_LIMIT` | optional, default 5 per minute |
+| `AI_RATE_LIMIT` | optional, default 30 per minute |
+| `PAYWALL_ENFORCED` | leave unset (`false`) until step 4 |
+| `TRIAL_DAYS` | optional, default 14 |
+| `REVENUECAT_SECRET_API_KEY` | RevenueCat secret key |
+| `REVENUECAT_WEBHOOK_AUTH` | the exact Authorization value you set on the RevenueCat webhook |
+| `RC_ENTITLEMENT_ID` | `pro` |
+| `CORS_ORIGINS` | optional |
+
+Google authorised redirect URI (Cloud Console):
+
+`https://cvxifukwesvcbmygxqts.supabase.co/functions/v1/api/api/auth/google/callback`
+
+RevenueCat webhook:
+
+`https://cvxifukwesvcbmygxqts.supabase.co/functions/v1/api/api/subscription/webhook`
+
+`supabase/config.toml` sets `verify_jwt = false` for `functions.api` because the
+app's `Authorization` bearer is its own session token, not a Supabase JWT.
+
+## 3. Deploy the function (after review)
 
 ```bash
-fly certs add api.driversgigtax.app
-fly certs show api.driversgigtax.app
+supabase functions deploy api --project-ref cvxifukwesvcbmygxqts
+curl -fsS https://cvxifukwesvcbmygxqts.supabase.co/functions/v1/api/health
 ```
 
-At the DNS host for `driversgigtax.app`, add the records `fly certs show` prints (typically a CNAME or A/AAAA for `api`). Wait until:
+Expect `{"status":"ok"}`. If the gateway returns 401 before that JSON, the
+platform is still asking for the publishable key on the `apikey` header.
+The session token stays in `Authorization`. Confirm that with a curl before
+shipping the app; the app itself only changes `EXPO_PUBLIC_BACKEND_URL`.
 
-```bash
-curl -fsS https://api.driversgigtax.app/health
-```
+No `api.driversgigtax.app` DNS record is required for this host.
 
-returns `{"status":"ok"}`.
+## 4. Marketing site on Netlify
 
-## 3. Marketing site on Netlify
+`netlify.toml` still publishes `website/`. `/api/*` on the site is proxied to
+the Edge Function (waitlist). `/privacy`, `/terms`, and `/delete-account`
+stay static pages.
 
-`netlify.toml` publishes the `website/` directory and maps `/privacy`, `/terms`, and `/delete-account` to the HTML files. `https://driversgigtax.app/` and `/privacy` currently return Netlify's own 404, including for `/`, so the domain is not serving this publish directory.
-
-In the Netlify site that owns `driversgigtax.app`:
-
-- Repository: this repo. Base directory: repo root. Build command: empty. Publish directory: `website` (already set by `netlify.toml`).
-- Attach `driversgigtax.app` and `www.driversgigtax.app`.
-- Deploy, then confirm each of these is HTTP 200 and is the page from `website/`, not Netlify's "Page not found":
+Confirm the Netlify site that owns `driversgigtax.app` uses this repo, an
+empty build command, and publish directory `website`. Then:
 
 ```bash
 curl -sI https://driversgigtax.app/
@@ -65,44 +97,31 @@ curl -sI https://driversgigtax.app/terms
 curl -sI https://driversgigtax.app/delete-account
 ```
 
-Before that deploy, replace the `[TO CONFIRM: …]` placeholders in `website/privacy.html` and `frontend/app/privacy.tsx` (legal entity, ABN, postal address, backup retention).
+Replace the `[TO CONFIRM: …]` placeholders in `website/privacy.html` and
+`frontend/app/privacy.tsx` before that deploy.
 
-## 4. Subscriptions, then turn the paywall on
+## 5. Subscriptions
 
-`PAYWALL_ENFORCED` stays false until all of the following exist:
+Leave `PAYWALL_ENFORCED` false until RevenueCat entitlement `pro`, the store
+products, and real `EXPO_PUBLIC_RC_IOS_KEY` / `EXPO_PUBLIC_RC_ANDROID_KEY`
+exist. Then `supabase secrets set PAYWALL_ENFORCED=true`. Do not put a
+`test_` key in a release build.
 
-1. RevenueCat entitlement `pro`, offering with monthly and yearly packages, no store intro offer (the server already grants 14 days).
-2. App Store and Play products at A$19.99 / month and A$199.99 / year.
-3. An EAS build whose environment has `EXPO_PUBLIC_RC_IOS_KEY` (`appl_…`) and `EXPO_PUBLIC_RC_ANDROID_KEY` (`goog_…`). Do not set `EXPO_PUBLIC_RC_TEST_KEY` on a release build. A `test_` value in a release build is ignored, and RevenueCat stays off when those store keys are absent.
-4. Backend secrets `REVENUECAT_SECRET_API_KEY` and `REVENUECAT_WEBHOOK_AUTH`. Webhook URL: `https://api.driversgigtax.app/api/subscription/webhook`.
+## 6. Android preview APK
 
-Then:
-
-```bash
-fly secrets set PAYWALL_ENFORCED=true
-```
-
-## 5. Android preview APK (EAS)
-
-`frontend/eas.json` profile `preview` already sets `android.buildType` to `apk` (the `production` profile is an AAB). `frontend/app.json` does not yet have an Expo project id or owner. Do not invent them.
-
-From `frontend/`, logged into the Expo account that should own the app (`npx eas-cli login`, or `EXPO_TOKEN`):
+`frontend/eas.json` `preview` still builds an APK and now points
+`EXPO_PUBLIC_BACKEND_URL` at the function. `app.json` still has no
+`extra.eas.projectId` or `owner`. From `frontend/`:
 
 ```bash
 npx eas-cli@latest init
 ```
 
-That writes:
+Write the printed values, do not invent them:
 
-- `expo.extra.eas.projectId`: `<paste the id eas init prints>`
+- `expo.extra.eas.projectId`: `<id from eas init>`
 - `expo.owner`: `<expo username or org slug>`
 
-Commit those two fields. Then:
-
-```bash
-npx eas-cli build --platform android --profile preview
-```
-
-Accept EAS-managed Android credentials on the first build so Expo generates the keystore. Download the `.apk` from the build page. Do not run this until step 2 is done, or the installed app will call a host that does not resolve.
-
-Reviewer demo, only on a review build: set backend `DEMO_ENABLED=true` and `DEMO_REVIEW_SECRET`, and the same secret as `EXPO_PUBLIC_DEMO_REVIEW_SECRET` in that EAS environment. Leave both empty for a public build.
+Then `npx eas-cli build --platform android --profile preview`. Reviewer demo
+only: `DEMO_ENABLED=true`, `DEMO_REVIEW_SECRET`, and the same value as
+`EXPO_PUBLIC_DEMO_REVIEW_SECRET` on that EAS environment.
