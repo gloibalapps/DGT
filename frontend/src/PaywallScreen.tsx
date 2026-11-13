@@ -136,7 +136,7 @@ export default function PaywallScreen({ gate = false, expired = false, onContinu
             <View style={{ marginTop: 24, padding: 16, borderRadius: 16, backgroundColor: colors.surface,
               borderWidth: 1, borderColor: colors.profit, flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="checkmark-circle" size={22} color={colors.profit} style={{ marginRight: 10 }} />
-              <AppText variant="bodySemi" color={colors.text}>You're subscribed to GigTax.</AppText>
+              <AppText variant="bodySemi" color={colors.text}>You’re subscribed to GigTax.</AppText>
             </View>
           ) : null}
 

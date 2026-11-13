@@ -31,6 +31,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.driversgigtax.app",
+      "versionCode": 1,
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",

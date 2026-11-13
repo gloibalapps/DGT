@@ -103,7 +103,7 @@ export default function MoneyDetail() {
             </Card>
           ) : null}
           <AppText variant="caption" color={colors.dim} style={{ textAlign: "center", lineHeight: 16 }}>
-            Estimated tax uses your year-to-date effective rate applied to this period's profit. An estimate, not tax advice.
+            Estimated tax uses your year-to-date effective rate applied to this period’s profit. An estimate, not tax advice.
           </AppText>
         </>
       );
@@ -177,7 +177,7 @@ export default function MoneyDetail() {
       return (
         <Card>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
-            You earned {fmtMoney(mn.gross, symbol)} — here's where it went.
+            You earned {fmtMoney(mn.gross, symbol)} — here’s where it went.
           </AppText>
           {data.where.map((w: any) => (
             <View key={w.label} style={{ marginBottom: 12 }}>
