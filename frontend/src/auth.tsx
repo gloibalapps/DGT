@@ -5,6 +5,8 @@ import * as Linking from "expo-linking";
 import { storage } from "@/src/utils/storage";
 import { api, setAuthProfileId, setAuthToken, getLocalProfileId } from "@/src/api";
 
+const OAUTH_PENDING_KEY = "gigtax.oauth_pending";
+
 // Finalise any pending auth session (native browser dismissal handling).
 WebBrowser.maybeCompleteAuthSession();
 
@@ -28,17 +30,6 @@ const Ctx = createContext<AuthCtx>({
   user: null, loading: true, signingIn: false,
   signIn: async () => {}, signInApple: async () => {}, signInDemo: async () => {}, signOut: async () => {},
 });
-
-function parseToken(url: string): string | null {
-  if (!url) return null;
-  const frag = url.split("#")[1] || "";
-  const q = url.split("?")[1]?.split("#")[0] || "";
-  for (const part of [frag, q]) {
-    const m = new URLSearchParams(part).get("session_token");
-    if (m) return m;
-  }
-  return null;
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -126,58 +117,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Native: handle cold-start deep link + hot links (Android Custom Tabs often
-  // returns `dismiss` with no URL, so these sources are co-equal, not fallbacks).
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    let active = true;
-    const tryUrl = (url?: string | null) => {
-      const tok = url ? parseToken(url) : null;
-      if (!tok || !active) return;
-      setSigningIn(true);
-      completeWithToken(tok)
-        .catch((e) => console.log("auth complete failed", e))
-        .finally(() => { if (active) setSigningIn(false); });
-    };
-    Linking.getInitialURL().then(tryUrl);
-    const sub = Linking.addEventListener("url", ({ url }) => tryUrl(url));
-    return () => { active = false; sub.remove(); };
-  }, [completeWithToken]);
-
-  // Web: handle redirect back with #session_token
+  // Web comes back as a full page load, so the poll secret has to survive in
+  // sessionStorage. The redirect URL itself never carries the session token.
   useEffect(() => {
     if (Platform.OS !== "web") return;
-    const url = window.location.href;
-    const tok = parseToken(url);
-    if (tok) {
-      setSigningIn(true);
-      completeWithToken(tok)
-        .catch((e) => console.log("auth complete failed", e))
-        .finally(() => {
-          setSigningIn(false);
-          try { window.history.replaceState({}, "", window.location.pathname); } catch { /* noop */ }
-        });
-    }
+    let raw: string | null = null;
+    try { raw = sessionStorage.getItem(OAUTH_PENDING_KEY); } catch { raw = null; }
+    if (!raw) return;
+    let pending: { state?: string; poll_secret?: string } = {};
+    try { pending = JSON.parse(raw); } catch { pending = {}; }
+    if (!pending.state || !pending.poll_secret) return;
+    let cancelled = false;
+    setSigningIn(true);
+    (async () => {
+      try {
+        for (let i = 0; i < 8 && !cancelled; i++) {
+          const j = await api.pollGoogleAuth(pending.state!, pending.poll_secret!);
+          if (j.status === "ready" && j.session_token) {
+            try { sessionStorage.removeItem(OAUTH_PENDING_KEY); } catch { /* noop */ }
+            await completeWithToken(j.session_token);
+            try { window.history.replaceState({}, "", window.location.pathname); } catch { /* noop */ }
+            return;
+          }
+          if (j.status === "invalid") {
+            try { sessionStorage.removeItem(OAUTH_PENDING_KEY); } catch { /* noop */ }
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      } catch (e) {
+        console.log("auth complete failed", e);
+      } finally {
+        if (!cancelled) setSigningIn(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [completeWithToken]);
 
   const signIn = useCallback(async () => {
     setSigningIn(true);
     try {
+      // Force the app's own scheme on native. A dev-client https URL is not on
+      // the backend allowlist. Web uses the page origin, which must be listed
+      // in the server's OAUTH_REDIRECT_ORIGINS.
+      const redirect = Platform.OS === "web"
+        ? window.location.origin + "/"
+        : Linking.createURL("/", { scheme: "driversgigtax" });
+      const started = await api.startGoogleAuth({ app_redirect: redirect });
       if (Platform.OS === "web") {
-        const redirect = window.location.origin + "/";
-        window.location.href = `${BACKEND}/api/auth/google/start?app_redirect=${encodeURIComponent(redirect)}`;
-        return; // browser navigates away
+        try { sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ state: started.state, poll_secret: started.poll_secret })); } catch { /* noop */ }
+        window.location.href = started.auth_url;
+        return;
       }
-      // Force the app's OWN custom scheme (driversgigtax://) as the return address.
-      // Plain Linking.createURL("/") resolves to the https dev/preview URL in
-      // non-standalone builds, so Google sends the token to a web page in the
-      // browser instead of back into the native app (user stays logged out).
-      const redirect = Linking.createURL("/", { scheme: "driversgigtax" });
-      // A client-generated state lets us POLL the backend for the sign-in result.
-      // This is the reliable path on Android, where the deep-link payload that
-      // carries the token is frequently dropped on the way back into the app.
-      const state = `${Date.now().toString(16)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
-      const authUrl = `${BACKEND}/api/auth/google/start?state=${state}&app_redirect=${encodeURIComponent(redirect)}`;
 
       let done = false;
       const finishToken = async (tok: string | null) => {
@@ -185,29 +176,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         done = true;
         await completeWithToken(tok);
       };
-
-      // Poll for the result in parallel with the browser session.
       const poll = (async () => {
         for (let i = 0; i < 80 && !done; i++) {
           await new Promise((r) => setTimeout(r, 1500));
           if (done) return;
           try {
-            const r = await fetch(`${BACKEND}/api/auth/google/poll?state=${state}`);
-            const j = await r.json();
+            const j = await api.pollGoogleAuth(started.state, started.poll_secret);
             if (j.status === "ready" && j.session_token) { await finishToken(j.session_token); return; }
-            if (j.status === "expired" && i > 3) return;
+            if (j.status === "invalid") return;
           } catch { /* keep polling */ }
         }
       })();
 
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirect);
-      // Fast path: token came straight back through the deep link.
-      if (result.type === "success" && result.url) {
-        const tok = parseToken(result.url);
-        if (tok) await finishToken(tok);
-      } else if (result.type === "cancel") {
-        done = true; // user backed out — stop polling
-      }
+      const result = await WebBrowser.openAuthSessionAsync(started.auth_url, redirect);
+      if (result.type === "cancel") done = true;
       await poll;
     } catch (e) {
       console.log("signIn error", e);
@@ -249,7 +231,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInDemo = useCallback(async () => {
     setSigningIn(true);
     try {
-      const r = await fetch(`${BACKEND}/api/auth/demo`, { method: "POST" });
+      const secret = process.env.EXPO_PUBLIC_DEMO_REVIEW_SECRET || "";
+      const r = await fetch(`${BACKEND}/api/auth/demo`, {
+        method: "POST",
+        headers: secret ? { "X-Demo-Review-Secret": secret } : {},
+      });
       if (!r.ok) throw new Error(`Demo failed (${r.status})`);
       const j = await r.json();
       await completeWithToken(j.session_token);

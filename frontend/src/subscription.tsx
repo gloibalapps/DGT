@@ -9,20 +9,19 @@ import { api, setPaywallListener, SubscriptionStatus } from "@/src/api";
 const ENTITLEMENT = process.env.EXPO_PUBLIC_RC_ENTITLEMENT_ID || "pro";
 const CACHE_KEY = "gigtax.sub_active";
 
-// TEMP: master switch to PAUSE RevenueCat entirely while testing the APK.
-// The Test Store key (test_...) makes the RevenueCat SDK force-close a RELEASE
-// build with a "Wrong API Key" dialog. While false, the SDK is never loaded or
-// configured. Set to `true` (and add a real appl_/goog_ key) to re-enable.
-const RC_ENABLED = false;
-
-// Load the native SDK lazily so the web / Expo Go bundles don't break.
-// Only require it when keys are configured (i.e. a real native build) — in
-// preview / Expo Go the keys are empty and we never touch the native module.
-// TEST_KEY is RevenueCat's Test Store key (test_...) usable on both platforms
-// for dev builds; real appl_/goog_ keys take precedence when present.
-const TEST_KEY = process.env.EXPO_PUBLIC_RC_TEST_KEY || "";
-const IOS_KEY = process.env.EXPO_PUBLIC_RC_IOS_KEY || TEST_KEY;
-const ANDROID_KEY = process.env.EXPO_PUBLIC_RC_ANDROID_KEY || TEST_KEY;
+// A release build never loads RevenueCat's Test Store key (test_...). That key
+// force-closes a release binary with a "Wrong API Key" dialog. Dev builds may
+// fall back to EXPO_PUBLIC_RC_TEST_KEY only when the real store key is absent.
+function rcKey(real: string | undefined): string {
+  const value = (real || "").trim();
+  if (!value) return __DEV__ ? (process.env.EXPO_PUBLIC_RC_TEST_KEY || "").trim() : "";
+  if (!__DEV__ && value.startsWith("test_")) return "";
+  return value;
+}
+const IOS_KEY = rcKey(process.env.EXPO_PUBLIC_RC_IOS_KEY);
+const ANDROID_KEY = rcKey(process.env.EXPO_PUBLIC_RC_ANDROID_KEY);
+// On when this platform has a usable key. Web never loads the native SDK.
+const RC_ENABLED = Platform.OS !== "web" && Boolean(Platform.OS === "ios" ? IOS_KEY : ANDROID_KEY);
 
 let Purchases: any = null;
 if (RC_ENABLED && Platform.OS !== "web" && (IOS_KEY || ANDROID_KEY)) {

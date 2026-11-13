@@ -207,9 +207,9 @@ def test_ticket_for_browser_downloads(ctx):
     assert requests.get(f"{API}/ue/export", params={"ticket": t2, "profile_id": ctx.b},
                         headers=NOAUTO).status_code == 403
     # Drive connect needs a ticket (no more binding Drive to an arbitrary profile_id)
-    r = requests.get(f"{API}/auth/google/start", params={"backup": 1, "profile_id": ctx.a,
-                     "app_redirect": "https://x"}, headers=NOAUTO, allow_redirects=False)
-    assert r.status_code in (401, 500)  # 500 only when Google login isn't configured
+    r = requests.post(f"{API}/auth/google/start", json={"backup": 1, "app_redirect": "driversgigtax://auth"},
+                      headers=NOAUTO, allow_redirects=False)
+    assert r.status_code == 401  # Drive connect requires the caller's session or ticket
 
 
 def test_claim_cannot_take_another_users_data(ctx):
@@ -288,8 +288,8 @@ def test_public_routes_stay_public():
     assert requests.get(f"{BASE_URL}/health").status_code == 200
     assert requests.post(f"{API}/waitlist", json={"email": f"t{uuid.uuid4().hex[:6]}@ex.com"},
                          headers=NOAUTO).status_code == 200
-    assert requests.get(f"{API}/auth/google/poll", params={"state": "nope"}, headers=NOAUTO).json()["status"] == "expired"
-    r = requests.post(f"{API}/auth/demo", headers=NOAUTO)
-    assert r.status_code == 200
-    tok = r.json()["session_token"]
-    assert len(call("GET", "/trips", tok).json()) > 0  # demo session works on data routes
+    # Poll secret is required; an unknown state is not a session.
+    assert requests.post(f"{API}/auth/google/poll", json={"state": "nope", "poll_secret": "nope"},
+                         headers=NOAUTO).status_code == 401
+    # Demo is off unless the server has DEMO_ENABLED and the review secret.
+    assert requests.post(f"{API}/auth/demo", headers=NOAUTO).status_code == 404

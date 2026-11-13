@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app/backend
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# Runtime dependencies only. pytest, black, flake8, and mypy are requirements-dev.txt.
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ .

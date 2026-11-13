@@ -1,3 +1,4 @@
+import * as Crypto from "expo-crypto";
 import type { UEJob } from "@/src/ueParse";
 import { storage } from "@/src/utils/storage";
 
@@ -5,11 +6,7 @@ const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 const PID_KEY = "gigtax.profile_id";
 
 function uuid(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  return Crypto.randomUUID();
 }
 
 let _pid: string | null = null;
@@ -263,8 +260,30 @@ export const api = {
     const pid = await getProfileId();
     return req(`/backups/disconnect?profile_id=${pid}`, { method: "POST" });
   },
-  async driveConnectUrl(redirect: string) {
-    return `${BASE}/api/auth/google/start?backup=1&${await ticketParam()}&app_redirect=${encodeURIComponent(redirect)}`;
+  async startGoogleAuth(opts: { app_redirect: string; backup?: boolean }): Promise<{ auth_url: string; state: string; poll_secret: string }> {
+    const res = await fetch(`${BASE}/api/auth/google/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(_authToken ? { Authorization: `Bearer ${_authToken}` } : {}),
+      },
+      body: JSON.stringify({ app_redirect: opts.app_redirect, backup: opts.backup ? 1 : 0 }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`${res.status}: ${t.slice(0, 180)}`);
+    }
+    return res.json();
+  },
+  async pollGoogleAuth(state: string, pollSecret: string): Promise<{ status: string; session_token?: string }> {
+    const res = await fetch(`${BASE}/api/auth/google/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state, poll_secret: pollSecret }),
+    });
+    if (res.status === 401) return { status: "invalid" };
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.json();
   },
   async getProfile(): Promise<ProfileT> {
     const pid = await getProfileId();

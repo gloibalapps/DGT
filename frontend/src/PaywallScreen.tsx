@@ -69,12 +69,11 @@ export default function PaywallScreen({ gate = false, expired = false, onContinu
       if (!ok) toast.show("Purchase didn't complete. Please try again.");
       return;
     }
-    // Preview / Expo Go / web — RevenueCat isn't running.
-    toast.show("Subscriptions activate once the app is published to the App Store / Google Play.");
+    toast.show("Purchases aren't available in this build.");
   }
 
   async function onRestore() {
-    if (!managed) { toast.show("Restore works in the published app."); return; }
+    if (!managed) { toast.show("Purchases aren't available in this build."); return; }
     setBusy(true);
     const ok = await restore();
     await refreshServer(true);
