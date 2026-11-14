@@ -21,9 +21,9 @@ export default function Index() {
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", padding: 24 }}>
         {loadError ? (
           <>
-            <AppText variant="bodySemi" style={{ textAlign: "center", marginBottom: 6 }}>Couldn't reach your data</AppText>
+            <AppText variant="bodySemi" style={{ textAlign: "center", marginBottom: 6 }}>Couldn’t reach your data</AppText>
             <AppText variant="caption" color={colors.dim} style={{ textAlign: "center", marginBottom: 18 }}>
-              Check your connection — your records are safe and will load once you're back online.
+              Check your connection — your records are safe and will load once you’re back online.
             </AppText>
             <PrimaryButton testID="index-retry" label="Try again" icon="refresh" onPress={() => void reloadProfile()} />
           </>
