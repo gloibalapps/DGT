@@ -4,13 +4,15 @@
  * sustained movement. Stationary GPS wander stays on a fixed anchor.
  */
 
-export const POOR_ACC_M = 50;
+export const POOR_ACC_M = 30;
 export const DRIVE_SPEED_MS = 2.5;
 export const ARM_SPEED_FIXES = 3;
 export const ARM_DISPLACE_M = 150;
 export const ARM_PROGRESS_FIXES = 3;
-export const MAX_STEP_MS = 50; // 180 km/h
+export const MAX_STEP_MS = 60;
 export const MIN_STEP_M = 12;
+/** Hold the anchor until the car has clearly moved, so GPS noise is not summed. */
+export const SEGMENT_FLOOR_M = 20;
 export const MIN_IMPLIED_MS = 2.5;
 export const STOP_GAP_MS = 5 * 60 * 1000;
 export const MIN_DRIVE_KM = 0.3;
@@ -83,8 +85,10 @@ export function applyFix(state: DriveState | null, fix: GpsFix): StepResult {
   }
   if (!state) return { state: blank(fix), addedKm: 0, armedNow: false, ignored: null };
 
-  const dtS = (fix.ts - state.seenTs) / 1000;
-  if (dtS < 1) return { state, addedKm: 0, armedNow: false, ignored: "gap" };
+  // Compare with the last point that actually moved the track, not the last
+  // ignored duplicate. A second subscription a few hundred ms later is dropped.
+  const dtS = (fix.ts - state.lastTs) / 1000;
+  if (fix.ts - state.lastTs < 1500) return { state, addedKm: 0, armedNow: false, ignored: "gap" };
 
   const stepM = metres(state.lastLat, state.lastLon, fix.lat, fix.lon);
   const implied = stepM / dtS;
@@ -129,14 +133,12 @@ export function applyFix(state: DriveState | null, fix: GpsFix): StepResult {
   if (spd != null && spd < DRIVE_SPEED_MS) {
     return { state: { ...state, seenTs: fix.ts }, addedKm: 0, armedNow: false, ignored: "still" };
   }
-  if (stepM < MIN_STEP_M || (spd == null && implied < MIN_IMPLIED_MS) || implied < 1) {
-    return { state: { ...state, seenTs: fix.ts }, addedKm: 0, armedNow: false, ignored: implied < 1 || stepM < MIN_STEP_M ? "tiny" : "still" };
+  const segGate = Math.max(fix.accuracy != null && fix.accuracy > 0 ? fix.accuracy : 12, SEGMENT_FLOOR_M);
+  if (stepM < segGate || implied < 1) {
+    return { state: { ...state, seenTs: fix.ts }, addedKm: 0, armedNow: false, ignored: "tiny" };
   }
   let km = stepM / 1000;
-  if (spd != null) {
-    const refSpd = state.lastSpeed != null && state.lastSpeed >= 0 ? state.lastSpeed : spd;
-    km = Math.min(km, ((spd + refSpd) / 2) * dtS * 1.15 / 1000);
-  }
+  if (spd != null) km = Math.min(km, (spd * dtS) / 1000);
   return {
     state: {
       ...state,

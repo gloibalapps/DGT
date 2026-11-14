@@ -276,9 +276,9 @@ const MANUAL_UPDATE_OPTIONS = {
 // Distance is gated in gpsTrack.applyFix: poor fixes, jumps, and stationary
 // jitter never move the anchor or add kilometres. A drive is not "moving"
 // until speed stays at/above ~2.5 m/s or the phone is 150 m from its anchor.
-// Serialise every write: the foreground watcher and the background task can
-// fire at the same moment, and two overlapping read-modify-writes would lose
-// or double-count distance.
+// Serialise every write so two listeners cannot interleave one read-modify-write.
+// A second fix within 1.5s of the last accepted point is dropped in applyFix,
+// so a duplicate batch or a second subscription cannot add the same stretch twice.
 let ingestChain: Promise<void> = Promise.resolve();
 export function ingestManualPoint(latitude: number, longitude: number, ts: number, accuracy?: number | null, speed?: number | null): Promise<void> {
   ingestChain = ingestChain.then(() => ingestOne(latitude, longitude, ts, accuracy, speed)).catch(() => {});
@@ -315,6 +315,13 @@ if (Platform.OS !== "web") {
   });
 }
 
+let manualBackground = false;
+
+/** True once this drive owns the background task, so the screen must not also watch. */
+export function manualUsesBackgroundTask(): boolean {
+  return manualBackground;
+}
+
 export async function isManualRunning(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try { return await Location.hasStartedLocationUpdatesAsync(MANUAL_TASK); }
@@ -344,8 +351,16 @@ export async function startManualDrive(): Promise<EnableResult> {
     distance: 0, lastTs: 0, startTs: now, active: true,
     updatesStartedAt: now, lastFixAt: null, lastAccuracy: null, restartedAt: null,
   } as Live);
-  if (!background) return { ok: true, backgroundOff: true };
-  await ensureManualUpdates();
+  if (!background) {
+    manualBackground = false;
+    return { ok: true, backgroundOff: true };
+  }
+  manualBackground = true;
+  try {
+    await ensureManualUpdates();
+  } catch {
+    manualBackground = false;
+  }
   return { ok: true };
 }
 
@@ -359,9 +374,11 @@ export async function ensureManualUpdates(): Promise<{ phase: GpsPhase; accuracy
   if (!fg.granted) return { phase: "denied", accuracy: live.lastAccuracy ?? null };
   const bg = await Location.getBackgroundPermissionsAsync();
   if (!bg.granted) {
+    manualBackground = false;
     const heard = live.lastFixAt != null;
     return { phase: heard ? "fix" : "waiting", accuracy: live.lastAccuracy ?? null };
   }
+  manualBackground = true;
   const started = await isManualRunning();
   const now = Date.now();
   const updatesStartedAt = live.updatesStartedAt || live.startTs || now;
@@ -375,7 +392,12 @@ export async function ensureManualUpdates(): Promise<{ phase: GpsPhase; accuracy
     if (started) {
       try { await Location.stopLocationUpdatesAsync(MANUAL_TASK); } catch { /* stale task */ }
     }
-    await Location.startLocationUpdatesAsync(MANUAL_TASK, MANUAL_UPDATE_OPTIONS);
+    try {
+      await Location.startLocationUpdatesAsync(MANUAL_TASK, MANUAL_UPDATE_OPTIONS);
+    } catch {
+      manualBackground = false;
+      return { phase: "waiting", accuracy: live.lastAccuracy ?? null };
+    }
     live.updatesStartedAt = now;
     live.restartedAt = now;
     await writeJSON(LIVE_KEY, live);
@@ -398,6 +420,7 @@ export async function getManualLive(): Promise<{
 
 export async function stopManualDrive(): Promise<{ distanceKm: number; startTs: number; endTs: number }> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
+  manualBackground = false;
   if (await isManualRunning()) {
     try { await Location.stopLocationUpdatesAsync(MANUAL_TASK); } catch { /* noop */ }
   }

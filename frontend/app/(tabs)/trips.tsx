@@ -11,7 +11,7 @@ import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
 import { OdometerCheck } from "@/src/OdometerCheck";
 import { useLocationDisclosure } from "@/src/LocationDisclosure";
-import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning, ensureManualUpdates, type GpsPhase } from "@/src/autotrack";
+import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning, ensureManualUpdates, manualUsesBackgroundTask, type GpsPhase } from "@/src/autotrack";
 import { shouldRestartLocationUpdates } from "@/src/gpsTrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner, Field, Select, HeroCard, ListCard, ListRow, SectionLabel,
@@ -67,7 +67,10 @@ export default function Mileage() {
         setDist(live.distanceKm);
         if (live.startTs) startTimeRef.current = live.startTs;
       }
-      if (!(await isManualRunning()) && shouldRestartLocationUpdates({
+      const backgroundOwns = manualUsesBackgroundTask() || await isManualRunning();
+      if (backgroundOwns) {
+        if (subRef.current) stopForegroundWatch();
+      } else if (shouldRestartLocationUpdates({
         started: subRef.current != null,
         now: Date.now(),
         lastFixAt: live?.lastFixAt ?? null,
@@ -93,6 +96,7 @@ export default function Mileage() {
         startTimeRef.current = live.startTs || Date.now();
         setDist(live.distanceKm);
         setTracking(true);
+        await ensureManualUpdates();
         await startForegroundWatch();
       }
     })();
@@ -106,7 +110,7 @@ export default function Mileage() {
   // source of GPS points. Feeding a second stream of slightly different fixes
   // made the distance zig-zag and inflate several times over.
   const startForegroundWatch = async () => {
-    if (subRef.current) return;
+    if (subRef.current || manualUsesBackgroundTask()) return;
     if (await isManualRunning()) return;
     try {
       subRef.current = await Location.watchPositionAsync(

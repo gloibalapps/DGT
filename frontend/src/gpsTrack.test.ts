@@ -134,6 +134,22 @@ test("three consecutive fast fixes arm a drive even before 150 m", () => {
   assert.ok(state!.distance > 0);
 });
 
+test("a noisy 500 m drive is not doubled when both streams and duplicate batches are fed in", () => {
+  const fixes: GpsFix[] = [];
+  const ts0 = 1_700_000_000_000;
+  const mps = 500 / 36;
+  for (let i = 0; i <= 36; i++) {
+    const along = i * mps;
+    const acc = 5 + (i % 4) * 5;
+    const lateral = Math.sin(i * 1.7) * acc * 0.6;
+    fixes.push({ ...offset(LAT, LON, along, lateral), ts: ts0 + i * 1000, accuracy: acc, speed: mps });
+  }
+  const shifted = fixes.map((f) => ({ ...f, ts: f.ts + 400 }));
+  const folded = foldFixes([...fixes, ...fixes, ...shifted].sort((a, b) => a.ts - b.ts));
+  assert.equal(folded.armed, true);
+  assert.ok(Math.abs(folded.distanceKm - 0.5) <= 0.025, `expected ~0.5 km, got ${folded.distanceKm}`);
+});
+
 test("a started task with no fix is restarted once, then left alone until the next wait", () => {
   const t0 = 1_000_000;
   const base = { started: true, lastFixAt: null, updatesStartedAt: t0, restartedAt: null };
