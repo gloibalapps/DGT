@@ -43,11 +43,11 @@
   status = 301
   force = true
 
-# Waitlist form posts to /api/waitlist -> proxy to the FastAPI backend.
-# Change the host if the backend lives elsewhere.
+# Waitlist posts to /api/waitlist -> the Edge Function. The function is mounted
+# at /functions/v1/api and the route inside it is /api/waitlist.
 [[redirects]]
   from = "/api/*"
-  to = "https://api.driversgigtax.app/api/:splat"
+  to = "https://cvxifukwesvcbmygxqts.supabase.co/functions/v1/api/api/:splat"
   status = 200
   force = true
 
