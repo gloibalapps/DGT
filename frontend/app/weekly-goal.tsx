@@ -52,7 +52,7 @@ export default function WeeklyGoal() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
           <Card style={{ marginBottom: 16 }}>
             <AppText variant="body" color={colors.dim} style={{ lineHeight: 20 }}>
-              Set the earnings target you're aiming for each week (Mon–Sun). GigTax shows your
+              Set the earnings target you’re aiming for each week (Mon–Sun). GigTax shows your
               progress on the Money tab so you always know how close you are.
             </AppText>
           </Card>

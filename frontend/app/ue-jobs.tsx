@@ -1,38 +1,62 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Alert, Platform } from "react-native";
+import { View, Alert, Platform, Pressable } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "@/src/theme";
 import { api, todayISO } from "@/src/api";
 import { storage } from "@/src/utils/storage";
-import { AppText, Card, DateField, Field, IconButton, ListCard, ListRow, PrimaryButton, Screen, SecondaryButton, Select, useToast } from "@/src/ui";
+import { AppText, Card, DateField, Field, IconButton, Input, ListCard, ListRow, PrimaryButton, Screen, SecondaryButton, Select, useToast } from "@/src/ui";
 import { UEJobRow, Draft, newKey, toJob, fromJob } from "@/src/UEJobRow";
-import { UEJob, isDup, missingFields, parseVoiceJob, auDate, FOOD_PLATFORMS } from "@/src/ueParse";
+import {
+  UEJob, isDup, missingFields, parseVoiceJob, auDate, FOOD_PLATFORMS, emptyFilter, matchJob, listTotals,
+  cycleStartFor, weekStart, selectedBuckets, fmtDur, type UeListFilter,
+} from "@/src/ueParse";
 import { useSpeech } from "@/src/useSpeech";
+import { captureGuaranteePhoto } from "@/src/ueScan";
+import { ueScanStash } from "@/src/ueScanStash";
 
 const NEW_DATE_KEY = "gigtax.ue.newdate";
 const NEW_PLAT_KEY = "gigtax.ue.newplatform";
 const blank = (date: string, platform: string, type: Draft["type"] = "DELIVERY"): Draft =>
-  ({ key: newKey(), platform, date, time: "", type, dur: "", amount: "", km: "" });
+  ({ key: newKey(), platform, date, time: "", type, dur: "", amount: "", km: "", tip: "" });
 
 const notify = (title: string, msg: string) => (Platform.OS === "web" ? window.alert(`${title}\n\n${msg}`) : Alert.alert(title, msg));
+const confirmDelete = (n: number) => new Promise<boolean>((resolve) => {
+  const msg = `Delete ${n} job${n === 1 ? "" : "s"}? Saved jobs are removed. Unsaved rows are discarded.`;
+  if (Platform.OS === "web") { resolve(window.confirm(msg)); return; }
+  Alert.alert("Delete jobs", msg, [
+    { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+    { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+  ]);
+});
 
 export default function UEJobs() {
   const { colors } = useTheme();
   const router = useRouter();
   const { show } = useToast();
-  const params = useLocalSearchParams<{ date?: string }>();
+  const params = useLocalSearchParams<{ date?: string; week?: string }>();
+  const initialWeek = typeof params.week === "string" ? params.week : "";
   const [newDate, setNewDate] = useState(params.date || todayISO());
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [saved, setSaved] = useState<Draft[]>([]);
   const [all, setAll] = useState<UEJob[]>([]);
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scannedNote, setScannedNote] = useState(false);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [dupIds, setDupIds] = useState<Record<string, boolean>>({});
+  const [filter, setFilter] = useState<UeListFilter>(() => ({
+    ...emptyFilter(),
+    periodStart: initialWeek ? cycleStartFor(initialWeek) : "",
+    weekIndex: initialWeek ? String(Math.min(2, Math.max(0, Math.round((Date.parse(initialWeek) - Date.parse(cycleStartFor(initialWeek))) / 86400000 / 7)))) as UeListFilter["weekIndex"] : "",
+  }));
   const speech = useSpeech();
+  const patchFilter = (p: Partial<UeListFilter>) => setFilter((f) => ({ ...f, ...p }));
 
   useEffect(() => {
-    if (params.date) return;
+    if (params.date || params.week) return;
     storage.getItem<string>(NEW_DATE_KEY, "").then((v) => { if (v) setNewDate(v); });
-  }, [params.date]);
+  }, [params.date, params.week]);
   const changeNewDate = (v: string) => { if (!v) return; setNewDate(v); storage.setItem(NEW_DATE_KEY, v); };
   const [newPlat, setNewPlat] = useState("Uber Eats");
   useEffect(() => { storage.getItem<string>(NEW_PLAT_KEY, "").then((v) => { if (v) setNewPlat(v); }); }, []);
@@ -41,17 +65,69 @@ export default function UEJobs() {
   const load = useCallback(async () => {
     try { const j = await api.ueJobs(); setAll(j); } catch { show("Couldn't load jobs", "error"); }
   }, [show]);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-  useEffect(() => { setSaved(all.filter((j) => j.date === newDate).map(fromJob)); }, [all, newDate]);
+  useFocusEffect(useCallback(() => {
+    if (ueScanStash.jobs) {
+      const incoming = ueScanStash.jobs;
+      const rejected = ueScanStash.rejected;
+      const week = ueScanStash.weekStart;
+      ueScanStash.jobs = null;
+      ueScanStash.rejected = 0;
+      ueScanStash.weekStart = null;
+      setDrafts((ds) => [...ds, ...incoming.map((j) => ({ ...fromJob(j), key: newKey(), id: undefined }))]);
+      setScannedNote(true);
+      if (week) {
+        setFilter((f) => ({
+          ...f, periodStart: cycleStartFor(week),
+          weekIndex: String(Math.min(2, Math.max(0, Math.round((Date.parse(week) - Date.parse(cycleStartFor(week))) / 86400000 / 7)))) as UeListFilter["weekIndex"],
+        }));
+      }
+      if (rejected) show(`${rejected} cut-off row${rejected === 1 ? "" : "s"} skipped`, "info");
+      show(`${incoming.length} job${incoming.length === 1 ? "" : "s"} to check — not saved yet`, "success");
+    }
+    load();
+  }, [load, show]));
 
-  // live duplicate flags for unsaved rows: vs saved jobs, and only the LATER copy within the batch
-  const draftView = useMemo(() => drafts.map((d, i) => {
+  const savedDrafts = useMemo(() => all.map(fromJob), [all]);
+  const visibleSaved = useMemo(() => savedDrafts.filter((d) => matchJob(toJob(d), filter)).map((d) => ({ ...d, dup: !!dupIds[d.id || ""] })), [savedDrafts, filter, dupIds]);
+  const visibleDrafts = useMemo(() => drafts.filter((d) => matchJob(toJob(d), filter)), [drafts, filter]);
+  const hiddenDrafts = drafts.length - visibleDrafts.length;
+  const totals = useMemo(() => listTotals(visibleSaved.map(toJob)), [visibleSaved]);
+
+  const draftView = useMemo(() => visibleDrafts.map((d) => {
     const j = toJob(d);
-    const dup = d.dup || all.some((s) => isDup(j, s)) || drafts.slice(0, i).some((p) => isDup(j, toJob(p)));
+    const prior = drafts.slice(0, drafts.findIndex((x) => x.key === d.key));
+    const dup = d.dup || all.some((s) => isDup(j, s)) || prior.some((p) => isDup(j, toJob(p)));
     return { ...d, dup };
-  }), [drafts, all]);
+  }), [visibleDrafts, drafts, all]);
+
+  const visibleRows = [...draftView, ...visibleSaved];
+  const selectedRows = visibleRows.filter((d) => selected[d.key]).map((d) => ({ key: d.key, id: d.id, selected: true }));
+  const buckets = selectedBuckets(selectedRows);
+  const allSelected = visibleRows.length > 0 && visibleRows.every((d) => selected[d.key]);
+
+  const toggle = (key: string) => setSelected((s) => ({ ...s, [key]: !s[key] }));
+  const toggleAll = () => {
+    setSelected((s) => {
+      const next = { ...s };
+      for (const row of visibleRows) next[row.key] = !allSelected;
+      return next;
+    });
+  };
 
   const addDraft = (type: Draft["type"]) => setDrafts((ds) => [...ds, blank(newDate, newPlat, type)]);
+
+  const scan = async (source: "camera" | "library") => {
+    setScanning(true);
+    const res = await captureGuaranteePhoto(source);
+    setScanning(false);
+    if (!res) return;
+    if ("error" in res) { show(res.error, "error"); return; }
+    if (!res.jobs.length) { show(res.rejected ? "That screen was cut off — no complete job to add" : "No jobs found on that screen", "info"); return; }
+    setDrafts((ds) => [...ds, ...res.jobs.map((j) => ({ ...fromJob({ ...j, platform: "Uber Eats" }), key: newKey(), id: undefined }))]);
+    setScannedNote(true);
+    if (res.rejected) show(`${res.rejected} cut-off row${res.rejected === 1 ? "" : "s"} skipped`, "info");
+    show(`${res.jobs.length} job${res.jobs.length === 1 ? "" : "s"} to check — not saved yet`, "success");
+  };
 
   const finishVoice = () => {
     speech.stop();
@@ -71,15 +147,17 @@ export default function UEJobs() {
   };
 
   const saveDrafts = async () => {
-    if (draftView.some((d) => missingFields(toJob(d)).length)) { notify("Some rows are incomplete", "Fill in the amber rows before saving."); return; }
+    const batch = draftView;
+    if (batch.some((d) => missingFields(toJob(d)).length)) { notify("Some rows are incomplete", "Fill in the amber rows before saving."); return; }
     setBusy(true);
     try {
-      const keep = draftView.filter((d) => !d.dup);
-      const dupRows = draftView.filter((d) => d.dup);
+      const keep = batch.filter((d) => !d.dup);
+      const dupRows = batch.filter((d) => d.dup);
       const r = keep.length ? await api.ueAddJobs(keep.map(toJob)) : { saved: [], duplicates: [] };
       const serverDups = r.duplicates.map((i) => ({ ...keep[i], dup: true }));
       const leftover = [...dupRows.map((d) => ({ ...d, dup: true })), ...serverDups];
-      setDrafts(leftover);
+      const savedKeys = new Set(keep.filter((_, i) => !r.duplicates.includes(i)).map((d) => d.key));
+      setDrafts((ds) => [...ds.filter((d) => !savedKeys.has(d.key) && !batch.some((b) => b.key === d.key)), ...leftover]);
       if (r.saved.length) show(`${r.saved.length} saved`, "success");
       if (leftover.length) notify("Duplicate jobs not saved", `${leftover.length} job${leftover.length > 1 ? "s match" : " matches"} one already logged (same date & start time, same amount). Edit or delete the red rows.`);
       load();
@@ -93,7 +171,7 @@ export default function UEJobs() {
       show("Job updated", "success"); load();
     } catch (e: any) {
       if (/^409/.test(e?.message || "")) {
-        setSaved((ss) => ss.map((s) => (s.key === d.key ? { ...s, dup: true } : s)));
+        setDupIds((ids) => ({ ...ids, [d.id!]: true }));
         notify("Duplicate job", "Another job has the same date, start time and amount.");
       } else show("Couldn't update", "error");
     }
@@ -101,6 +179,41 @@ export default function UEJobs() {
   const deleteExisting = async (d: Draft) => {
     try { await api.ueDeleteJob(d.id!); show("Job deleted", "success"); load(); } catch { show("Couldn't delete", "error"); }
   };
+
+  const verifySelected = async () => {
+    const at = new Date().toISOString();
+    setDrafts((ds) => ds.map((d) => buckets.draftKeys.includes(d.key) ? { ...d, verified: true, verified_at: at, dirty: true } : d));
+    if (!buckets.savedIds.length) { show("Marked to verify when you save", "success"); return; }
+    try {
+      await api.ueVerifyJobs(buckets.savedIds, true);
+      show("Verified", "success");
+      load();
+    } catch { show("Couldn't verify", "error"); }
+  };
+
+  const deleteSelected = async () => {
+    if (!buckets.count) return;
+    if (!(await confirmDelete(buckets.count))) return;
+    setDrafts((ds) => ds.filter((d) => !buckets.draftKeys.includes(d.key)));
+    setSelected((s) => {
+      const next = { ...s };
+      for (const key of buckets.draftKeys) delete next[key];
+      return next;
+    });
+    if (!buckets.savedIds.length) return;
+    try { await api.ueDeleteJobs(buckets.savedIds); show("Deleted", "success"); load(); }
+    catch { show("Couldn't delete", "error"); }
+  };
+
+  const periods = useMemo(() => {
+    const days = all.map((j) => j.date).concat(todayISO());
+    const earliest = days.reduce((a, b) => (a < b ? a : b));
+    const out: { start: string; end: string }[] = [];
+    let c = cycleStartFor(todayISO());
+    const floor = cycleStartFor(earliest);
+    while (c >= floor) { out.push({ start: c, end: shiftEnd(c) }); c = shiftBack(c); }
+    return out;
+  }, [all]);
 
   return (
     <Screen scroll header={
@@ -110,6 +223,74 @@ export default function UEJobs() {
         <IconButton testID="ue-open-guarantee" icon="stats-chart-outline" onPress={() => router.push("/guarantee" as any)} />
       </View>
     }>
+      <Card style={{ marginBottom: 12 }}>
+        <Field label="Earnings period">
+          <Select testID="ue-filter-period" title="Earnings period" value={filter.periodStart}
+            onChange={(k) => patchFilter({ periodStart: k, weekIndex: "" })}
+            options={[{ key: "", label: "Any period" }, ...periods.map((p) => ({ key: p.start, label: `${auDate(p.start)} – ${auDate(p.end)}` }))]} />
+        </Field>
+        {filter.periodStart ? (
+          <Field label="Week">
+            <Select testID="ue-filter-week" title="Week" value={filter.weekIndex}
+              onChange={(k) => patchFilter({ weekIndex: k as UeListFilter["weekIndex"] })}
+              options={[
+                { key: "", label: "All weeks" },
+                { key: "0", label: `Week 1 · ${auDate(weekStart(filter.periodStart, 0))}` },
+                { key: "1", label: `Week 2 · ${auDate(weekStart(filter.periodStart, 1))}` },
+                { key: "2", label: `Week 3 · ${auDate(weekStart(filter.periodStart, 2))}` },
+              ]} />
+          </Field>
+        ) : null}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="From"><DateField testID="ue-filter-from" value={filter.from} onChange={(v) => patchFilter({ from: v })} /></Field>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="To"><DateField testID="ue-filter-to" value={filter.to} onChange={(v) => patchFilter({ to: v })} /></Field>
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="App">
+              <Select testID="ue-filter-platform" title="App" value={filter.platform} onChange={(k) => patchFilter({ platform: k })}
+                options={[{ key: "", label: "All" }, ...FOOD_PLATFORMS.map((p) => ({ key: p, label: p }))]} />
+            </Field>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Type">
+              <Select testID="ue-filter-type" title="Type" value={filter.type} onChange={(k) => patchFilter({ type: k })}
+                options={[{ key: "", label: "All" }, { key: "DELIVERY", label: "Delivery" }, { key: "Package", label: "Package" }, { key: "Promotion", label: "Quest" }]} />
+            </Field>
+          </View>
+        </View>
+        <Field label="Verified">
+          <Select testID="ue-filter-verified" title="Verified" value={filter.verified} onChange={(k) => patchFilter({ verified: k as UeListFilter["verified"] })}
+            options={[{ key: "", label: "All" }, { key: "verified", label: "Verified" }, { key: "unverified", label: "Unverified" }]} />
+        </Field>
+        <Field label="Search">
+          <Input testID="ue-filter-query" value={filter.query} onChangeText={(v) => patchFilter({ query: v })} placeholder="Amount, time, quest…" />
+        </Field>
+      </Card>
+
+      <AppText testID="ue-totals" variant="bodySemi" style={{ marginBottom: 4 }}>
+        {totals.jobs} job{totals.jobs === 1 ? "" : "s"} · A${totals.earnings.toFixed(2)} · {fmtDur(totals.engagedSec)}
+      </AppText>
+      <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+        Engaged time counts overlapping jobs once. Estimate only — Uber’s calculation is final.
+      </AppText>
+
+      <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
+        <SecondaryButton testID="ue-scan-camera" label={scanning ? "Reading…" : "Take photo"} icon="camera-outline" style={{ flex: 1 }}
+          disabled={scanning} onPress={() => scan("camera")} />
+        <SecondaryButton testID="ue-scan-library" label="Choose screenshot" icon="images-outline" style={{ flex: 1 }}
+          disabled={scanning} onPress={() => scan("library")} />
+      </View>
+      {scannedNote ? (
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+          Amounts on Uber’s list can include a tip. Enter a tip on the row to leave it out of the guarantee, or open the trip in Uber. Nothing is saved until you tap Save.
+        </AppText>
+      ) : null}
+
       <Field label="Date for new jobs" hint="Stays set until you change it.">
         <DateField testID="ue-new-date" value={newDate} onChange={changeNewDate} maxToday />
       </Field>
@@ -139,11 +320,22 @@ export default function UEJobs() {
       )}
       {speech.error ? <AppText variant="caption" color={colors.loss} style={{ marginBottom: 12 }}>{speech.error}</AppText> : null}
 
+      <Pressable testID="ue-select-all" onPress={toggleAll} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, marginBottom: 8 }}>
+        <Ionicons name={allSelected ? "checkbox" : "square-outline"} size={22} color={allSelected ? colors.accent : colors.dim} />
+        <AppText variant="body">Select all ({visibleRows.length})</AppText>
+      </Pressable>
+      {buckets.count ? (
+        <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
+          <PrimaryButton testID="ue-verify" label={`Verify ${buckets.count}`} icon="checkmark-circle-outline" style={{ flex: 1 }} onPress={verifySelected} />
+          <SecondaryButton testID="ue-delete-selected" label={`Delete ${buckets.count}`} icon="trash-outline" style={{ flex: 1 }} onPress={deleteSelected} />
+        </View>
+      ) : null}
+
       {draftView.length ? (
         <>
           <AppText variant="section" style={{ marginBottom: 8, marginLeft: 4 }}>New jobs — not saved yet</AppText>
           {draftView.map((d, i) => (
-            <UEJobRow key={d.key} testID={`ue-draft-${i}`} d={d}
+            <UEJobRow key={d.key} testID={`ue-draft-${i}`} d={d} selected={!!selected[d.key]} onToggle={() => toggle(d.key)}
               onChange={(nd) => setDrafts((ds) => ds.map((x) => (x.key === d.key ? nd : x)))}
               onDelete={() => setDrafts((ds) => ds.filter((x) => x.key !== d.key))} />
           ))}
@@ -151,15 +343,29 @@ export default function UEJobs() {
             disabled={busy} onPress={saveDrafts} style={{ marginBottom: 20 }} />
         </>
       ) : null}
+      {hiddenDrafts > 0 ? (
+        <AppText variant="caption" color={colors.warm} style={{ marginBottom: 12 }}>
+          {hiddenDrafts} unsaved job{hiddenDrafts === 1 ? "" : "s"} hidden by the filter.
+        </AppText>
+      ) : null}
 
-      <AppText variant="section" style={{ marginBottom: 8, marginLeft: 4 }}>Saved on {auDate(newDate)} · {saved.length}</AppText>
-      {saved.length === 0 ? (
-        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 24, marginLeft: 4 }}>No jobs saved for this date yet.</AppText>
-      ) : saved.map((d, i) => (
-        <UEJobRow key={d.key} testID={`ue-saved-${i}`} d={d}
-          onChange={(nd) => setSaved((ss) => ss.map((x) => (x.key === d.key ? nd : x)))}
+      <AppText variant="section" style={{ marginBottom: 8, marginLeft: 4 }}>Jobs · {visibleSaved.length}</AppText>
+      {visibleSaved.length === 0 ? (
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 24, marginLeft: 4 }}>No jobs match this filter.</AppText>
+      ) : visibleSaved.map((d, i) => (
+        <UEJobRow key={d.key} testID={`ue-saved-${i}`} d={d} selected={!!selected[d.key]} onToggle={() => toggle(d.key)}
+          onChange={(nd) => setAll((rows) => rows.map((x) => (x.id === d.id ? { ...x, ...toJob(nd) } : x)))}
           onDelete={() => deleteExisting(d)} onSave={() => saveExisting(d)} />
       ))}
     </Screen>
   );
+}
+
+function shiftEnd(start: string): string {
+  const [y, m, d] = start.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 20)).toISOString().slice(0, 10);
+}
+function shiftBack(start: string): string {
+  const [y, m, d] = start.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 21)).toISOString().slice(0, 10);
 }

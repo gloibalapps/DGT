@@ -325,7 +325,7 @@ export default function Settings() {
             onChange={() => updateProfile({ ue_guarantee_enabled: !ueEnabled(profile) } as any)} />} />
         {ueEnabled(profile) ? (
           <View style={{ paddingVertical: 12 }}>
-            <Field label="Guarantee vehicle" hint="Car A$32.00 · Motorbike A$31.50 · Bicycle A$31.30 per engaged hour.">
+            <Field label="Guarantee vehicle" hint="Until 31 Dec 2026: car A$32.00, motorbike A$31.50, bicycle or e-bike A$31.30 per engaged hour. Reported 2027 rates are A$0.50 higher and still to be confirmed.">
               <Select testID="ue-vehicle" title="Guarantee vehicle" value={(profile as any).ue_vehicle_type || "car"}
                 options={[{ key: "car", label: "Car" }, { key: "motorbike", label: "Motorbike" }, { key: "bicycle", label: "Bicycle" }]}
                 onChange={(k) => updateProfile({ ue_vehicle_type: k } as any)} />

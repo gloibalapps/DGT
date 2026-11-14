@@ -1426,7 +1426,9 @@ async def get_expense(item_id: str, owner: Owner = Depends(require_owner)):
 
 @api_router.post("/expenses")
 async def add_expense(payload: dict, owner: Owner = Depends(require_entitled)):
-    obj = Expense(**_own_payload(payload, owner))
+    payload = _own_payload(payload, owner)
+    _limit_receipt(payload.get("receipt_image"))
+    obj = Expense(**payload)
     await db.expenses.insert_one(obj.model_dump())
     return clean(obj.model_dump())
 
@@ -1434,6 +1436,7 @@ async def add_expense(payload: dict, owner: Owner = Depends(require_entitled)):
 @api_router.put("/expenses/{item_id}")
 async def update_expense(item_id: str, payload: dict, owner: Owner = Depends(require_entitled)):
     payload = _own_payload(payload, owner)
+    _limit_receipt(payload.get("receipt_image"))
     existing = await db.expenses.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "expense not found")
@@ -1695,12 +1698,21 @@ async def export_mileage_csv(owner: Owner = Depends(require_owner_or_ticket),
 # ---------------------------------------------------------------------------
 # AI receipt scanning
 # ---------------------------------------------------------------------------
+MAX_RECEIPT_CHARS = 8_000_000  # ~6 MB of image bytes once base64-decoded
+
+
+def _limit_receipt(image: Optional[str]) -> None:
+    if image and len(image) > MAX_RECEIPT_CHARS:
+        raise HTTPException(413, "Receipt image is too large")
+
+
 class ScanRequest(BaseModel):
     image_base64: str
 
 
 @api_router.post("/receipts/scan")
 async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled)):
+    _limit_receipt(req.image_base64)
     _reject_demo_premium(owner)
     _rate_limit(f"ai:{owner.profile_id}", "AI_RATE_LIMIT", 30)
     import json as _json
@@ -1739,7 +1751,7 @@ async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled
         raise
     except Exception as e:
         logger.exception("receipt scan failed")
-        raise HTTPException(502, f"Receipt scan failed: {e}")
+        raise HTTPException(502, "Receipt scan failed")
 
     resp = _claude_text(resp)
     text = resp if isinstance(resp, str) else str(resp)
@@ -1836,7 +1848,7 @@ async def ask_assistant(req: AskRequest, owner: Owner = Depends(require_entitled
         raise
     except Exception as e:
         logger.exception("ask assistant failed")
-        raise HTTPException(502, f"Assistant failed: {e}")
+        raise HTTPException(502, "Assistant failed")
 
     answer = resp if isinstance(resp, str) else str(resp)
     return {"answer": answer.strip(), "country": country}
@@ -1852,10 +1864,12 @@ app.include_router(subscription_router)
 import ue_guarantee  # noqa: E402
 app.include_router(ue_guarantee.build_router(db, require_owner, require_owner_or_ticket, _own_payload, require_entitled))
 
+_cors = [o.strip() for o in os.environ.get(
+    "CORS_ORIGINS", "https://driversgigtax.app,https://www.driversgigtax.app").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()],
+    allow_credentials="*" not in _cors,
+    allow_origins=_cors,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -11,7 +11,13 @@ export interface UEJob {
   duration_sec: number;  // 0 for promotions
   amount: number | null;
   km: number | null;
+  tip?: number | null;       // excluded from the guarantee; the activity amount may include it
+  verified?: boolean;
+  verified_at?: string | null;
 }
+
+export const MAX_SCAN_CHARS = 8_000_000;
+export const scanPayloadTooLarge = (image: string) => image.length > MAX_SCAN_CHARS;
 
 /** Uber style: "1 hr 1 min", "38 min 36 sec"; totals "12 hr 5 min". Never decimals. */
 export function fmtDur(sec: number): string {
@@ -96,6 +102,151 @@ export function missingFields(j: UEJob): string[] {
   if (!j.start_time) miss.push("start time");
   if (!(j.duration_sec > 0)) miss.push("duration");
   return miss;
+}
+
+const ANCHOR = Date.UTC(2026, 9, 19);
+const DAY_MS = 86400000;
+const FOUR_AM = 4 * 60;
+
+export function shiftDate(isoDay: string, days: number): string {
+  const [y, m, d] = isoDay.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+export function startMinutes(t: string): number | null {
+  const n = normTime(t);
+  if (!n) return null;
+  const m = /^(\d{1,2}):(\d{2}) (AM|PM)$/.exec(n);
+  if (!m) return null;
+  let h = +m[1];
+  const min = +m[2];
+  if (m[3] === "AM") h = h === 12 ? 0 : h;
+  else h = h === 12 ? 12 : h + 12;
+  return h * 60 + min;
+}
+
+/** A job accepted before 04:00 counts on the previous day for the period and the week. */
+export function logicalDate(date: string, startTime?: string | null): string {
+  const day = (date || "").slice(0, 10);
+  const mins = startTime ? startMinutes(startTime) : null;
+  if (mins != null && mins < FOUR_AM) return shiftDate(day, -1);
+  return day;
+}
+
+export function cycleStartFor(day: string): string {
+  const [y, m, d] = day.slice(0, 10).split("-").map(Number);
+  const t = Date.UTC(y, m - 1, d);
+  const steps = Math.floor((t - ANCHOR) / DAY_MS / 21) * 21;
+  return new Date(ANCHOR + steps * DAY_MS).toISOString().slice(0, 10);
+}
+
+export function jobPeriod(job: Pick<UEJob, "date" | "start_time">): string {
+  return cycleStartFor(logicalDate(job.date, job.start_time));
+}
+
+export function weekStart(periodStart: string, weekIndex: number): string {
+  return shiftDate(periodStart, 7 * weekIndex);
+}
+
+export function inWeek(job: Pick<UEJob, "date" | "start_time">, start: string): boolean {
+  const logical = logicalDate(job.date, job.start_time);
+  return logical >= start && logical < shiftDate(start, 7);
+}
+
+function nearestMinute(sec: number): number {
+  return Math.floor(sec / 60 + 0.5) * 60;
+}
+
+function civilMs(date: string, mins: number): number {
+  const [y, m, d] = date.slice(0, 10).split("-").map(Number);
+  return Date.UTC(y, m - 1, d, Math.floor(mins / 60), mins % 60, 0);
+}
+
+function netAmount(j: UEJob): number {
+  const tip = Number(j.tip ?? 0);
+  return Math.max(0, (j.amount || 0) - (Number.isFinite(tip) ? tip : 0));
+}
+
+/** Union of [accept, accept+duration], then rounded to the nearest minute. */
+export function engagedSeconds(jobs: UEJob[]): number {
+  const placed: { start: number; end: number }[] = [];
+  let loose = 0;
+  for (const j of jobs) {
+    if (j.type === "Promotion") continue;
+    const dur = j.duration_sec || 0;
+    if (dur <= 0) continue;
+    const mins = startMinutes(j.start_time || "");
+    if (mins == null) { loose += dur; continue; }
+    const start = civilMs(j.date, mins);
+    placed.push({ start, end: start + dur * 1000 });
+  }
+  placed.sort((a, b) => a.start - b.start || a.end - b.end);
+  let cursor = Number.NEGATIVE_INFINITY;
+  let sec = loose;
+  for (const iv of placed) {
+    const from = Math.max(iv.start, cursor);
+    if (iv.end > from) { sec += (iv.end - from) / 1000; cursor = iv.end; }
+  }
+  return nearestMinute(sec);
+}
+
+export function listTotals(jobs: UEJob[]): { earnings: number; engagedSec: number; jobs: number; promotions: number } {
+  const earnings = Math.round(jobs.reduce((a, j) => a + netAmount(j), 0) * 100) / 100;
+  return {
+    earnings,
+    engagedSec: engagedSeconds(jobs),
+    jobs: jobs.filter((j) => j.type !== "Promotion").length,
+    promotions: jobs.filter((j) => j.type === "Promotion").length,
+  };
+}
+
+export interface UeListFilter {
+  from: string;
+  to: string;
+  periodStart: string;
+  weekIndex: "" | "0" | "1" | "2";
+  platform: string;
+  type: string;
+  verified: "" | "verified" | "unverified";
+  query: string;
+}
+
+export const emptyFilter = (): UeListFilter => ({
+  from: "", to: "", periodStart: "", weekIndex: "", platform: "", type: "", verified: "", query: "",
+});
+
+export function matchJob(job: UEJob, f: UeListFilter): boolean {
+  const logical = logicalDate(job.date, job.start_time);
+  if (f.from && logical < f.from) return false;
+  if (f.to && logical > f.to) return false;
+  if (f.periodStart && jobPeriod(job) !== f.periodStart) return false;
+  if (f.periodStart && f.weekIndex !== "" && !inWeek(job, weekStart(f.periodStart, Number(f.weekIndex)))) return false;
+  if (f.platform && (job.platform || "Uber Eats") !== f.platform) return false;
+  if (f.type && job.type !== f.type) return false;
+  if (f.verified === "verified" && !job.verified) return false;
+  if (f.verified === "unverified" && job.verified) return false;
+  const q = f.query.trim().toLowerCase();
+  if (q) {
+    const quest = job.type === "Promotion" ? "quest promotion" : "";
+    const hay = [job.date, job.start_time, job.platform, job.type, quest, job.amount, job.tip, job.km].join(" ").toLowerCase();
+    const asNum = Number(q.replace(/^\$/, ""));
+    const amountHit = q !== "" && !Number.isNaN(asNum) && job.amount != null && Math.abs(job.amount - asNum) < 0.001;
+    if (!hay.includes(q) && !amountHit) return false;
+  }
+  return true;
+}
+
+export function filterJobs(jobs: UEJob[], f: UeListFilter): UEJob[] {
+  return jobs.filter((j) => matchJob(j, f));
+}
+
+export function selectedBuckets(rows: { key: string; id?: string; selected: boolean }[]): { draftKeys: string[]; savedIds: string[]; count: number } {
+  const chosen = rows.filter((r) => r.selected);
+  return {
+    draftKeys: chosen.filter((r) => !r.id).map((r) => r.key),
+    savedIds: chosen.filter((r) => r.id).map((r) => r.id as string),
+    count: chosen.length,
+  };
 }
 
 export const isDup = (a: UEJob, b: UEJob) =>

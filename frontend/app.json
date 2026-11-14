@@ -2,6 +2,7 @@
   "expo": {
     "name": "GigTax",
     "slug": "driversgigtax",
+    "owner": "globalapps",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -32,12 +33,12 @@
       "edgeToEdgeEnabled": true,
       "package": "com.driversgigtax.app",
       "permissions": [
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.RECORD_AUDIO"
       ],
       "blockedPermissions": [
@@ -101,6 +102,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "84b0a691-7780-4f24-8b01-03fcc595c720"
+      }
     }
   }
 }

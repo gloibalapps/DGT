@@ -82,7 +82,7 @@ export default function ScanReceipt() {
               <View style={{ width: 84, height: 84, borderRadius: 999, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
                 <Ionicons name="receipt-outline" size={40} color={colors.accent} />
               </View>
-              <AppText variant="h2" style={{ marginBottom: 6 }}>Snap it, we'll read it</AppText>
+              <AppText variant="h2" style={{ marginBottom: 6 }}>Snap it, we’ll read it</AppText>
               <AppText variant="body" color={colors.dim} style={{ textAlign: "center" }}>
                 We extract amount, date, supplier and category. You review everything before it saves.
               </AppText>

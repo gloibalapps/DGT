@@ -44,8 +44,8 @@ export default function TaxSaved() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
           <Card style={{ marginBottom: 16 }}>
             <AppText variant="body" color={colors.dim} style={{ lineHeight: 20 }}>
-              Enter how much you've actually put aside for tax so far this year. GigTax compares
-              it to your estimated tax owed and tells you if you're ahead or behind.
+              Enter how much you’ve actually put aside for tax so far this year. GigTax compares
+              it to your estimated tax owed and tells you if you’re ahead or behind.
             </AppText>
           </Card>
           <Field label={`Total set aside for tax (${symbol})`}>

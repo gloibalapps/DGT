@@ -214,7 +214,7 @@ export default function VehicleSetup() {
           <AppText variant="label" color={colors.dim} style={{ marginBottom: 8, marginLeft: 4 }}>GPS CALIBRATION</AppText>
           <Card style={{ marginBottom: 16 }}>
             <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12, lineHeight: 16 }}>
-              GPS usually reads a little under your odometer. If a tracked drive doesn't match your dash, nudge this so future drives line up. 100% = no change.
+              GPS usually reads a little under your odometer. If a tracked drive doesn’t match your dash, nudge this so future drives line up. 100% = no change.
             </AppText>
             <Field label="Calibration %" hint="Example: GigTax tracked 32.4 km but your odometer showed 33 → set 102%. (33 ÷ 32.4 × 100)">
               <Input testID="veh-gps-cal" value={gpsCal} onChangeText={setGpsCal} keyboardType="decimal-pad" placeholder="100" maxLength={5} />
