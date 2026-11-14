@@ -9,7 +9,7 @@ import { Platform } from "react-native";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { storage } from "@/src/utils/storage";
-import { applyFix, MIN_DRIVE_KM, STOP_GAP_MS, type DriveState, type GpsFix } from "./gpsTrack";
+import { applyFix, MIN_DRIVE_KM, shouldRestartLocationUpdates, STOP_GAP_MS, type DriveState, type GpsFix } from "./gpsTrack";
 
 export const AUTOTRACK_TASK = "gigtax-autotrack";
 const ENABLED_KEY = "gigtax.autotrack.enabled"; // boolean (scalar)
@@ -247,7 +247,25 @@ const LIVE_KEY = "gigtax.manual.live"; // JSON string
 interface Live {
   distance: number; lastLat?: number; lastLon?: number; lastTs: number; lastSpeed?: number | null;
   startTs: number; active: boolean; gate?: DriveState | null;
+  lastFixAt?: number | null; lastAccuracy?: number | null;
+  updatesStartedAt?: number | null; restartedAt?: number | null;
 }
+
+export type GpsPhase = "idle" | "denied" | "waiting" | "fix";
+
+const MANUAL_UPDATE_OPTIONS = {
+  accuracy: Location.Accuracy.BestForNavigation,
+  distanceInterval: 5,
+  timeInterval: 2000,
+  pausesUpdatesAutomatically: false,
+  activityType: Location.ActivityType.AutomotiveNavigation,
+  showsBackgroundLocationIndicator: true,
+  foregroundService: {
+    notificationTitle: "GigTax is tracking your drive",
+    notificationBody: "Your distance is being recorded — tap to return to the app.",
+    notificationColor: "#38BDF8",
+  },
+};
 
 
 // Read-modify-write a single GPS fix into the live drive. Shared by BOTH the
@@ -270,14 +288,17 @@ export function ingestManualPoint(latitude: number, longitude: number, ts: numbe
 async function ingestOne(latitude: number, longitude: number, ts: number, accuracy?: number | null, speed?: number | null): Promise<void> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
   if (!live || !live.active) return;
+  live.lastFixAt = ts;
+  live.lastAccuracy = accuracy ?? null;
   const step = applyFix(live.gate ?? null, { lat: latitude, lon: longitude, ts, accuracy, speed });
-  if (!step.state) return;
-  live.gate = step.state;
-  live.distance = step.state.distance;
-  live.lastLat = step.state.lastLat;
-  live.lastLon = step.state.lastLon;
-  live.lastTs = step.state.lastTs;
-  live.lastSpeed = step.state.lastSpeed;
+  if (step.state) {
+    live.gate = step.state;
+    live.distance = step.state.distance;
+    live.lastLat = step.state.lastLat;
+    live.lastLon = step.state.lastLon;
+    live.lastTs = step.state.lastTs;
+    live.lastSpeed = step.state.lastSpeed;
+  }
   await writeJSON(LIVE_KEY, live);
 }
 
@@ -318,30 +339,61 @@ export async function startManualDrive(): Promise<EnableResult> {
   const background = bg.granted;
 
   await pauseAutotrackForManual(); // don't double-count the same drive
-  await writeJSON(LIVE_KEY, { distance: 0, lastTs: 0, startTs: Date.now(), active: true } as Live);
+  const now = Date.now();
+  await writeJSON(LIVE_KEY, {
+    distance: 0, lastTs: 0, startTs: now, active: true,
+    updatesStartedAt: now, lastFixAt: null, lastAccuracy: null, restartedAt: null,
+  } as Live);
   if (!background) return { ok: true, backgroundOff: true };
-  if (!(await isManualRunning())) {
-    await Location.startLocationUpdatesAsync(MANUAL_TASK, {
-      accuracy: Location.Accuracy.BestForNavigation,
-      distanceInterval: 5,
-      timeInterval: 2000,
-      pausesUpdatesAutomatically: false,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: "GigTax is tracking your drive",
-        notificationBody: "Your distance is being recorded — tap to return to the app.",
-        notificationColor: "#38BDF8",
-      },
-    });
-  }
+  await ensureManualUpdates();
   return { ok: true };
 }
 
-export async function getManualLive(): Promise<{ distanceKm: number; startTs: number; active: boolean } | null> {
+/** Restart a location task that Android still reports as started but that has
+ * stopped delivering fixes (typical after installing over the previous build). */
+export async function ensureManualUpdates(): Promise<{ phase: GpsPhase; accuracy: number | null }> {
+  if (Platform.OS === "web") return { phase: "idle", accuracy: null };
+  const live = await readJSON<Live | null>(LIVE_KEY, null);
+  if (!live?.active) return { phase: "idle", accuracy: null };
+  const fg = await Location.getForegroundPermissionsAsync();
+  if (!fg.granted) return { phase: "denied", accuracy: live.lastAccuracy ?? null };
+  const bg = await Location.getBackgroundPermissionsAsync();
+  if (!bg.granted) {
+    const heard = live.lastFixAt != null;
+    return { phase: heard ? "fix" : "waiting", accuracy: live.lastAccuracy ?? null };
+  }
+  const started = await isManualRunning();
+  const now = Date.now();
+  const updatesStartedAt = live.updatesStartedAt || live.startTs || now;
+  if (shouldRestartLocationUpdates({
+    started,
+    now,
+    lastFixAt: live.lastFixAt ?? null,
+    updatesStartedAt,
+    restartedAt: live.restartedAt ?? null,
+  })) {
+    if (started) {
+      try { await Location.stopLocationUpdatesAsync(MANUAL_TASK); } catch { /* stale task */ }
+    }
+    await Location.startLocationUpdatesAsync(MANUAL_TASK, MANUAL_UPDATE_OPTIONS);
+    live.updatesStartedAt = now;
+    live.restartedAt = now;
+    await writeJSON(LIVE_KEY, live);
+    return { phase: "waiting", accuracy: live.lastAccuracy ?? null };
+  }
+  const heard = live.lastFixAt != null && live.lastFixAt >= updatesStartedAt;
+  return { phase: heard ? "fix" : "waiting", accuracy: live.lastAccuracy ?? null };
+}
+
+export async function getManualLive(): Promise<{
+  distanceKm: number; startTs: number; active: boolean; lastFixAt: number | null; lastAccuracy: number | null;
+} | null> {
   const live = await readJSON<Live | null>(LIVE_KEY, null);
   if (!live) return null;
-  return { distanceKm: Math.round(live.distance * 100) / 100, startTs: live.startTs, active: !!live.active };
+  return {
+    distanceKm: Math.round(live.distance * 100) / 100, startTs: live.startTs, active: !!live.active,
+    lastFixAt: live.lastFixAt ?? null, lastAccuracy: live.lastAccuracy ?? null,
+  };
 }
 
 export async function stopManualDrive(): Promise<{ distanceKm: number; startTs: number; endTs: number }> {

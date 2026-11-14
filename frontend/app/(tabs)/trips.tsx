@@ -11,7 +11,8 @@ import { displayDateShort } from "@/src/date";
 import { storage } from "@/src/utils/storage";
 import { OdometerCheck } from "@/src/OdometerCheck";
 import { useLocationDisclosure } from "@/src/LocationDisclosure";
-import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning } from "@/src/autotrack";
+import { getPendingDrives, clearPendingDrive, PendingDrive, startManualDrive, getManualLive, stopManualDrive, ingestManualPoint, isManualRunning, ensureManualUpdates, type GpsPhase } from "@/src/autotrack";
+import { shouldRestartLocationUpdates } from "@/src/gpsTrack";
 import {
   Screen, ScreenHeader, Card, AppText, IconButton, Spinner, Field, Select, HeroCard, ListCard, ListRow, SectionLabel,
   EmptyState, PrimaryButton, SecondaryButton, useToast, fmtMoney, Input,
@@ -34,6 +35,8 @@ export default function Mileage() {
   // GPS shift state. Distance is auto-saved to storage by a background
   // foreground-service task, so it survives screen-off and even app kills.
   const [tracking, setTracking] = useState(false);
+  const [gpsPhase, setGpsPhase] = useState<GpsPhase>("waiting");
+  const [gpsAcc, setGpsAcc] = useState<number | null>(null);
   const [dist, setDist] = useState(0);
   const [pendingTag, setPendingTag] = useState<number | null>(null);
   const [pendingRawKm, setPendingRawKm] = useState<number | null>(null);
@@ -45,6 +48,7 @@ export default function Mileage() {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [savingTrip, setSavingTrip] = useState(false);
   const subRef = useRef<Location.LocationSubscription | null>(null);
+  const watchAtRef = useRef(0);
 
   const activeVehicle = vehicles.find((v) => v.id === activeVehicleId);
   // Per-vehicle GPS calibration (scales tracked distance to match the odometer).
@@ -55,10 +59,24 @@ export default function Mileage() {
   useEffect(() => {
     if (!tracking) { setElapsedSec(0); return; }
     const id = setInterval(async () => {
+      const status = await ensureManualUpdates();
+      setGpsPhase(status.phase);
+      setGpsAcc(status.accuracy);
       const live = await getManualLive();
       if (live) {
         setDist(live.distanceKm);
         if (live.startTs) startTimeRef.current = live.startTs;
+      }
+      if (!(await isManualRunning()) && shouldRestartLocationUpdates({
+        started: subRef.current != null,
+        now: Date.now(),
+        lastFixAt: live?.lastFixAt ?? null,
+        updatesStartedAt: watchAtRef.current || startTimeRef.current || Date.now(),
+        restartedAt: watchAtRef.current || null,
+      })) {
+        stopForegroundWatch();
+        watchAtRef.current = Date.now();
+        await startForegroundWatch();
       }
       setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1500);
@@ -142,7 +160,8 @@ export default function Mileage() {
       if (res.canAskAgain === false) Linking.openSettings();
       return;
     }
-    setDist(0); startTimeRef.current = Date.now(); setTracking(true);
+    setDist(0); startTimeRef.current = Date.now(); setGpsPhase("waiting"); setGpsAcc(null); setTracking(true);
+    watchAtRef.current = Date.now();
     await startForegroundWatch();
     if (res.backgroundOff) { show("Tracking while the app is open — keep GigTax on screen during the drive", "info"); return; }
     maybePromptBattery();
@@ -318,7 +337,10 @@ export default function Mileage() {
             <AppText variant="bodySemi" color={colors.dim} style={{ marginLeft: 6 }}>{unit}</AppText>
           </View>
           <AppText variant="caption" color={colors.dim} style={{ fontVariant: ["tabular-nums"] }}>
-            {dist <= 0 ? "Acquiring GPS… · " : ""}Started {startedAtStr()} · {fmtElapsed(elapsedSec)}
+            {gpsPhase === "denied" ? "Location permission denied · " : gpsPhase === "fix"
+              ? `GPS ± ${Math.round(gpsAcc ?? 0)} m · `
+              : "Waiting for a GPS fix · "}
+            Started {startedAtStr()} · {fmtElapsed(elapsedSec)}
             {activeVehicle ? ` · ${activeVehicle.registration || activeVehicle.make_model || "Vehicle"}` : ""}
           </AppText>
           <SecondaryButton testID="gps-stop" label="End drive" tone="danger" onPress={stopShift} style={{ marginTop: 8 }} />

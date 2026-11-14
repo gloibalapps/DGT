@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyFix, foldFixes, haversineKm, type GpsFix } from "./gpsTrack.ts";
+import { applyFix, FIX_WAIT_MS, foldFixes, haversineKm, shouldRestartLocationUpdates, type GpsFix } from "./gpsTrack.ts";
 
 /** Previous stepKm rules, kept here to show why a parked phone grew a trip. */
 function legacyStepKm(
@@ -132,6 +132,21 @@ test("three consecutive fast fixes arm a drive even before 150 m", () => {
   assert.ok(state);
   assert.equal(state!.armed, true);
   assert.ok(state!.distance > 0);
+});
+
+test("a started task with no fix is restarted once, then left alone until the next wait", () => {
+  const t0 = 1_000_000;
+  const base = { started: true, lastFixAt: null, updatesStartedAt: t0, restartedAt: null };
+  assert.equal(shouldRestartLocationUpdates({ ...base, now: t0 + 10_000 }), false);
+  assert.equal(shouldRestartLocationUpdates({ ...base, now: t0 + FIX_WAIT_MS }), true);
+  assert.equal(shouldRestartLocationUpdates({ ...base, now: t0 + FIX_WAIT_MS, restartedAt: t0 + FIX_WAIT_MS }), false);
+  assert.equal(shouldRestartLocationUpdates({
+    ...base, now: t0 + FIX_WAIT_MS * 2, restartedAt: t0 + FIX_WAIT_MS, lastFixAt: null,
+  }), true);
+  assert.equal(shouldRestartLocationUpdates({
+    started: true, now: t0 + 60_000, updatesStartedAt: t0, restartedAt: null, lastFixAt: t0 + 50_000,
+  }), false);
+  assert.equal(shouldRestartLocationUpdates({ ...base, started: false, now: t0 }), true);
 });
 
 test("after the drive is armed, a stop does not add more distance", () => {

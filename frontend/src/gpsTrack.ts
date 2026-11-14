@@ -14,6 +14,8 @@ export const MIN_STEP_M = 12;
 export const MIN_IMPLIED_MS = 2.5;
 export const STOP_GAP_MS = 5 * 60 * 1000;
 export const MIN_DRIVE_KM = 0.3;
+/** If a location task claims to be running but no fix arrives, restart it. */
+export const FIX_WAIT_MS = 25_000;
 
 export interface GpsFix {
   lat: number;
@@ -152,6 +154,26 @@ export interface FoldedDrive {
   closed: { distanceKm: number; startTs: number; endTs: number }[];
   distanceKm: number;
   armed: boolean;
+}
+
+/**
+ * A task that Android still lists as started after an app upgrade can stop
+ * delivering fixes. Restart it when nothing has arrived since we last started
+ * it, and do not restart again until another wait has passed.
+ */
+export function shouldRestartLocationUpdates(input: {
+  started: boolean;
+  now: number;
+  lastFixAt: number | null;
+  updatesStartedAt: number;
+  restartedAt: number | null;
+}): boolean {
+  if (!input.started) return true;
+  const heard = input.lastFixAt != null && input.lastFixAt >= input.updatesStartedAt;
+  const since = heard ? input.lastFixAt! : input.updatesStartedAt;
+  if (input.now - since < FIX_WAIT_MS) return false;
+  if (input.restartedAt != null && input.now - input.restartedAt < FIX_WAIT_MS) return false;
+  return true;
 }
 
 /** Replay fixes the way auto-detect does, including the stationary stop-gap. */
