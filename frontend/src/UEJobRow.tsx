@@ -9,6 +9,7 @@ import { UEJob, UEType, FOOD_PLATFORMS, parseDuration, durationPreview, normTime
 /** Editable text form of a job (what the boxes show). */
 export interface Draft {
   key: string; id?: string; platform: string; date: string; time: string; type: UEType; dur: string; amount: string; km: string;
+  tip?: string; verified?: boolean; verified_at?: string | null;
   dup?: boolean; dirty?: boolean;
 }
 
@@ -21,11 +22,14 @@ export const toJob = (d: Draft): UEJob => ({
   duration_sec: d.type === "Promotion" ? 0 : parseDuration(d.dur) || 0,
   amount: d.amount.trim() === "" || isNaN(+d.amount) ? null : Math.round(+d.amount * 100) / 100,
   km: d.km.trim() === "" || isNaN(+d.km) ? null : +d.km,
+  tip: !d.tip || d.tip.trim() === "" || isNaN(+d.tip) ? 0 : Math.round(+d.tip * 100) / 100,
+  verified: !!d.verified, verified_at: d.verified ? (d.verified_at || null) : null,
 });
 
 export const fromJob = (j: UEJob): Draft => ({
   key: j.id || newKey(), id: j.id, platform: j.platform || "Uber Eats", date: j.date, time: j.start_time || "", type: j.type,
   dur: durToText(j.duration_sec), amount: j.amount == null ? "" : String(j.amount), km: j.km == null ? "" : String(j.km),
+  tip: j.tip ? String(j.tip) : "", verified: !!j.verified, verified_at: j.verified_at || null,
 });
 
 const TYPES = [
@@ -34,8 +38,8 @@ const TYPES = [
   { key: "Promotion", label: "Promotion" },
 ];
 
-export function UEJobRow({ d, onChange, onDelete, onSave, testID }:
-  { d: Draft; onChange: (d: Draft) => void; onDelete: () => void; onSave?: () => void; testID?: string }) {
+export function UEJobRow({ d, onChange, onDelete, onSave, selected, onToggle, testID }:
+  { d: Draft; onChange: (d: Draft) => void; onDelete: () => void; onSave?: () => void; selected?: boolean; onToggle?: () => void; testID?: string }) {
   const { colors } = useTheme();
   const miss = missingFields(toJob(d));
   const promo = d.type === "Promotion";
@@ -45,6 +49,13 @@ export function UEJobRow({ d, onChange, onDelete, onSave, testID }:
     <View testID={testID} style={{ backgroundColor: colors.surface, borderRadius: 20, borderWidth: d.dup || miss.length ? 2 : 1,
       borderColor: border, padding: 16, marginBottom: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 8 }}>
+        {onToggle ? (
+          <Pressable testID={`${testID}-check`} onPress={onToggle} hitSlop={8}
+            style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name={selected ? "checkbox" : "square-outline"} size={22} color={selected ? colors.accent : colors.dim} />
+          </Pressable>
+        ) : null}
+        {d.verified ? <Ionicons name="checkmark-circle" size={18} color={colors.profit} /> : null}
         <View style={{ flex: 1.2 }}>
           <Select testID={`${testID}-platform`} value={d.platform} onChange={(k) => set({ platform: k })}
             options={FOOD_PLATFORMS.map((p) => ({ key: p, label: p }))} title="Food app" />
@@ -89,6 +100,10 @@ export function UEJobRow({ d, onChange, onDelete, onSave, testID }:
         <View style={{ flex: 1 }}>
           <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Amount A$</AppText>
           <Input testID={`${testID}-amount`} value={d.amount} onChangeText={(v) => set({ amount: v })} keyboardType="decimal-pad" placeholder="24.59" />
+        </View>
+        <View style={{ flex: 0.8 }}>
+          <AppText variant="caption" color={colors.dim} style={{ marginBottom: 4 }}>Tip</AppText>
+          <Input testID={`${testID}-tip`} value={d.tip || ""} onChangeText={(v) => set({ tip: v })} keyboardType="decimal-pad" placeholder="0" />
         </View>
         {!promo ? (
           <View style={{ flex: 0.8 }}>

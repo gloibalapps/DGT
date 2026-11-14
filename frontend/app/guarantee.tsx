@@ -5,8 +5,10 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "@/src/theme";
 import { api } from "@/src/api";
-import { AppText, Card, HeroCard, IconButton, ListCard, ListRow, PrimaryButton, Screen, Select, Spinner, UnderlineTabs, fmtMoney, useToast } from "@/src/ui";
-import { auDate, fmtDur, UEJob } from "@/src/ueParse";
+import { AppText, Card, HeroCard, IconButton, ListCard, ListRow, PrimaryButton, Screen, SecondaryButton, Select, Spinner, UnderlineTabs, fmtMoney, useToast } from "@/src/ui";
+import { auDate, fmtDur, inWeek, UEJob } from "@/src/ueParse";
+import { captureGuaranteePhoto } from "@/src/ueScan";
+import { ueScanStash } from "@/src/ueScanStash";
 
 const A = (n: number) => fmtMoney(n, "A$");
 const DAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -19,6 +21,7 @@ export default function Guarantee() {
   const [data, setData] = useState<any>(null);
   const [week, setWeek] = useState<number | null>(null);
   const [order, setOrder] = useState<"newest" | "oldest">("newest");
+  const [scanning, setScanning] = useState(false);
 
   const load = useCallback(async (c?: string) => {
     try { setData(await api.ueGuarantee(c)); } catch { show("Couldn't load the guarantee", "error"); }
@@ -28,6 +31,20 @@ export default function Guarantee() {
   const exportXlsx = async () => {
     const url = await api.ueExportUrl(data.cycle_start);
     if (Platform.OS === "web") window.open(url, "_blank"); else Linking.openURL(url);
+  };
+
+  const scanIntoWeek = async (source: "camera" | "library") => {
+    if (week == null) return;
+    setScanning(true);
+    const res = await captureGuaranteePhoto(source);
+    setScanning(false);
+    if (!res) return;
+    if ("error" in res) { show(res.error, "error"); return; }
+    if (!res.jobs.length) { show("No complete job on that screen", "info"); return; }
+    ueScanStash.jobs = res.jobs;
+    ueScanStash.rejected = res.rejected;
+    ueScanStash.weekStart = data.weeks[week].start;
+    router.push({ pathname: "/ue-jobs" as any, params: { week: data.weeks[week].start } });
   };
 
   if (!data) return <Screen><Spinner /></Screen>;
@@ -45,7 +62,7 @@ export default function Guarantee() {
 
   if (week != null) {
     const w = data.weeks[week];
-    const jobs: UEJob[] = data.jobs.filter((j: UEJob) => j.date >= w.start && j.date <= w.end);
+    const jobs: UEJob[] = data.jobs.filter((j: UEJob) => inWeek(j, w.start));
     const days = Array.from(new Set(jobs.map((j) => j.date))).sort();
     if (order === "newest") days.reverse();
     return (
@@ -63,6 +80,15 @@ export default function Guarantee() {
         </ListCard>
         <AppText variant="caption" color={colors.dim} style={{ marginBottom: 16, marginLeft: 4 }}>
           Earnings include {A(w.promo_total)} in promotions. Weekly figures are a guide — the guarantee is assessed over the whole cycle.
+        </AppText>
+        <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
+          <SecondaryButton testID="g-scan-camera" label={scanning ? "Reading…" : "Take photo"} icon="camera-outline" style={{ flex: 1 }}
+            disabled={scanning} onPress={() => scanIntoWeek("camera")} />
+          <SecondaryButton testID="g-scan-library" label="Choose screenshot" icon="images-outline" style={{ flex: 1 }}
+            disabled={scanning} onPress={() => scanIntoWeek("library")} />
+        </View>
+        <AppText variant="caption" color={colors.dim} style={{ marginBottom: 12 }}>
+          A photo of this week’s Uber list is added as unsaved jobs for you to check. Estimate only — Uber’s calculation is final.
         </AppText>
         <UnderlineTabs options={[{ key: "newest", label: "Newest" }, { key: "oldest", label: "Oldest" }]} value={order}
           onChange={(k) => setOrder(k as any)} testIDPrefix="g-order" />
@@ -95,6 +121,11 @@ export default function Guarantee() {
         symbol="A$" valueColor={owed ? colors.loss : colors.profit}>
         <AppText variant="caption" color={owed ? colors.loss : colors.profit}>
           {owed ? `Uber owes A$${t.top_up.toFixed(2)} top-up this cycle` : "Your earnings are at or above the guarantee"}
+        </AppText>
+        <AppText variant="caption" color={colors.dim} style={{ marginTop: 6 }}>
+          Estimate only. Uber’s calculation is final. Tips are not included. A job accepted before 4:00 am Monday counts in the previous period.
+          {data.rates_vary ? " Rates change during this cycle; each job uses the rate for its date." : ""}
+          {data.rate_note ? " The 2027 rates are reported and still to be confirmed." : ""}
         </AppText>
       </HeroCard>
 

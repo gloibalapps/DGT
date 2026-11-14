@@ -416,6 +416,15 @@ export const api = {
     const profile_id = await getProfileId();
     return req(`/ue/jobs`, { method: "POST", body: JSON.stringify({ profile_id, jobs }) }, 0);
   },
+  async scanUeJobs(image_base64: string): Promise<{ jobs: UEJob[]; rejected: number }> {
+    return req(`/ue/jobs/scan`, { method: "POST", body: JSON.stringify({ image_base64 }) }, 0, 45000);
+  },
+  async ueVerifyJobs(ids: string[], verified: boolean): Promise<{ updated: number }> {
+    return req(`/ue/jobs/verify`, { method: "POST", body: JSON.stringify({ ids, verified }) }, 0);
+  },
+  async ueDeleteJobs(ids: string[]): Promise<{ deleted: number }> {
+    return req(`/ue/jobs/bulk-delete`, { method: "POST", body: JSON.stringify({ ids }) }, 0);
+  },
   async ueUpdateJob(id: string, j: Partial<UEJob>): Promise<UEJob> {
     return req(`/ue/jobs/${id}`, { method: "PUT", body: JSON.stringify(j) }, 0);
   },
