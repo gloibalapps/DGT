@@ -1,16 +1,17 @@
 import { assertEquals } from "@std/assert";
 import * as tax from "../_shared/tax.ts";
-import { summarise, rateFor } from "../_shared/ue.ts";
+import { summarise } from "../_shared/ue.ts";
 import { fernetDecrypt, fernetEncrypt } from "../_shared/fernet.ts";
 
 const PY = "/tmp/dgt-venv/bin/python";
-const ORACLE = "supabase/functions/tests/py_oracle.py";
+const ROOT = new URL("../../../", import.meta.url).pathname;
+const ORACLE = `${ROOT}supabase/functions/tests/py_oracle.py`;
 
 async function python(args: string[]): Promise<string> {
   const cmd = new Deno.Command(PY, {
     args: [ORACLE, ...args],
-    cwd: "/workspace",
-    env: { PYTHONPATH: "/workspace/backend" },
+    cwd: ROOT,
+    env: { PYTHONPATH: `${ROOT}backend` },
     stdout: "piped",
     stderr: "piped",
   });
@@ -40,9 +41,10 @@ function diffs(got: unknown, exp: unknown, path: string, out: string[]): void {
 }
 
 Deno.test("tax and uber calculations match the Python implementation", async () => {
-  const fixture = JSON.parse(await Deno.readTextFile("/workspace/supabase/functions/tests/fixtures/calc.json"));
+  const fixturePath = `${ROOT}supabase/functions/tests/fixtures/calc.json`;
+  const fixture = JSON.parse(await Deno.readTextFile(fixturePath));
   tax.setTaxToday(tax.parseDate(fixture.today));
-  const expected = JSON.parse(await python(["calc", "/workspace/supabase/functions/tests/fixtures/calc.json"]));
+  const expected = JSON.parse(await python(["calc", fixturePath]));
   const ref = tax.parseDate(fixture.today);
   const { profile, trips, incomes, expenses, shifts, vehicles } = fixture;
   const us = { ...profile, country: "US", region: "TX" };
@@ -57,7 +59,7 @@ Deno.test("tax and uber calculations match the Python implementation", async () 
     money: tax.moneyOverview(profile, trips, incomes, expenses, shifts, ref, "week", vehicles),
     tax_mileage: tax.taxMileage(profile, trips, incomes, expenses, ref, vehicles),
     analytics: tax.computeAnalytics(profile, trips, incomes, expenses, shifts, vehicles, start, end, ["Uber Eats"], "v1"),
-    summarise: summarise(fixture.ue_jobs, rateFor("car")),
+    summarise: summarise(fixture.ue_jobs, "car"),
   };
   const found: string[] = [];
   diffs(got, expected, "$", found);

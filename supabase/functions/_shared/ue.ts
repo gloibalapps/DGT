@@ -5,7 +5,12 @@ import type { Doc } from "./db.ts";
 export const UE_PLATFORM = "Uber Eats";
 const ANCHOR = Date.UTC(2026, 9, 19);
 const DAY = 86400000;
-const RATES: Record<string, number> = { car: 32, motorbike: 31.5, bicycle: 31.3 };
+/** Dated engaged-hour rates. 2027 figures are reported and not yet confirmed by Uber. */
+export const RATE_TABLE: { from: string; car: number; motorbike: number; bicycle: number; note: "confirmed" | "reported, verify" }[] = [
+  { from: "2026-08-17", car: 32, motorbike: 31.5, bicycle: 31.3, note: "confirmed" },
+  { from: "2027-01-01", car: 32.5, motorbike: 32, bicycle: 31.8, note: "reported, verify" },
+];
+const FOUR_AM = 4 * 60;
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function iso(ms: number): string {
@@ -62,17 +67,112 @@ export function isDup(a: Doc, b: Doc): boolean {
     Math.abs(Number(a.amount ?? 0) - Number(b.amount ?? 0)) <= 0.02;
 }
 
-export function summarise(jobs: Doc[], rate: number): Doc {
+export function shiftDate(isoDay: string, days: number): string {
+  return iso(parse(isoDay) + days * DAY);
+}
+
+/** A job accepted before 04:00 belongs to the previous calendar day for the period and the week. */
+export function logicalDate(date: string, startTime?: string | null): string {
+  const day = String(date || "").slice(0, 10);
+  const mins = startTime ? startMinutes(String(startTime)) : null;
+  if (mins != null && mins < FOUR_AM) return shiftDate(day, -1);
+  return day;
+}
+
+export function jobPeriod(job: Doc): string {
+  return cycleStartFor(logicalDate(String(job.date ?? ""), String(job.start_time ?? "")));
+}
+
+export function inWeek(job: Doc, weekStart: string): boolean {
+  const logical = logicalDate(String(job.date ?? ""), String(job.start_time ?? ""));
+  return logical >= weekStart && logical < shiftDate(weekStart, 7);
+}
+
+function vehicleKey(vehicleType?: string): "car" | "motorbike" | "bicycle" {
+  const v = (vehicleType || "car").toLowerCase().replace(/[\s_-]/g, "");
+  if (v.startsWith("motor") || v === "scooter") return "motorbike";
+  if (v === "bicycle" || v === "ebike" || v === "ebicycle") return "bicycle";
+  return "car";
+}
+
+function rateRow(onDate: string) {
+  const day = (onDate || "2026-08-17").slice(0, 10);
+  let chosen = RATE_TABLE[0];
+  for (const row of RATE_TABLE) if (row.from <= day) chosen = row;
+  return chosen;
+}
+
+export function rateFor(vehicleType: string | undefined, onDate = "2026-08-17"): number {
+  return rateRow(onDate)[vehicleKey(vehicleType)];
+}
+
+export function rateNote(onDate: string): string | null {
+  const note = rateRow(onDate).note;
+  return note === "confirmed" ? null : note;
+}
+
+/** Half-up to the nearest minute, then back to seconds. */
+export function nearestMinute(sec: number): number {
+  return Math.floor(sec / 60 + 0.5) * 60;
+}
+
+function netAmount(j: Doc): number {
+  const tip = Number(j.tip ?? 0);
+  return Math.max(0, Number(j.amount ?? 0) - (Number.isFinite(tip) ? tip : 0));
+}
+
+function civilStartMs(date: string, mins: number): number {
+  const [y, m, d] = date.slice(0, 10).split("-").map(Number);
+  return Date.UTC(y, m - 1, d, Math.floor(mins / 60), mins % 60, 0);
+}
+
+/**
+ * Engaged time is the union of [accept, accept+duration]. An engagement that
+ * starts while another is still running counts only from when the earlier one
+ * finishes, so stacked orders are not added twice. The total is then rounded
+ * to the nearest minute. Tips are excluded from earnings. The rate follows
+ * each job's calendar date.
+ */
+export function summarise(jobs: Doc[], vehicleType = "car"): Doc {
   const work = jobs.filter((j) => j.type !== "Promotion");
   const promos = jobs.filter((j) => j.type === "Promotion");
-  const earnings = pyRound(jobs.reduce((a, j) => a + Number(j.amount ?? 0), 0), 2);
-  const promo = pyRound(promos.reduce((a, j) => a + Number(j.amount ?? 0), 0), 2);
-  const sec = work.reduce((a, j) => a + Number(j.duration_sec ?? 0), 0);
-  const hrs = sec / 3600;
-  const guaranteed = pyRound(hrs * rate, 2);
+  const earnings = pyRound(jobs.reduce((a, j) => a + netAmount(j), 0), 2);
+  const promo = pyRound(promos.reduce((a, j) => a + netAmount(j), 0), 2);
+  const buckets = new Map<number, number>();
+  const placed: { start: number; end: number; rate: number }[] = [];
+  for (const j of work) {
+    const dur = Number(j.duration_sec ?? 0);
+    if (!(dur > 0)) continue;
+    const rate = rateFor(vehicleType, String(j.date || "2026-08-17"));
+    const mins = startMinutes(String(j.start_time ?? ""));
+    if (mins == null) {
+      buckets.set(rate, (buckets.get(rate) ?? 0) + dur);
+      continue;
+    }
+    const start = civilStartMs(String(j.date), mins);
+    placed.push({ start, end: start + dur * 1000, rate });
+  }
+  placed.sort((a, b) => a.start - b.start || a.end - b.end);
+  let cursor = Number.NEGATIVE_INFINITY;
+  for (const iv of placed) {
+    const from = Math.max(iv.start, cursor);
+    if (iv.end > from) {
+      buckets.set(iv.rate, (buckets.get(iv.rate) ?? 0) + (iv.end - from) / 1000);
+      cursor = iv.end;
+    }
+  }
+  let engaged = 0;
+  let guaranteed = 0;
+  for (const [rate, sec] of buckets) {
+    const rounded = nearestMinute(sec);
+    engaged += rounded;
+    guaranteed += pyRound((rounded / 3600) * rate, 2);
+  }
+  guaranteed = pyRound(guaranteed, 2);
+  const hrs = engaged / 3600;
   return {
     jobs: work.length, promotions: promos.length, earnings, promo_total: promo,
-    engaged_sec: sec, engaged_label: fmtDur(sec), engaged_hours: pyRound(hrs, 4),
+    engaged_sec: engaged, engaged_label: fmtDur(engaged), engaged_hours: pyRound(hrs, 4),
     effective_rate: hrs > 0 ? pyRound(earnings / hrs, 2) : null,
     guaranteed, top_up: pyRound(Math.max(0, guaranteed - earnings), 2),
     km: pyRound(work.reduce((a, j) => a + Number(j.km ?? 0), 0), 1),
@@ -94,6 +194,11 @@ export function validateJob(raw: Doc): string | null {
   raw.platform = raw.platform || UE_PLATFORM;
   raw.date = String(raw.date ?? "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.date))) return "Invalid job: date";
+  const tip = raw.tip == null || raw.tip === "" ? 0 : Number(raw.tip);
+  if (!Number.isFinite(tip) || tip < 0) return "Invalid job: tip";
+  raw.tip = pyRound(tip, 2);
+  raw.verified = raw.verified === true;
+  if (!raw.verified) raw.verified_at = null;
   return null;
 }
 
@@ -120,8 +225,132 @@ export function mismatches(jobs: Doc[], income: Doc[]): Doc[] {
   return out;
 }
 
-export function rateFor(vehicleType: string | undefined): number {
-  return RATES[vehicleType || "car"] ?? RATES.car;
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** Header dates have no year. Never return a date after `today`. */
+export function inferJobDate(raw: string, today: string): string | null {
+  const t = raw.trim();
+  const todayDay = today.slice(0, 10);
+  const yearOf = (month: number, day: number): string | null => {
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    const y = Number(todayDay.slice(0, 4));
+    const isoDay = (year: number) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    let candidate = isoDay(y);
+    if (candidate > todayDay) candidate = isoDay(y - 1);
+    return candidate <= todayDay ? candidate : null;
+  };
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (m) {
+    let isoDay = `${m[1]}-${m[2]}-${m[3]}`;
+    if (isoDay > todayDay) {
+      const rolled = `${Number(m[1]) - 1}-${m[2]}-${m[3]}`;
+      if (rolled <= todayDay) isoDay = rolled;
+      else return null;
+    }
+    return isoDay;
+  }
+  m = /([A-Za-z]{3,})\s+(\d{1,2})\b/.exec(t);
+  if (m) {
+    const mi = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (mi >= 0) return yearOf(mi + 1, Number(m[2]));
+  }
+  m = /^(\d{1,2})\/(\d{1,2})$/.exec(t);
+  if (m) return yearOf(Number(m[2]), Number(m[1]));
+  return null;
+}
+
+function normClock(raw: string): string {
+  const t = raw.trim().toUpperCase().replace(/\./g, "");
+  let m = /^(\d{1,2}):(\d{2})\s*([AP]M)$/.exec(t);
+  if (m) {
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h < 1 || h > 12 || min > 59) return "";
+    return `${h}:${String(min).padStart(2, "0")} ${m[3]}`;
+  }
+  m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (m) {
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h > 23 || min > 59) return "";
+    const ap = h >= 12 ? "PM" : "AM";
+    if (h === 0) h = 12;
+    else if (h > 12) h -= 12;
+    return `${h}:${String(min).padStart(2, "0")} ${ap}`;
+  }
+  return "";
+}
+
+function asJobType(raw: unknown): "DELIVERY" | "Package" | "Promotion" | null {
+  const t = String(raw ?? "").toLowerCase();
+  if (/quest|promo|boost|referral|incentive/.test(t)) return "Promotion";
+  if (/package/.test(t)) return "Package";
+  if (t === "" || /deliver/.test(t)) return "DELIVERY";
+  return null;
+}
+
+function durationSeconds(row: Doc): number {
+  const n = Number(row.duration_sec ?? 0);
+  if (n > 0) return Math.round(n);
+  const text = String(row.duration ?? "");
+  let sec = 0;
+  const re = /(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)/gi;
+  let m: RegExpExecArray | null;
+  let any = false;
+  while ((m = re.exec(text))) {
+    any = true;
+    const v = Number(m[1]);
+    const u = m[2].toLowerCase();
+    sec += u.startsWith("h") ? v * 3600 : u.startsWith("m") ? v * 60 : v;
+  }
+  return any ? sec : 0;
+}
+
+/**
+ * Turn a vision-model reply into jobs. A printed top-up, guarantee, or trip
+ * count is ignored. A row missing its amount, or a delivery missing its accept
+ * time or duration, is rejected rather than guessed.
+ */
+export function parseGuaranteeJobs(text: string, today: string): { jobs: Doc[]; rejected: number } {
+  let body = text.trim();
+  if (body.startsWith("```")) {
+    body = body.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  }
+  let parsed: Doc = {};
+  try {
+    const s = body.indexOf("{");
+    const en = body.lastIndexOf("}");
+    if (s < 0 || en < s) return { jobs: [], rejected: 0 };
+    parsed = JSON.parse(body.slice(s, en + 1));
+  } catch {
+    return { jobs: [], rejected: 0 };
+  }
+  const rows = Array.isArray(parsed.jobs) ? parsed.jobs as Doc[] : [];
+  const jobs: Doc[] = [];
+  let rejected = 0;
+  for (const row of rows) {
+    const type = asJobType(row.type);
+    const date = inferJobDate(String(row.date ?? ""), today);
+    const amount = row.amount == null || row.amount === "" ? null : Number(row.amount);
+    const tipRaw = row.tip == null || row.tip === "" ? 0 : Number(row.tip);
+    if (!type || !date || amount == null || !Number.isFinite(amount)) { rejected++; continue; }
+    const tip = Number.isFinite(tipRaw) && tipRaw > 0 ? pyRound(tipRaw, 2) : 0;
+    if (type === "Promotion") {
+      jobs.push({ date, start_time: "", type, duration_sec: 0, amount: pyRound(amount, 2), km: null, tip, platform: UE_PLATFORM, verified: false });
+      continue;
+    }
+    const start = normClock(String(row.start_time ?? ""));
+    const dur = durationSeconds(row);
+    const km = row.km == null || row.km === "" ? null : Number(row.km);
+    if (!start || !(dur > 0)) { rejected++; continue; }
+    jobs.push({
+      date, start_time: start, type, duration_sec: dur,
+      amount: pyRound(amount, 2),
+      km: km != null && Number.isFinite(km) ? pyRound(km, 2) : null,
+      tip, platform: UE_PLATFORM, verified: false,
+    });
+  }
+  return { jobs, rejected };
 }
 
 function au(s: string): string {
@@ -194,6 +423,7 @@ export function guaranteeWorkbook(cycle: Doc): Uint8Array {
   summary.push([]);
   const owed = Number(total.top_up) > 0;
   summary.push([owed ? "Top-up owed" : "Guarantee met", owed ? `A$${Number(total.top_up).toFixed(2)}` : "No top-up due"]);
+  summary.push(["Estimate only. Uber calculates the final top-up. Overlapping jobs count once. Tips are excluded."]);
   const jobs = cycle.jobs as Doc[];
   const details: unknown[][] = [["Date", "Day", "Start", "Type", "Duration", "Duration (hrs)", "Amount (A$)", "Km", "Overlap with previous job (min)"]];
   let prevEnd: number | null = null;

@@ -522,6 +522,7 @@ async function scan(req: Request, deps: AppDeps): Promise<Response> {
   if (!key) return json({ detail: "AI is not configured on the server (ANTHROPIC_API_KEY missing)" }, 503);
   const body = await readJson(req);
   let img = String(body.image_base64 ?? "");
+  if (img.length > 8_000_000) return json({ detail: "Receipt image is too large" }, 413);
   let media = "image/jpeg";
   if (img.includes(",") && img.trim().startsWith("data:")) {
     const [header, rest] = img.split(",", 2);
@@ -571,6 +572,67 @@ async function scan(req: Request, deps: AppDeps): Promise<Response> {
     liters: numOr(parsed.liters, cat === "fuel"),
     gst: numOr(parsed.gst, true),
   });
+}
+
+function prepareVisionImage(raw: string): { error: Response } | { img: string; media: string } {
+  if (raw.length > 8_000_000) return { error: json({ detail: "Image is too large" }, 413) };
+  let img = raw;
+  let media = "image/jpeg";
+  if (img.includes(",") && img.trim().startsWith("data:")) {
+    const [header, rest] = img.split(",", 2);
+    img = rest;
+    const mt = header.slice(5).split(";")[0];
+    if (["image/jpeg", "image/png", "image/gif", "image/webp"].includes(mt)) media = mt;
+  } else if (img.startsWith("iVBOR")) media = "image/png";
+  return { img, media };
+}
+
+/** Photo of the Uber Driver earnings activity list. Nothing is saved. */
+async function scanGuarantee(req: Request, deps: AppDeps): Promise<Response> {
+  const owner = await currentUser(deps, req);
+  if (!isOwner(owner)) return owner;
+  if (owner.user.is_demo) return json({ detail: "Demo accounts can't use this feature" }, 403);
+  const gate = await requireEntitled(deps, owner);
+  if (gate) return gate;
+  const limit = Number(envGet(deps, "AI_RATE_LIMIT") || "30");
+  if (await rateLimit(deps, `ai:${owner.profileId}`, limit)) return json({ detail: "Too many requests" }, 429);
+  const key = envGet(deps, "ANTHROPIC_API_KEY");
+  if (!key) return json({ detail: "AI is not configured on the server (ANTHROPIC_API_KEY missing)" }, 503);
+  const body = await readJson(req);
+  const prepared = prepareVisionImage(String(body.image_base64 ?? ""));
+  if ("error" in prepared) return prepared.error;
+  const today = tax.iso(tax.taxToday());
+  const system = [
+    "You read a photo of the Uber Driver app, Earnings activity list. The photo may be angled, cropped, or taken of a phone screen.",
+    "Respond with ONLY a compact JSON object, no markdown and no prose.",
+    "The list is newest first. A date header looks like \"Thu, Oct 22\" and has NO year. A chip may show \"22/10\". Apply that date to the rows under it until the next header.",
+    `Today is ${today}. Choose the calendar year so the date is not after today.`,
+    "A delivery row shows a dollar amount, a middle line like \"DELIVERY · 10 min 0 sec · 3.50 km\" (or \"Package · ...\"), and a clock time on the right such as \"4:05 pm\". That clock time is start_time, when the job was accepted. Convert the duration to duration_sec (10 min 0 sec = 600). Put the distance in km.",
+    "A quest, boost, promotion, or referral row shows an amount and words like \"5 Trip Quest · 5/5 trips completed\", plus a time. Map it to type \"Promotion\" with duration_sec 0 and start_time \"\". Its amount counts as earnings and it has no engaged time.",
+    "Schema: {\"jobs\":[{\"date\":\"YYYY-MM-DD\",\"start_time\":\"h:mm AM\",\"type\":\"DELIVERY\"|\"Package\"|\"Promotion\",\"duration_sec\":number,\"amount\":number,\"km\":number|null,\"tip\":number}]}",
+    "Set tip only when a tip is printed as its own amount. The fare on the row is amount, not a tip. If no tip is visible, tip is 0.",
+    "Rows cut off at the top or bottom are missing an amount, a duration, or an accept time. Omit those rows. Do not guess.",
+    "Ignore online hours, trip counts, acceptance rate, a printed guarantee amount, and any top-up. Do not include those fields.",
+    "Only Uber Eats delivery, package, and quest rows.",
+  ].join(" ");
+  const model = envGet(deps, "ANTHROPIC_VISION_MODEL") || envGet(deps, "ANTHROPIC_MODEL") || "claude-sonnet-4-6";
+  const fetcher = deps.fetch ?? fetch;
+  const r = await fetcher("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model, max_tokens: 2048, system,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: prepared.media, data: prepared.img } },
+        { type: "text", text: "Extract the visible jobs as JSON." },
+      ] }],
+    }),
+  });
+  if (!r.ok) return json({ detail: "Couldn't read that screen" }, 502);
+  const data = await r.json();
+  const text = ((data.content ?? []) as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+  const parsed = ue.parseGuaranteeJobs(text, today);
+  return json(parsed);
 }
 
 async function getProfile(req: Request, deps: AppDeps): Promise<Response> {
@@ -907,17 +969,17 @@ async function ueJobs(deps: AppDeps, pid: string, start?: string, end?: string):
 async function ueCycle(deps: AppDeps, pid: string, cycleStart: string | null): Promise<Doc> {
   const prof = await deps.db.profiles.findOne({ profile_id: pid }) ?? {};
   const vtype = String(prof.ue_vehicle_type || "car");
-  const rate = ue.rateFor(vtype);
   const today = tax.iso(tax.taxToday());
   const cs = cycleStart ? ue.cycleStartFor(cycleStart) : ue.cycleStartFor(today);
   const ce = tax.iso(tax.addDays(tax.parseDate(cs), 21));
-  const all = await ueJobs(deps, pid, cs, ce);
-  const jobs = all.filter((j) => (j.platform || ue.UE_PLATFORM) === ue.UE_PLATFORM);
+  const rate = ue.rateFor(vtype, cs);
+  const all = await ueJobs(deps, pid, cs, tax.iso(tax.addDays(tax.parseDate(ce), 1)));
+  const jobs = all.filter((j) => (j.platform || ue.UE_PLATFORM) === ue.UE_PLATFORM && ue.jobPeriod(j) === cs);
   const weeks = [0, 1, 2].map((w) => {
     const ws = tax.iso(tax.addDays(tax.parseDate(cs), 7 * w));
     const we = tax.iso(tax.addDays(tax.parseDate(ws), 7));
-    const wj = jobs.filter((j) => ws <= String(j.date) && String(j.date) < we);
-    return { index: w, start: ws, end: tax.iso(tax.addDays(tax.parseDate(we), -1)), ...ue.summarise(wj, rate) };
+    const wj = jobs.filter((j) => ue.inWeek(j, ws));
+    return { index: w, start: ws, end: tax.iso(tax.addDays(tax.parseDate(we), -1)), ...ue.summarise(wj, vtype) };
   });
   const first = (await deps.db.ue_jobs.find({ profile_id: pid }).toList(20000)).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
   let earliest = first ? ue.cycleStartFor(String(first.date)) : tax.iso(tax.addDays(tax.parseDate(ue.cycleStartFor(today)), -42));
@@ -929,10 +991,16 @@ async function ueCycle(deps: AppDeps, pid: string, cycleStart: string | null): P
     c = tax.iso(tax.addDays(tax.parseDate(c), -21));
   }
   const income = await deps.db.income.find({ profile_id: pid, date: { $gte: cs, $lt: ce } }).toList(5000);
-  return { cycle_start: cs, cycle_end: tax.iso(tax.addDays(tax.parseDate(ce), -1)), vehicle_type: vtype, rate, weeks, total: ue.summarise(jobs, rate), jobs, cycles, mismatches: ue.mismatches(all, income) };
+  return {
+    cycle_start: cs, cycle_end: tax.iso(tax.addDays(tax.parseDate(ce), -1)), vehicle_type: vtype, rate,
+    rate_note: ue.rateNote(cs) || ue.rateNote(ce),
+    rates_vary: ue.rateFor(vtype, cs) !== ue.rateFor(vtype, ce),
+    weeks, total: ue.summarise(jobs, vtype), jobs, cycles, mismatches: ue.mismatches(all, income),
+  };
 }
 
 async function ueRoute(method: string, path: string, url: URL, req: Request, deps: AppDeps): Promise<Response> {
+  if (path === "/api/ue/jobs/scan" && method === "POST") return await scanGuarantee(req, deps);
   const authed = path === "/api/ue/export" ? await ownerOrTicket(req, deps) : await currentUser(deps, req);
   if (!isOwner(authed)) return authed;
   const owner = authed;
@@ -942,6 +1010,26 @@ async function ueRoute(method: string, path: string, url: URL, req: Request, dep
   }
   const bad = checkPid(owner, url.searchParams.get("profile_id"));
   if (bad) return bad;
+  if ((path === "/api/ue/jobs/verify" || path === "/api/ue/jobs/bulk-delete") && method === "POST") {
+    const body = await readJson(req);
+    const ids = Array.isArray(body.ids) ? body.ids.map((id) => String(id)) : [];
+    if (path.endsWith("/bulk-delete")) {
+      let deleted = 0;
+      for (const id of ids) {
+        const res = await deps.db.ue_jobs.deleteOne({ id, profile_id: owner.profileId });
+        deleted += res.deleted_count;
+      }
+      return json({ deleted });
+    }
+    const verified = body.verified === true;
+    const at = verified ? nowIso(deps) : null;
+    let updated = 0;
+    for (const id of ids) {
+      const res = await deps.db.ue_jobs.updateOne({ id, profile_id: owner.profileId }, { $set: { verified, verified_at: at } });
+      updated += res.modified_count;
+    }
+    return json({ updated });
+  }
   const idMatch = path.match(/^\/api\/ue\/jobs\/([^/]+)$/);
   if (path === "/api/ue/jobs" && method === "GET") {
     const start = url.searchParams.get("start");
@@ -963,6 +1051,7 @@ async function ueRoute(method: string, path: string, url: URL, req: Request, dep
       raw.profile_id = owner.profileId;
       const err = ue.validateJob(raw);
       if (err) return json({ detail: err }, 422);
+      if (raw.verified === true && !raw.verified_at) raw.verified_at = nowIso(deps);
       if (existing.some((e) => ue.isDup(raw, e)) || saved.some((e) => ue.isDup(raw, e))) { dups.push(i); continue; }
       saved.push(raw);
     }
@@ -973,9 +1062,10 @@ async function ueRoute(method: string, path: string, url: URL, req: Request, dep
     const cur = await deps.db.ue_jobs.findOne({ id: idMatch[1], profile_id: owner.profileId });
     if (!cur) return json({ detail: "job not found" }, 404);
     const body = await readJson(req);
-    const next = { ...cur, ...body, id: idMatch[1], profile_id: owner.profileId };
+    const next: Doc = { ...cur, ...body, id: idMatch[1], profile_id: owner.profileId };
     const err = ue.validateJob(next);
     if (err) return json({ detail: err }, 422);
+    if (next.verified === true && !next.verified_at) next.verified_at = nowIso(deps);
     const others = (await ueJobs(deps, owner.profileId)).filter((e) => e.id !== idMatch[1]);
     if (others.some((e) => ue.isDup(next, e))) return json({ detail: "duplicate of an existing job" }, 409);
     await deps.db.ue_jobs.updateOne({ id: idMatch[1], profile_id: owner.profileId }, { $set: next });

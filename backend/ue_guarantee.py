@@ -9,6 +9,7 @@ Jobs are separate from tax income: the driver still logs a daily Uber Eats
 income total; we flag days where that total doesn't match the jobs + promos.
 """
 import io
+import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Literal, Optional
@@ -18,8 +19,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 ANCHOR = date(2026, 10, 19)  # a Monday; cycles every 21 days either side
-RATES = {"car": 32.00, "motorbike": 31.50, "bicycle": 31.30}  # A$/engaged hr, effective 17/08/2026
+# Dated engaged-hour rates. The 2027 row is reported, not yet confirmed by Uber.
+RATE_TABLE = [
+    {"from": date(2026, 8, 17), "car": 32.00, "motorbike": 31.50, "bicycle": 31.30, "note": "confirmed"},
+    {"from": date(2027, 1, 1), "car": 32.50, "motorbike": 32.00, "bicycle": 31.80, "note": "reported, verify"},
+]
+RATES = {"car": 32.00, "motorbike": 31.50, "bicycle": 31.30}  # the 17/08/2026 rates
 UE_PLATFORM = "Uber Eats"
+FOUR_AM = 4 * 60
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
@@ -32,6 +39,9 @@ class UEJob(BaseModel):
     duration_sec: int = 0          # engaged time, to the second (0 for promotions)
     amount: Optional[float] = None
     km: Optional[float] = None     # optional, not used in the guarantee maths
+    tip: float = 0                 # excluded from guarantee earnings; the activity amount may include it
+    verified: bool = False
+    verified_at: Optional[str] = None
     platform: str = UE_PLATFORM    # food app — only Uber Eats jobs count toward the guarantee
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -97,17 +107,98 @@ def _build(data: dict) -> "UEJob":
     return j
 
 
-def summarise(jobs: List[dict], rate: float) -> dict:
+def _vehicle_key(vehicle_type: Optional[str]) -> str:
+    v = (vehicle_type or "car").lower().replace(" ", "").replace("-", "").replace("_", "")
+    if v.startswith("motor") or v == "scooter":
+        return "motorbike"
+    if v in ("bicycle", "ebike", "ebicycle"):
+        return "bicycle"
+    return "car"
+
+
+def _rate_row(on: date) -> dict:
+    chosen = RATE_TABLE[0]
+    for row in RATE_TABLE:
+        if row["from"] <= on:
+            chosen = row
+    return chosen
+
+
+def rate_for(vehicle_type: Optional[str], on: Optional[date] = None) -> float:
+    row = _rate_row(on or date(2026, 8, 17))
+    return row[_vehicle_key(vehicle_type)]
+
+
+def rate_note(on: date) -> Optional[str]:
+    note = _rate_row(on)["note"]
+    return None if note == "confirmed" else note
+
+
+def logical_date(d: date, start_time: str) -> date:
+    mins = _start_minutes(start_time or "")
+    if mins is not None and mins < FOUR_AM:
+        return d - timedelta(days=1)
+    return d
+
+
+def period_start_for_job(j: dict) -> date:
+    return cycle_start_for(logical_date(_pd(j.get("date") or ""), j.get("start_time") or ""))
+
+
+def nearest_minute(sec: float) -> int:
+    return int(math.floor(sec / 60 + 0.5)) * 60
+
+
+def _net(j: dict) -> float:
+    tip = j.get("tip") or 0
+    try:
+        tip = float(tip)
+    except (TypeError, ValueError):
+        tip = 0
+    return max(0.0, (j.get("amount") or 0) - tip)
+
+
+def _civil_start(d: date, mins: int) -> datetime:
+    return datetime(d.year, d.month, d.day, mins // 60, mins % 60)
+
+
+def summarise(jobs: List[dict], vehicle_type: str = "car") -> dict:
+    """Union of engaged intervals, rounded to the nearest minute. Tips excluded."""
     work = [j for j in jobs if j.get("type") != "Promotion"]
     promos = [j for j in jobs if j.get("type") == "Promotion"]
-    earnings = round(sum((j.get("amount") or 0) for j in jobs), 2)
-    promo_total = round(sum((j.get("amount") or 0) for j in promos), 2)
-    sec = sum(int(j.get("duration_sec") or 0) for j in work)
-    hrs = sec / 3600
-    guaranteed = round(hrs * rate, 2)
+    earnings = round(sum(_net(j) for j in jobs), 2)
+    promo_total = round(sum(_net(j) for j in promos), 2)
+    buckets: dict = {}
+    placed = []
+    for j in work:
+        dur = int(j.get("duration_sec") or 0)
+        if dur <= 0:
+            continue
+        rate = rate_for(vehicle_type, _pd(j.get("date") or "2026-08-17"))
+        mins = _start_minutes(j.get("start_time") or "")
+        if mins is None:
+            buckets[rate] = buckets.get(rate, 0) + dur
+            continue
+        start = _civil_start(_pd(j["date"]), mins)
+        placed.append((start, start + timedelta(seconds=dur), rate))
+    placed.sort(key=lambda iv: (iv[0], iv[1]))
+    cursor = None
+    for start, end, rate in placed:
+        frm = start if cursor is None or start > cursor else cursor
+        if end > frm:
+            buckets[rate] = buckets.get(rate, 0) + (end - frm).total_seconds()
+            cursor = end
+    engaged = 0
+    guaranteed = 0.0
+    for rate, sec in buckets.items():
+        rounded = nearest_minute(sec)
+        engaged += rounded
+        guaranteed += round(rounded / 3600 * rate, 2)
+    guaranteed = round(guaranteed, 2)
+    hrs = engaged / 3600
     return {
         "jobs": len(work), "promotions": len(promos), "earnings": earnings, "promo_total": promo_total,
-        "engaged_sec": sec, "engaged_label": fmt_dur(sec), "engaged_hours": round(hrs, 4),
+        "engaged_sec": engaged, "engaged_label": fmt_dur(engaged), "engaged_hours": round(hrs, 4),
         "effective_rate": round(earnings / hrs, 2) if hrs > 0 else None,
         "guaranteed": guaranteed, "top_up": round(max(0.0, guaranteed - earnings), 2),
         "km": round(sum((j.get("km") or 0) for j in work), 1),
@@ -174,6 +265,8 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload, requir
         for idx, raw in enumerate(rows):
             j = _build(dict(profile_id=pid, **{k: v for k, v in raw.items() if k not in ("id", "profile_id")}))
             d = j.model_dump()
+            if d.get("verified") and not d.get("verified_at"):
+                d["verified_at"] = datetime.now(timezone.utc).isoformat()
             if any(_is_dup(d, e) for e in existing) or any(_is_dup(d, a) for a in accepted):
                 dups.append(idx)
                 continue
@@ -182,6 +275,25 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload, requir
             await db.ue_jobs.insert_many([dict(a) for a in accepted])
             saved = accepted
         return {"saved": saved, "duplicates": dups}
+
+    @r.post("/jobs/bulk-delete")
+    async def bulk_delete(payload: dict = Body(...), owner=Depends(require_entitled)):
+        deleted = 0
+        for job_id in payload.get("ids") or []:
+            res = await db.ue_jobs.delete_one({"id": str(job_id), "profile_id": owner.profile_id})
+            deleted += res.deleted_count
+        return {"deleted": deleted}
+
+    @r.post("/jobs/verify")
+    async def bulk_verify(payload: dict = Body(...), owner=Depends(require_entitled)):
+        verified = payload.get("verified") is True
+        at = datetime.now(timezone.utc).isoformat() if verified else None
+        updated = 0
+        for job_id in payload.get("ids") or []:
+            res = await db.ue_jobs.update_one({"id": str(job_id), "profile_id": owner.profile_id},
+                                              {"$set": {"verified": verified, "verified_at": at}})
+            updated += res.modified_count
+        return {"updated": updated}
 
     @r.put("/jobs/{job_id}")
     async def update_job(job_id: str, payload: dict = Body(...), owner=Depends(require_entitled)):
@@ -192,6 +304,8 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload, requir
         cur.update({k: v for k, v in payload.items() if k not in ("id", "profile_id")})
         j = _build(cur)
         d = j.model_dump()
+        if d.get("verified") and not d.get("verified_at"):
+            d["verified_at"] = datetime.now(timezone.utc).isoformat()
         others = [e for e in await _jobs(j.profile_id) if e["id"] != job_id]
         if any(_is_dup(d, e) for e in others):
             raise HTTPException(409, "duplicate of an existing job")
@@ -208,18 +322,18 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload, requir
     async def _cycle(pid: str, cycle_start: Optional[str]) -> dict:
         prof = await _profile(pid)
         vtype = prof.get("ue_vehicle_type") or "car"
-        rate = RATES.get(vtype, RATES["car"])
         today = date.today()
         cs = cycle_start_for(_pd(cycle_start)) if cycle_start else cycle_start_for(today)
         ce = cs + timedelta(days=21)
-        all_jobs = await _jobs(pid, cs, ce)
-        jobs = [j for j in all_jobs if (j.get("platform") or UE_PLATFORM) == UE_PLATFORM]  # guarantee = Uber Eats only
+        rate = rate_for(vtype, cs)
+        all_jobs = await _jobs(pid, cs, ce + timedelta(days=1))
+        jobs = [j for j in all_jobs if (j.get("platform") or UE_PLATFORM) == UE_PLATFORM and period_start_for_job(j) == cs]
         weeks = []
         for w in range(3):
             ws = cs + timedelta(days=7 * w)
-            wj = [j for j in jobs if ws.isoformat() <= j["date"] < (ws + timedelta(days=7)).isoformat()]
+            wj = [j for j in jobs if ws <= logical_date(_pd(j["date"]), j.get("start_time") or "") < ws + timedelta(days=7)]
             weeks.append({"index": w, "start": ws.isoformat(), "end": (ws + timedelta(days=6)).isoformat(),
-                          **summarise(wj, rate)})
+                          **summarise(wj, vtype)})
         # dropdown: every cycle from the earliest job (or 2 back) to the current one
         first = await db.ue_jobs.find_one({"profile_id": pid}, sort=[("date", 1)])
         earliest = cycle_start_for(_pd(first["date"])) if first else cycle_start_for(today) - timedelta(days=42)
@@ -228,7 +342,10 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload, requir
             cycles.append({"start": c.isoformat(), "end": (c + timedelta(days=20)).isoformat()})
             c -= timedelta(days=21)
         return {"cycle_start": cs.isoformat(), "cycle_end": (ce - timedelta(days=1)).isoformat(),
-                "vehicle_type": vtype, "rate": rate, "weeks": weeks, "total": summarise(jobs, rate),
+                "vehicle_type": vtype, "rate": rate,
+                "rate_note": rate_note(cs) or rate_note(ce),
+                "rates_vary": rate_for(vtype, cs) != rate_for(vtype, ce),
+                "weeks": weeks, "total": summarise(jobs, vtype),
                 "jobs": jobs, "cycles": cycles, "mismatches": await _mismatches(pid, cs, ce, all_jobs)}
 
     @r.get("/guarantee")
@@ -292,9 +409,11 @@ def build_router(db, require_owner, require_owner_or_ticket, own_payload, requir
             cl = ws.cell(ws.max_row, ci)
             cl.fill, cl.font, cl.border = fill, Font(bold=True, color="C2403A" if owed else "15803D"), box
         ws.append([])
-        note = ("How it's worked out: engaged time is the total of each job's duration (accept to complete). "
-                "Guaranteed amount = engaged hours × rate. Earnings = all job amounts plus promotions "
-                "(Quests, Boosts, incentives) — Uber counts promotions as earnings, but they add no time. "
+        note = ("Estimate only. Uber calculates the final top-up. "
+                "Engaged time is the union of each job from accept to complete, so overlapping jobs count once, "
+                "rounded to the nearest minute. A job accepted before 4:00 am Monday belongs to the previous period. "
+                "Guaranteed amount = engaged hours × the rate for that job's date. "
+                "Earnings include fares and promotions (Quests, Boosts) and exclude tips. "
                 "Top-up owed = guaranteed amount − earnings (if positive), assessed over the whole 21-day cycle; "
                 "weekly figures are a guide only.")
         ws.append([note])

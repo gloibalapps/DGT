@@ -100,13 +100,14 @@ class TestGuarantee:
         t = d["total"]
         # jobs: 3660s 24.59 + 2316s 11.25 + promo 5.00
         assert t["jobs"] == 2 and t["promotions"] == 1
-        assert t["engaged_sec"] == 5976
+        # 3660s + 2316s = 5976s = 99.6 min, rounded to the nearest minute (100 min).
+        assert t["engaged_sec"] == 6000
         assert t["earnings"] == round(24.59 + 11.25 + 5.0, 2)
         assert t["promo_total"] == 5.0
-        assert t["guaranteed"] == round(5976 / 3600 * 32, 2)
+        assert t["guaranteed"] == round(6000 / 3600 * 32, 2)
         assert t["top_up"] == round(max(0, t["guaranteed"] - t["earnings"]), 2)
-        assert t["effective_rate"] == round(t["earnings"] / (5976 / 3600), 2)
-        assert t["engaged_label"] == "1 hr 39 min"
+        assert t["effective_rate"] == round(t["earnings"] / (6000 / 3600), 2)
+        assert t["engaged_label"] == "1 hr 40 min"
         assert any(c["start"] == CS for c in d["cycles"])
 
     def test_mid_cycle_date_snaps(self, pid):
@@ -117,7 +118,7 @@ class TestGuarantee:
         requests.put(f"{BASE_URL}/api/profile", json={"profile_id": pid, "ue_vehicle_type": "motorbike"})
         d = requests.get(f"{UE}/guarantee", params={"profile_id": pid, "cycle_start": CS}).json()
         assert d["rate"] == 31.5
-        assert d["total"]["guaranteed"] == round(5976 / 3600 * 31.5, 2)
+        assert d["total"]["guaranteed"] == round(6000 / 3600 * 31.5, 2)
         requests.put(f"{BASE_URL}/api/profile", json={"profile_id": pid, "ue_vehicle_type": "bicycle"})
         assert requests.get(f"{UE}/guarantee", params={"profile_id": pid, "cycle_start": CS}).json()["rate"] == 31.3
         requests.put(f"{BASE_URL}/api/profile", json={"profile_id": pid, "ue_vehicle_type": "car"})

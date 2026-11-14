@@ -36,7 +36,7 @@ def calc():
         "money": tax.money_overview(p, trips, inc, exp, shifts, ref, period="week", vehicles=vehs),
         "tax_mileage": tax.tax_mileage(p, trips, inc, exp, ref, vehicles=vehs),
         "analytics": tax.compute_analytics(p, trips, inc, exp, shifts, vehs, start, end, ["Uber Eats"], "v1"),
-        "summarise": ue.summarise(raw["ue_jobs"], ue.RATES["car"]),
+        "summarise": ue.summarise(raw["ue_jobs"], "car"),
     }
     json.dump(out, sys.stdout)
 
