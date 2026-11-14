@@ -118,8 +118,8 @@ export function applyFix(state: DriveState | null, fix: GpsFix): StepResult {
       return { state: next, addedKm: 0, armedNow: false, ignored: "still" };
     }
     const windowS = Math.max(dtS, (fix.ts - state.anchorTs) / 1000);
-    const capM = spd != null ? spd * windowS * 1.15 : fromAnchor;
-    const addedKm = Math.min(fromAnchor, capM) / 1000;
+    const addedM = spd != null ? Math.min(fromAnchor, spd * windowS) : fromAnchor;
+    const addedKm = addedM / 1000;
     next.armed = true;
     next.distance = addedKm;
     next.startTs = state.anchorTs;
@@ -133,12 +133,20 @@ export function applyFix(state: DriveState | null, fix: GpsFix): StepResult {
   if (spd != null && spd < DRIVE_SPEED_MS) {
     return { state: { ...state, seenTs: fix.ts }, addedKm: 0, armedNow: false, ignored: "still" };
   }
-  const segGate = Math.max(fix.accuracy != null && fix.accuracy > 0 ? fix.accuracy : 12, SEGMENT_FLOOR_M);
+  // Known speed is capped at speed*time, so a short floor is enough. With no
+  // speed, a short chord is mostly noise: wait for max(3x accuracy, 60 m),
+  // the same floor the previous tracker used before it started summing jitter.
+  const segGate = spd != null
+    ? Math.max(fix.accuracy != null && fix.accuracy > 0 ? fix.accuracy : 12, SEGMENT_FLOOR_M)
+    : Math.max(fix.accuracy != null && fix.accuracy > 0 ? fix.accuracy * 3 : 60, 60);
   if (stepM < segGate || implied < 1) {
     return { state: { ...state, seenTs: fix.ts }, addedKm: 0, armedNow: false, ignored: "tiny" };
   }
-  let km = stepM / 1000;
-  if (spd != null) km = Math.min(km, (spd * dtS) / 1000);
+  // A noisy chord is longer than the road. With a reported speed, trust
+  // speed*time once the point has cleared the floor. With no speed, the
+  // chord itself is the distance, and the floor above keeps it long enough
+  // that the noise is a small fraction of it.
+  const km = spd != null ? (spd * dtS) / 1000 : stepM / 1000;
   return {
     state: {
       ...state,

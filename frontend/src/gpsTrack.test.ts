@@ -135,19 +135,37 @@ test("three consecutive fast fixes arm a drive even before 150 m", () => {
 });
 
 test("a noisy 500 m drive is not doubled when both streams and duplicate batches are fed in", () => {
-  const fixes: GpsFix[] = [];
   const ts0 = 1_700_000_000_000;
   const mps = 500 / 36;
-  for (let i = 0; i <= 36; i++) {
-    const along = i * mps;
-    const acc = 5 + (i % 4) * 5;
-    const lateral = Math.sin(i * 1.7) * acc * 0.6;
-    fixes.push({ ...offset(LAT, LON, along, lateral), ts: ts0 + i * 1000, accuracy: acc, speed: mps });
+  const hash = (n: number) => {
+    const x = Math.sin(n * 12.9898) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const stream = (speed: number, intervalS: number, phaseMs: number): GpsFix[] => {
+    const fixes: GpsFix[] = [];
+    for (let i = 0; i <= 36; i += intervalS) {
+      const along = Math.min(500, i * mps);
+      const acc = 5 + (i % 4) * 5;
+      const j = i * 10 + phaseMs;
+      fixes.push({
+        ...offset(LAT, LON, along + (hash(j) - 0.5) * 2 * acc, (hash(j + 3) - 0.5) * 2 * acc),
+        ts: ts0 + i * 1000 + phaseMs,
+        accuracy: acc,
+        speed,
+      });
+    }
+    return fixes;
+  };
+  for (const speed of [mps, -1]) {
+    const primary = stream(speed, 1, 0);
+    const background = stream(speed, 2, 1000);
+    const folded = foldFixes([...primary, ...primary, ...background].sort((a, b) => a.ts - b.ts));
+    assert.equal(folded.armed, true);
+    assert.ok(
+      Math.abs(folded.distanceKm - 0.5) <= 0.025,
+      `speed ${speed}: expected ~0.5 km, got ${folded.distanceKm}`,
+    );
   }
-  const shifted = fixes.map((f) => ({ ...f, ts: f.ts + 400 }));
-  const folded = foldFixes([...fixes, ...fixes, ...shifted].sort((a, b) => a.ts - b.ts));
-  assert.equal(folded.armed, true);
-  assert.ok(Math.abs(folded.distanceKm - 0.5) <= 0.025, `expected ~0.5 km, got ${folded.distanceKm}`);
 });
 
 test("a started task with no fix is restarted once, then left alone until the next wait", () => {
