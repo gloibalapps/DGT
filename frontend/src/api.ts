@@ -202,15 +202,67 @@ export interface IncomeT {
   id: string; profile_id: string; date: string; amount: number;
   platform?: string | null; tax_treatment: string; note?: string | null;
 }
+export type DupeLevel = "strong" | "likely" | "possible" | null;
+
+export interface DupeMatch {
+  id?: string | null;
+  merchant?: string | null;
+  date?: string | null;
+  txn_time?: string | null;
+  amount?: number | null;
+  category?: string | null;
+  liters?: number | null;
+  gst?: number | null;
+  receipt_number?: string | null;
+  abn?: string | null;
+  card_last4?: string | null;
+  pump?: string | null;
+  has_receipt?: boolean;
+  thumb?: string | null;
+}
+
+export interface DupeReport {
+  skipped?: boolean;
+  level: DupeLevel;
+  reason?: string | null;
+  distance?: number | null;
+  match?: DupeMatch | null;
+  duplicate?: DupeReport | null;
+  candidate?: {
+    image_sha256?: string | null;
+    image_dhash?: string | null;
+    image_ahash?: string | null;
+    image_dhash_rots?: string[] | null;
+    image_ahash_rots?: string[] | null;
+  } | null;
+  scan_skipped?: boolean;
+}
+
 export interface ExpenseT {
   id: string; profile_id: string; date: string; amount: number;
   category: "fuel" | "tolls" | "vehicle" | "phone" | "other";
   liters?: number | null;
   gst?: number | null;
+  txn_time?: string | null;
+  receipt_number?: string | null;
+  abn?: string | null;
+  card_last4?: string | null;
+  pump?: string | null;
   merchant?: string | null; vehicle_id?: string | null;
   tax_treatment: string; note?: string | null;
   receipt_image?: string | null;
   has_receipt?: boolean;
+  image_sha256?: string | null;
+  image_dhash?: string | null;
+  image_ahash?: string | null;
+  image_dhash_rots?: string[] | null;
+  image_ahash_rots?: string[] | null;
+  client_dhash?: string | null;
+  client_ahash?: string | null;
+  client_dhash_rots?: string[] | null;
+  client_ahash_rots?: string[] | null;
+  keep_with?: string[];
+  duplicate?: DupeReport | null;
 }
 export interface ShiftT {
   id: string; profile_id: string; date: string; hours: number;
@@ -329,6 +381,10 @@ export const api = {
     const pid = await getProfileId();
     return req(`/expenses`, { method: "POST", body: JSON.stringify({ ...e, profile_id: pid }) });
   },
+  async checkExpense(e: Partial<ExpenseT> & { image_base64?: string; exclude_id?: string }): Promise<DupeReport> {
+    const pid = await getProfileId();
+    return req(`/expenses/check`, { method: "POST", body: JSON.stringify({ ...e, profile_id: pid }) });
+  },
   updateExpense: (id: string, e: Partial<ExpenseT>) =>
     req(`/expenses/${id}`, { method: "PUT", body: JSON.stringify(e) }),
   deleteExpense: (id: string) => req(`/expenses/${id}`, { method: "DELETE" }),
@@ -345,7 +401,11 @@ export const api = {
     req(`/shifts/${id}`, { method: "PUT", body: JSON.stringify(s) }),
   deleteShift: (id: string) => req(`/shifts/${id}`, { method: "DELETE" }),
 
-  async scanReceipt(image_base64: string) {
+  async scanReceipt(image_base64: string): Promise<DupeReport & {
+    amount?: number | null; date?: string; merchant?: string; category?: string;
+    liters?: number | null; gst?: number | null; txn_time?: string | null;
+    receipt_number?: string | null; abn?: string | null; card_last4?: string | null; pump?: string | null;
+  }> {
     return req(`/receipts/scan`, { method: "POST", body: JSON.stringify({ image_base64 }) });
   },
   async dashboard(refDate: string) {

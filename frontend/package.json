@@ -41,6 +41,8 @@
     "expo-system-ui": "6.0.9",
     "expo-task-manager": "~14.0.9",
     "expo-web-browser": "15.0.11",
+    "jpeg-js": "0.4.4",
+    "pako": "2.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -58,6 +60,7 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
+    "@types/pako": "2.0.3",
     "@types/react": "19.1.10",
     "eslint": "9.25.0",
     "eslint-config-expo": "10.0.0",
