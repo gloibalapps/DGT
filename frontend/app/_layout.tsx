@@ -16,6 +16,7 @@ import { SubscriptionProvider, useSubscription } from "@/src/subscription";
 import PaywallScreen from "@/src/PaywallScreen";
 import LoginScreen from "@/src/LoginScreen";
 import { syncAutotrack } from "@/src/autotrack";
+import DupePreview from "./dupe-preview";
 
 // Any screen error shows a recoverable "Try again" screen instead of closing the app.
 export { ErrorBoundary } from "expo-router";
@@ -57,6 +58,7 @@ function SubGate() {
           <Stack.Screen name="entry" options={{ presentation: "modal" }} />
           <Stack.Screen name="scan-receipt" options={{ presentation: "modal" }} />
           <Stack.Screen name="invoice-review" options={{ presentation: "modal" }} />
+          <Stack.Screen name="dupe-preview" />
           <Stack.Screen name="tax-setup" options={{ presentation: "modal" }} />
           <Stack.Screen name="vehicle" options={{ presentation: "modal" }} />
           <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
@@ -82,7 +84,8 @@ function AuthGate() {
   const pathname = usePathname();
   // Legal pages must be publicly reachable (Google OAuth consent screen + app
   // store review) even when the login gate is on.
-  const isPublic = pathname === "/privacy" || pathname === "/terms";
+  const isPublic = pathname === "/privacy" || pathname === "/terms" || pathname === "/dupe-preview";
+  if (pathname === "/dupe-preview") return <DupePreview />;
   if (loading) return null;  // splash stays until any stored session resolves
   if (AUTH_ENABLED && !user && !isPublic) return <LoginScreen />;  // Google sign-in gate
   return (

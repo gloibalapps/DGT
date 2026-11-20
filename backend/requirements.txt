@@ -11,3 +11,5 @@ python-dotenv==1.2.2
 anthropic==2.8.0
 # Imported by Starlette at startup (form parser). Not used by a route.
 python-multipart==0.0.32
+# Receipt perceptual hashes (dHash / aHash) and review thumbnails.
+pillow==13.0.0

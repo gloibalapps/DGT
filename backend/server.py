@@ -22,6 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 
 import tax as taxlib
+import receipt_dupes
 from pgdb import Database
 
 ROOT_DIR = Path(__file__).parent
@@ -1138,6 +1139,31 @@ class Expense(BaseModel):
     note: Optional[str] = None
     liters: Optional[float] = None  # fuel volume (litres), for fuel receipts
     gst: Optional[float] = None  # GST amount as shown on the invoice; None = "no gst"
+    txn_time: Optional[str] = None          # HH:MM on the receipt
+    receipt_number: Optional[str] = None
+    abn: Optional[str] = None
+    card_last4: Optional[str] = None
+    pump: Optional[str] = None
+    # Filled by receipt_dupes.enrich_expense. Optional so older rows still load.
+    image_sha256: Optional[str] = None
+    image_dhash: Optional[str] = None
+    image_dhash_rots: Optional[List[str]] = None
+    image_ahash: Optional[str] = None
+    image_ahash_rots: Optional[List[str]] = None
+    client_dhash: Optional[str] = None
+    client_dhash_rots: Optional[List[str]] = None
+    client_ahash: Optional[str] = None
+    client_ahash_rots: Optional[List[str]] = None
+    amount_cents: Optional[int] = None
+    norm_date: Optional[str] = None
+    norm_time: Optional[str] = None
+    norm_abn: Optional[str] = None
+    norm_receipt_number: Optional[str] = None
+    merchant_key: Optional[str] = None
+    norm_card_last4: Optional[str] = None
+    norm_litres: Optional[float] = None
+    norm_pump: Optional[str] = None
+    dupe_keep_with: Optional[List[str]] = None
     receipt_image: Optional[str] = None  # base64
     created_at: str = Field(default_factory=now_iso)
 
@@ -1401,6 +1427,64 @@ async def delete_income(item_id: str, owner: Owner = Depends(require_entitled)):
 
 
 # Expenses
+def _store_expense(payload: dict) -> tuple:
+    """Validate, hash and normalise. ``keep_with`` is not stored on the row;
+    the caller records the pair after the id exists."""
+    data = dict(payload)
+    keep_with = [str(x) for x in (data.pop("keep_with", None) or []) if x]
+    data.pop("exclude_id", None)
+    data.pop("image_base64", None)
+    data.pop("duplicate", None)
+    data.pop("duplicate_skipped", None)
+    obj = Expense(**data)
+    stored = obj.model_dump()
+    stored = receipt_dupes.enrich_expense(stored, keep_hashes_without_image=False)
+    stored.pop("_time_mins", None)
+    return stored, keep_with
+
+
+async def _candidate_expenses(profile_id: str) -> list:
+    docs = await db.expenses.find({"profile_id": profile_id}, {"receipt_image": 0}).to_list(2000)
+    return [clean(d) for d in docs]
+
+
+async def _with_thumb(profile_id: str, report: dict) -> Optional[dict]:
+    if not report or not report.get("level"):
+        return None
+    match = dict(report.get("match") or {})
+    if match.get("id"):
+        full = await db.expenses.find_one({"id": match["id"], "profile_id": profile_id})
+        image = (full or {}).get("receipt_image")
+        match["has_receipt"] = bool(image)
+        thumb = receipt_dupes.thumb_base64(image)
+        if thumb:
+            match["thumb"] = thumb
+    return {
+        "skipped": False,
+        "level": report["level"],
+        "reason": report["reason"],
+        "distance": report.get("distance"),
+        "match": match,
+    }
+
+
+async def _remember_keeps(profile_id: str, new_id: str, other_ids: list) -> list:
+    """Record that this driver wants both expenses kept. The pair is not flagged again."""
+    linked = []
+    for oid in other_ids:
+        if not oid or oid == new_id or oid in linked:
+            continue
+        other = await db.expenses.find_one({"id": oid, "profile_id": profile_id}, {"receipt_image": 0})
+        if not other:
+            continue
+        linked.append(oid)
+        await db.expenses.update_one(
+            {"id": oid, "profile_id": profile_id},
+            {"$set": {"dupe_keep_with": receipt_dupes.remembered_keep_ids(other.get("dupe_keep_with"), new_id)}},
+        )
+    return linked
+
+
 @api_router.get("/expenses")
 async def list_expenses(owner: Owner = Depends(require_owner)):
     profile_id = owner.profile_id
@@ -1415,6 +1499,55 @@ async def list_expenses(owner: Owner = Depends(require_owner)):
     return out
 
 
+@api_router.post("/expenses/check")
+async def check_expense(payload: dict, owner: Owner = Depends(require_entitled)):
+    """Review-screen check. Does not save and does not call the vision model."""
+    payload = _own_payload(dict(payload or {}), owner)
+    keep_with = payload.pop("keep_with", None) or []
+    exclude_id = payload.pop("exclude_id", None)
+    image = payload.pop("image_base64", None)
+    if image and not payload.get("receipt_image"):
+        payload["receipt_image"] = image
+    prepared = receipt_dupes.enrich_expense(payload, keep_hashes_without_image=True)
+    report = receipt_dupes.match_expense(
+        prepared, await _candidate_expenses(owner.profile_id), keep_with=keep_with, exclude_id=exclude_id)
+    duplicate = await _with_thumb(owner.profile_id, report)
+    return {
+        "skipped": report["skipped"],
+        "level": report["level"],
+        "reason": report["reason"],
+        "distance": report.get("distance"),
+        "match": (duplicate or {}).get("match") if duplicate else None,
+        "duplicate": duplicate,
+        "candidate": {
+            "image_sha256": prepared.get("image_sha256"),
+            "image_dhash": prepared.get("image_dhash"),
+            "image_ahash": prepared.get("image_ahash"),
+            "image_dhash_rots": prepared.get("image_dhash_rots"),
+            "image_ahash_rots": prepared.get("image_ahash_rots"),
+        },
+    }
+
+
+@api_router.post("/expenses/backfill")
+async def backfill_expenses(owner: Owner = Depends(require_entitled)):
+    """Fill hashes and normalised fields for this driver's existing receipt images.
+    Safe to call twice; the second call changes nothing."""
+    docs = [clean(d) for d in await db.expenses.find({"profile_id": owner.profile_id}).to_list(5000)]
+    result = receipt_dupes.backfill_documents(docs)
+    original_ids = {id(d) for d in docs}
+    changed = 0
+    for doc in result["documents"]:
+        if id(doc) in original_ids:
+            continue
+        stored = dict(doc)
+        stored.pop("_time_mins", None)
+        await db.expenses.update_one(
+            {"id": stored["id"], "profile_id": owner.profile_id}, {"$set": stored})
+        changed += 1
+    return {"updated": changed, "unchanged": len(docs) - changed}
+
+
 @api_router.get("/expenses/{item_id}")
 async def get_expense(item_id: str, owner: Owner = Depends(require_owner)):
     profile_id = owner.profile_id
@@ -1426,9 +1559,27 @@ async def get_expense(item_id: str, owner: Owner = Depends(require_owner)):
 
 @api_router.post("/expenses")
 async def add_expense(payload: dict, owner: Owner = Depends(require_entitled)):
-    obj = Expense(**_own_payload(payload, owner))
-    await db.expenses.insert_one(obj.model_dump())
-    return clean(obj.model_dump())
+    stored, keep_with = _store_expense(_own_payload(payload, owner))
+    report = receipt_dupes.match_expense(
+        stored, await _candidate_expenses(owner.profile_id), keep_with=keep_with)
+    await db.expenses.insert_one(stored)
+    if keep_with:
+        linked = await _remember_keeps(owner.profile_id, stored["id"], keep_with)
+        if linked:
+            stored["dupe_keep_with"] = linked
+            await db.expenses.update_one(
+                {"id": stored["id"], "profile_id": owner.profile_id},
+                {"$set": {"dupe_keep_with": linked}})
+            report = receipt_dupes.match_expense(
+                stored, await _candidate_expenses(owner.profile_id),
+                keep_with=linked, exclude_id=stored["id"])
+    # Likely and possible matches are information. Saving is never rejected.
+    body = receipt_dupes.attach_duplicate(stored, report)
+    duplicate = await _with_thumb(owner.profile_id, report)
+    body["duplicate"] = duplicate
+    if duplicate is None:
+        body["duplicate_skipped"] = bool(report.get("skipped"))
+    return body
 
 
 @api_router.put("/expenses/{item_id}")
@@ -1437,10 +1588,25 @@ async def update_expense(item_id: str, payload: dict, owner: Owner = Depends(req
     existing = await db.expenses.find_one({"id": item_id, "profile_id": owner.profile_id})
     if not existing:
         raise HTTPException(404, "expense not found")
-    base = clean(existing); base.update(payload); base["id"] = item_id
-    obj = Expense(**base)
-    await db.expenses.update_one({"id": item_id, "profile_id": owner.profile_id}, {"$set": obj.model_dump()})
-    return clean(obj.model_dump())
+    base = clean(existing)
+    base.update(payload)
+    base["id"] = item_id
+    stored, keep_with = _store_expense(base)
+    stored["id"] = item_id
+    await db.expenses.update_one({"id": item_id, "profile_id": owner.profile_id}, {"$set": stored})
+    if keep_with:
+        linked = await _remember_keeps(owner.profile_id, item_id, keep_with)
+        if linked:
+            merged = list(dict.fromkeys([*(stored.get("dupe_keep_with") or []), *linked]))
+            stored["dupe_keep_with"] = merged
+            await db.expenses.update_one(
+                {"id": item_id, "profile_id": owner.profile_id},
+                {"$set": {"dupe_keep_with": merged}})
+    report = receipt_dupes.match_expense(
+        stored, await _candidate_expenses(owner.profile_id), keep_with=keep_with, exclude_id=item_id)
+    body = receipt_dupes.attach_duplicate(stored, report)
+    body["duplicate"] = await _with_thumb(owner.profile_id, report)
+    return body
 
 
 @api_router.delete("/expenses/{item_id}")
@@ -1699,21 +1865,59 @@ class ScanRequest(BaseModel):
     image_base64: str
 
 
+def _scan_text(data: dict, key: str, limit: int = 80) -> Optional[str]:
+    value = data.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text[:limit] if text else None
+
+
 @api_router.post("/receipts/scan")
 async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled)):
     _reject_demo_premium(owner)
-    _rate_limit(f"ai:{owner.profile_id}", "AI_RATE_LIMIT", 30)
     import json as _json
 
+    try:
+        raw = receipt_dupes.decode_image_b64(req.image_base64)
+    except Exception:
+        raise HTTPException(400, "Receipt image is unreadable")
+    # Exact file and perceptual matches are decided here, before any paid vision call.
+    plan = receipt_dupes.plan_paid_scan(raw, await _candidate_expenses(owner.profile_id))
+    if plan["skip"]:
+        match = (plan["duplicate"].get("match") or {})
+        duplicate = await _with_thumb(owner.profile_id, plan["duplicate"])
+        return {
+            "amount": match.get("amount"),
+            "date": match.get("date") or date.today().isoformat(),
+            "merchant": match.get("merchant") or "",
+            "category": match.get("category") if match.get("category") in ("fuel", "tolls", "vehicle", "phone", "other") else "other",
+            "liters": match.get("liters"),
+            "gst": match.get("gst"),
+            "txn_time": match.get("txn_time") or None,
+            "receipt_number": match.get("receipt_number"),
+            "abn": match.get("abn"),
+            "card_last4": match.get("card_last4"),
+            "pump": match.get("pump"),
+            "scan_skipped": True,
+            "duplicate": duplicate,
+        }
+
+    _rate_limit(f"ai:{owner.profile_id}", "AI_RATE_LIMIT", 30)
     system = (
         "You are a receipt data extractor for an Australian gig-driver tax app. "
         "Extract fields from the receipt image and respond with ONLY a compact JSON "
         "object, no markdown, no prose. Schema: "
         '{"amount": number (total incl GST, no currency symbol), '
         '"date": "YYYY-MM-DD" (best guess, today if unclear), '
+        '"txn_time": "HH:MM" or null (24-hour time printed on the receipt), '
         '"merchant": string, '
         '"gst": number|null (the GST/tax amount printed on the invoice; null if the invoice shows NO GST), '
         '"liters": number|null (fuel volume in litres for FUEL receipts, e.g. 42.15; null for non-fuel), '
+        '"receipt_number": string|null (receipt, invoice or docket number), '
+        '"abn": string|null (11-digit Australian Business Number printed on the receipt), '
+        '"card_last4": string|null (last 4 card digits only), '
+        '"pump": string|null (fuel pump number, null if it is not printed), '
         '"category": one of "fuel","tolls","vehicle","phone","other"}. '
         "Map petrol/servo/gas -> fuel; car service/tyres/repairs/parts -> vehicle; "
         "toll/etoll/linkt -> tolls; telco/mobile/data -> phone; everything else -> other."
@@ -1766,6 +1970,8 @@ async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled
         gst = round(float(gst), 2) if gst not in (None, "") else None
     except (TypeError, ValueError):
         gst = None
+    txn = _scan_text(data, "txn_time", 16)
+    txn_mins = receipt_dupes.parse_time_mins(txn)
     return {
         "amount": data.get("amount"),
         "date": data.get("date") or date.today().isoformat(),
@@ -1773,6 +1979,12 @@ async def scan_receipt(req: ScanRequest, owner: Owner = Depends(require_entitled
         "category": cat,
         "liters": liters,
         "gst": gst,
+        "txn_time": receipt_dupes.mins_to_hhmm(txn_mins),
+        "receipt_number": _scan_text(data, "receipt_number"),
+        "abn": _scan_text(data, "abn", 20),
+        "card_last4": _scan_text(data, "card_last4", 8),
+        "pump": _scan_text(data, "pump", 16),
+        "scan_skipped": False,
     }
 
 
