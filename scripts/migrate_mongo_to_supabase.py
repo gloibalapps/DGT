@@ -6,7 +6,7 @@ supabase/migrations/0001_init.sql, while the old backend is in read-only /
 maintenance mode:
 
     pip install -r scripts/requirements.txt
-    export MONGO_URL=... DB_NAME=...                # old Emergent Mongo
+    export MONGO_URL=... DB_NAME=...                # previous Mongo database
     export SUPABASE_URL=https://<ref>.supabase.co
     export SUPABASE_SERVICE_ROLE_KEY=...            # service role (bypasses RLS)
     python scripts/migrate_mongo_to_supabase.py --dry-run   # counts only

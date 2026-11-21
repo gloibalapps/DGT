@@ -1,15 +1,15 @@
-# Migrating Drivers Gig Tax off Emergent
+# Migrating Drivers Gig Tax off the previous host
 
-Branch: `migrate-off-emergent` (local). Nothing here has been deployed or run against real data.
+Nothing in this branch has been deployed or run against real data.
 
 ## Architecture after migration
-| Piece | Before (Emergent) | After |
+| Piece | Before (previous host) | After |
 |---|---|---|
 | Database | MongoDB (Motor) | Supabase Postgres (Pro), `supabase/migrations/0001_init.sql` |
 | Data access | Motor | `backend/pgdb.py`: small Motor-compatible adapter on **asyncpg** |
-| API | FastAPI on Emergent k8s | Same FastAPI, routes unchanged, on **Fly.io `syd`** (`fly.toml`, `backend/Dockerfile`) |
-| AI | `emergentintegrations` LlmChat (gpt-4o vision, Claude Sonnet) | Official `anthropic` SDK; both receipt scan (vision) and /api/ask use `claude-sonnet-4-6` |
-| Auth | Emergent session + own Google OAuth + Apple | Own Google OAuth + Apple (unchanged), sessions in Postgres. Emergent `/api/auth/session` removed |
+| API | FastAPI on the previous host's Kubernetes | Same FastAPI, routes unchanged, on **Fly.io `syd`** (`fly.toml`, `backend/Dockerfile`) |
+| AI | Hosted `LlmChat` wrapper (gpt-4o vision, Claude Sonnet) | Official `anthropic` SDK; both receipt scan (vision) and /api/ask use `claude-sonnet-4-6` |
+| Auth | Hosted session + own Google OAuth + Apple | Own Google OAuth + Apple (unchanged), sessions in Postgres. Hosted `/api/auth/session` removed |
 | Marketing site | `/api/site` on backend | Netlify, `netlify.toml`, publish `website/` |
 
 ## Decisions

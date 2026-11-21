@@ -127,7 +127,7 @@
 
 ## Final pre-ship check — AI Assistant + User Guide consistency (added by main agent)
 - Google login REMOVED — app opens directly (local profile, no auth). No credentials needed.
-- NEW: AI Tax Assistant "Ask" tab. Backend POST /api/ask {question, country, history} -> Claude Sonnet 4.6 (Emergent LLM key), grounded ONLY in backend/tax_kb.py (ATO for AU, IRS for US). Must: answer claimable/not-claimable Qs from KB, refuse out-of-scope ("not in my verified sources — registered tax agent"), no web search. Frontend app/(tabs)/ask.tsx chat UI (suggestions, disclaimer, send).
+- NEW: AI Tax Assistant "Ask" tab. Backend POST /api/ask {question, country, history} -> Claude Sonnet 4.6 (a hosted LLM key), grounded ONLY in backend/tax_kb.py (ATO for AU, IRS for US). Must: answer claimable/not-claimable Qs from KB, refuse out-of-scope ("not in my verified sources — registered tax agent"), no web search. Frontend app/(tabs)/ask.tsx chat UI (suggestions, disclaimer, send).
 - Bottom tabs now: Home, Mileage, Ledger, Reports, Ask, Profile (Settings renamed to Profile, person icon).
 - User Guide manual (Profile > Help > User guide, route /manual) updated to reflect ALL tabs/features: Ask tab, no-login wording, Home layout (hero + Performance + km/owed at bottom), collapsible History on Mileage & Ledger, ATO/IRS logbook + "which method is better" now in Reports, tax setup country-aware (AU GST/ABN·TFN; US EIN/SSN + estimated-tax freq).
 - Recent UI: Mileage tab GPS/Add-trip controls at top above TODAY counter; History collapsible (tap header). Ledger History collapsible. Reports cards all have accent border; logbook card moved from Mileage to Reports. Home hero income/expenses on right.

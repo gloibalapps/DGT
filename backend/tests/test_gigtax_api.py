@@ -320,7 +320,7 @@ class TestExport:
 
 
 # ---------------------------------------------------------------------------
-# Receipt scanning (OpenAI gpt-4o via Emergent LLM)
+# Receipt scanning (vision model)
 # ---------------------------------------------------------------------------
 def _real_receipt_png_b64() -> str:
     """Render a synthetic receipt PNG with real edges/text using Pillow."""

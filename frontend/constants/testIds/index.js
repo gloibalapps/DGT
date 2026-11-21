@@ -1,5 +1,5 @@
 // constants/testIds/ — central registry of testID values used by the
-// end-to-end testing agent (qabot) to locate and interact with UI elements
+// end-to-end tests to locate and interact with UI elements
 // during automated tests. UI without testIDs cannot be automatically verified.
 //
 // Structure: each feature lives in its own file (auth.js, cart.js, ...) and
