@@ -4,7 +4,7 @@
 - Money overview with recurring rental (money_now.recurring_rent)
 - Fuel receipt litres persistence
 - Vehicles CRUD + active vehicle switching
-- Ask endpoint (Claude via Emergent LLM)
+- Ask endpoint (Claude)
 """
 import uuid
 from datetime import date, timedelta
